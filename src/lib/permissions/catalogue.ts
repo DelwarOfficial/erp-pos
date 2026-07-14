@@ -181,6 +181,13 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'platform.onboarding.execute', module: 'platform', description: 'Onboard new tenants' },
   { code: 'platform.tenant.pilot_enable', module: 'platform', description: 'Enable pilot features for tenants' },
   { code: 'system.config.view', module: 'system', description: 'View system configuration' },
+  // AM-BR — Fixed assets + bank reconciliation
+  { code: 'asset.view.branch', module: 'asset', description: 'View fixed assets (branch-scoped)' },
+  { code: 'asset.view.global', module: 'asset', description: 'View all fixed assets across branches' },
+  { code: 'asset.manage.branch', module: 'asset', description: 'Acquire/dispose fixed assets (branch)' },
+  { code: 'asset.depreciate.company', module: 'asset', description: 'Run depreciation on fixed assets (company)' },
+  { code: 'bank.reconciliation.view.company', module: 'banking', description: 'View bank reconciliations (company)' },
+  { code: 'bank.reconciliation.manage.company', module: 'banking', description: 'Create/match/finalize bank reconciliations (company)' },
 ];
 
 export async function seedPermissions(): Promise<number> {
@@ -211,12 +218,12 @@ export const SYSTEM_ROLES = [
   {
     name: 'global_admin',
     description: 'Company global admin. Full access except owner-only operations. MFA mandatory.',
-    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*'],
+    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*', 'asset.*', 'bank.*'],
   },
   {
     name: 'branch_manager',
     description: 'Branch manager. Branch-scoped operations + approvals.',
-    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute'],
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company'],
   },
   {
     name: 'cashier',
@@ -226,7 +233,7 @@ export const SYSTEM_ROLES = [
   {
     name: 'accountant',
     description: 'Accountant. Posts journals, expenses, reconciliations, period close. MFA mandatory.',
-    permissions: ['journal.*', 'expense.*', 'report.*', 'reconciliation.*', 'fiscal_period.lock', 'tax.manage', 'approval.resolve'],
+    permissions: ['journal.*', 'expense.*', 'report.*', 'reconciliation.*', 'fiscal_period.lock', 'tax.manage', 'approval.resolve', 'asset.view.branch', 'asset.depreciate.company', 'bank.reconciliation.view.company', 'bank.reconciliation.manage.company'],
   },
   {
     name: 'inventory_clerk',

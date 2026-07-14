@@ -363,6 +363,61 @@ export const checkIdempotencyResource: ReconciliationCheck = async (tx, companyI
   return findings;
 };
 
+// ── AM-BR additions ──
+
+// FIXED_ASSET_NBV — verify NBV = purchase_cost - accumulated_depreciation for all active assets
+export const checkFixedAssetNetBookValue: ReconciliationCheck = async (tx, companyId) => {
+  const findings: ReconciliationFinding[] = [];
+  const assets = await tx.fixedAsset.findMany({
+    where: { companyId, status: { in: ['active', 'fully_depreciated'] } },
+    select: { id: true, assetCode: true, purchaseCost: true, salvageValue: true, accumulatedDepreciation: true, netBookValue: true },
+  });
+  for (const a of assets) {
+    const cost = parseFloat(a.purchaseCost.toString());
+    const accum = parseFloat(a.accumulatedDepreciation.toString());
+    const expectedNbv = cost - accum;
+    const actualNbv = parseFloat(a.netBookValue.toString());
+    if (Math.abs(expectedNbv - actualNbv) > 0.01) {
+      findings.push({
+        check_code: 'FIXED_ASSET_NBV',
+        severity: 'high',
+        reference_type: 'fixed_asset',
+        reference_id: a.id,
+        expected_value: expectedNbv,
+        actual_value: actualNbv,
+        variance: actualNbv - expectedNbv,
+        details: { issue: 'Net book value does not equal cost minus accumulated depreciation', asset_code: a.assetCode },
+      });
+    }
+  }
+  return findings;
+};
+
+// BANK_RECONCILIATION_VARIANCE — check for reconciliations with unresolved variance
+export const checkBankReconciliationVariance: ReconciliationCheck = async (tx, companyId) => {
+  const findings: ReconciliationFinding[] = [];
+  const recs = await tx.bankReconciliation.findMany({
+    where: { companyId, status: 'has_variance' },
+    select: { id: true, statementDate: true, variance: true, financialAccountId: true },
+  });
+  for (const r of recs) {
+    const variance = parseFloat(r.variance.toString());
+    if (Math.abs(variance) > 0.01) {
+      findings.push({
+        check_code: 'BANK_RECONCILIATION_VARIANCE',
+        severity: 'warning',
+        reference_type: 'bank_reconciliation',
+        reference_id: r.id,
+        expected_value: 0,
+        actual_value: variance,
+        variance,
+        details: { issue: 'Reconciliation has unresolved variance', statement_date: r.statementDate, financial_account_id: r.financialAccountId },
+      });
+    }
+  }
+  return findings;
+};
+
 export const ALL_CHECKS = [
   { code: 'STOCK_QTY_LEDGER', fn: checkStockQtyLedger },
   { code: 'STOCK_VALUE_LEDGER', fn: checkStockValueLedger },
@@ -384,6 +439,8 @@ export const ALL_CHECKS = [
   { code: 'ADVANCE_LIABILITY', fn: checkAdvanceLiability },
   { code: 'OUTBOX_COMPLETENESS', fn: checkOutboxCompleteness },
   { code: 'IDEMPOTENCY_RESOURCE', fn: checkIdempotencyResource },
+  { code: 'FIXED_ASSET_NBV', fn: checkFixedAssetNetBookValue },
+  { code: 'BANK_RECONCILIATION_VARIANCE', fn: checkBankReconciliationVariance },
 ];
 
 export async function runReconciliation(companyId: string, runType: 'nightly' | 'manual' | 'pre_close' | 'post_restore' = 'nightly', initiatedBy?: string) {

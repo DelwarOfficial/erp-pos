@@ -234,6 +234,12 @@ model Company {
   rewardPointConsumptions RewardPointConsumption[]
   payrollItemComponents PayrollItemComponent[]
   attendanceRecords   AttendanceRecord[]
+  // AM-BR — Fixed asset + bank reconciliation
+  fixedAssets             FixedAsset[]
+  fixedAssetCategories    FixedAssetCategory[]
+  fixedAssetDepreciations FixedAssetDepreciation[]
+  bankReconciliations     BankReconciliation[]
+  bankReconciliationLines BankReconciliationLine[]
 
   @@index([status])
   @@map("companies")
@@ -297,6 +303,8 @@ model Branch {
   holidays             Holiday[]           @relation("HolidayBranch")
   stockBudgetLeases    StockBudgetLease[]  @relation("StockBudgetBranch")
   accountTransfers     AccountTransfer[]
+  // AM-BR — fixed assets
+  fixedAssets          FixedAsset[]
 
   @@unique([companyId, code])
   @@index([companyId, isActive])
@@ -3294,6 +3302,8 @@ model FinancialAccount {
   // Gap model backward relations
   accountTransfersFrom AccountTransfer[] @relation("TransferFromFA")
   accountTransfersTo   AccountTransfer[] @relation("TransferToFA")
+  // AM-BR — bank reconciliations
+  bankReconciliations  BankReconciliation[]
 
   @@unique([companyId, chartOfAccountId])
   @@index([companyId])
@@ -4989,4 +4999,151 @@ model CurrencyRevaluation {
   @@index([revaluationDate])
   @@index([currencyCode])
   @@map("currency_revaluations")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Fixed Asset Management (AM-BR)
+// ──────────────────────────────────────────────────────────────────────
+
+model FixedAsset {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  assetCode             String   @map("asset_code")
+  name                  String
+  description           String?
+  categoryId            String?  @map("category_id")
+  branchId              String?  @map("branch_id")
+  location              String?
+  serialNumber          String?  @map("serial_number")
+  purchaseDate          DateTime @map("purchase_date")
+  purchaseCost          Decimal  @map("purchase_cost")
+  salvageValue          Decimal  @default(0) @map("salvage_value")
+  usefulLifeMonths      Int      @map("useful_life_months")
+  depreciationMethod    String   @default("straight_line") @map("depreciation_method")
+  depreciationRate      Decimal? @default(0) @map("depreciation_rate")
+  accumulatedDepreciation Decimal @default(0) @map("accumulated_depreciation")
+  netBookValue          Decimal  @map("net_book_value")
+  status                String   @default("active")
+  assetAccountId        String   @map("asset_account_id")
+  accumDepAccountId     String   @map("accum_dep_account_id")
+  depExpenseAccountId   String   @map("dep_expense_account_id")
+  gainLossAccountId     String?  @map("gain_loss_account_id")
+  disposedAt            DateTime? @map("disposed_at")
+  disposalAmount        Decimal? @map("disposal_amount")
+  disposalMethod        String?  @map("disposal_method")
+  createdBy             String   @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  category              FixedAssetCategory? @relation(fields: [categoryId], references: [id])
+  branch                Branch?  @relation(fields: [branchId], references: [id])
+  depreciationRuns      FixedAssetDepreciation[]
+
+  @@unique([companyId, assetCode])
+  @@index([companyId])
+  @@index([status])
+  @@map("fixed_assets")
+}
+
+model FixedAssetCategory {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  name            String
+  code            String
+  defaultLifeMonths Int    @map("default_life_months")
+  defaultMethod   String   @default("straight_line") @map("default_method")
+  assetAccountId  String   @map("asset_account_id")
+  accumDepAccountId String @map("accum_dep_account_id")
+  depExpenseAccountId String @map("dep_expense_account_id")
+  isActive        Boolean  @default(true) @map("is_active")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  assets          FixedAsset[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("fixed_asset_categories")
+}
+
+model FixedAssetDepreciation {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  fixedAssetId    String   @map("fixed_asset_id")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  depreciationAmount Decimal @map("depreciation_amount")
+  accumulatedAfter Decimal @map("accumulated_after")
+  netBookValueAfter Decimal @map("net_book_value_after")
+  journalEntryId  String?  @map("journal_entry_id")
+  eventId         String   @map("event_id")
+  postedAt        DateTime @default(now()) @map("posted_at")
+  postedBy        String   @map("posted_by")
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  fixedAsset      FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([fixedAssetId])
+  @@index([periodEnd])
+  @@map("fixed_asset_depreciation")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Banking Reconciliation (AM-BR)
+// ──────────────────────────────────────────────────────────────────────
+
+model BankReconciliation {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  financialAccountId String @map("financial_account_id")
+  statementDate   DateTime @map("statement_date")
+  statementOpeningBalance Decimal @map("statement_opening_balance")
+  statementClosingBalance Decimal @map("statement_closing_balance")
+  systemOpeningBalance Decimal @map("system_opening_balance")
+  systemClosingBalance Decimal @map("system_closing_balance")
+  status          String   @default("draft")
+  matchedTransactions Int  @default(0) @map("matched_transactions")
+  unmatchedSystem Int      @default(0) @map("unmatched_system")
+  unmatchedStatement Int   @default(0) @map("unmatched_statement")
+  variance        Decimal  @default(0)
+  journalEntryId  String?  @map("journal_entry_id")
+  reconciledBy    String?  @map("reconciled_by")
+  reconciledAt    DateTime? @map("reconciled_at")
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id])
+  lines           BankReconciliationLine[]
+
+  @@index([companyId])
+  @@index([financialAccountId])
+  @@index([status])
+  @@map("bank_reconciliations")
+}
+
+model BankReconciliationLine {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  reconciliationId String  @map("reconciliation_id")
+  lineType        String   @map("line_type")
+  transactionDate DateTime @map("transaction_date")
+  description     String
+  amount          Decimal
+  referenceNo     String?  @map("reference_no")
+  paymentId       String?  @map("payment_id")
+  matchedLineId   String?  @map("matched_line_id")
+  matchStatus     String   @default("unmatched") @map("match_status")
+  matchMethod     String?  @map("match_method")
+  matchedBy       String?  @map("matched_by")
+  matchedAt       DateTime? @map("matched_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  reconciliation  BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([reconciliationId])
+  @@index([matchStatus])
+  @@map("bank_reconciliation_lines")
 }

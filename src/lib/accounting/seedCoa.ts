@@ -29,6 +29,15 @@ const DEFAULT_COA: CoaSpec[] = [
   { code: '1500', name: 'Repair WIP', accountClass: 'asset', accountSubtype: 'repair_wip', normalBalance: 'D' },
   { code: '1600', name: 'Cheque Clearing', accountClass: 'asset', accountSubtype: 'cheque_clearing', normalBalance: 'D' },
   { code: '1700', name: 'Goods Received Not Invoiced (GRNI)', accountClass: 'asset', accountSubtype: 'grni', normalBalance: 'C', isControlAccount: true },
+  // AM-BR — Fixed assets
+  { code: '1800', name: 'Fixed Assets', accountClass: 'asset', accountSubtype: 'fixed_asset', normalBalance: 'D', isControlAccount: true },
+  { code: '1810', name: 'Office Equipment', accountClass: 'asset', accountSubtype: 'fixed_asset', normalBalance: 'D', allowManualPosting: true },
+  { code: '1820', name: 'Vehicles', accountClass: 'asset', accountSubtype: 'fixed_asset', normalBalance: 'D', allowManualPosting: true },
+  { code: '1830', name: 'Furniture & Fixtures', accountClass: 'asset', accountSubtype: 'fixed_asset', normalBalance: 'D', allowManualPosting: true },
+  { code: '1840', name: 'Computers & Software', accountClass: 'asset', accountSubtype: 'fixed_asset', normalBalance: 'D', allowManualPosting: true },
+  { code: '1850', name: 'Accumulated Depreciation', accountClass: 'asset', accountSubtype: 'accumulated_depreciation', normalBalance: 'C' },
+  { code: '1860', name: 'Depreciation Expense', accountClass: 'expense', accountSubtype: 'depreciation', normalBalance: 'D' },
+  { code: '1870', name: 'Gain/Loss on Asset Disposal', accountClass: 'revenue', accountSubtype: 'asset_disposal', normalBalance: 'C' },
   // Liabilities
   { code: '2000', name: 'Current Liabilities', accountClass: 'liability', accountSubtype: 'current_liability', normalBalance: 'C', isControlAccount: true },
   { code: '2010', name: 'Accounts Payable', accountClass: 'liability', accountSubtype: 'accounts_payable', normalBalance: 'C', isControlAccount: true },

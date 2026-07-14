@@ -2624,3 +2624,140 @@ Applied to every data-fetching dashboard page:
 - Dev server log shows no new runtime errors after the changes; `/dashboard` and `/login` continue to compile + serve HTTP 200.
 
 Work records saved to `/home/z/my-project/agent-ctx/UI-IMPROVE-ui-improver.md`.
+
+---
+Task ID: AM-BR
+Agent: main (full-stack-developer)
+Task: Implement Fixed Asset Management and Banking Reconciliation modules (extends existing ERP/POS system).
+
+Work Log:
+
+=== Part 1: Prisma Models ===
+Added 5 new models at the END of prisma/schema.prisma (before the final newline):
+- FixedAsset — capitalised asset register (cost, salvage, accum dep, NBV, status)
+- FixedAssetCategory — depreciation default templates
+- FixedAssetDepreciation — per-period depreciation run log (immutable)
+- BankReconciliation — header with statement vs system balances + variance
+- BankReconciliationLine — system + statement line items with match status
+
+Added backward relations:
+- Company: fixedAssets, fixedAssetCategories, fixedAssetDepreciations, bankReconciliations, bankReconciliationLines
+- Branch: fixedAssets
+- FinancialAccount: bankReconciliations
+
+Ran `bunx prisma db push --skip-generate` — synced to SQLite.
+Ran `bunx prisma generate` — regenerated Prisma client.
+
+=== Part 2: SQL Migration ===
+Created prisma/migrations/0020_asset_management_banking.sql with:
+- CREATE TABLE IF NOT EXISTS for all 5 tables (fixed_assets, fixed_asset_categories,
+  fixed_asset_depreciation, bank_reconciliations, bank_reconciliation_lines)
+- FKs (company_id → companies, branch_id → branches, category_id → fixed_asset_categories,
+  fixed_asset_id → fixed_assets, financial_account_id → financial_accounts,
+  reconciliation_id → bank_reconciliations, payment_id → payments)
+- All indexes (companyId, status, reconciliationId, matchStatus, periodEnd, financialAccountId)
+- All UNIQUE constraints (company+asset_code, company+category_code)
+- CHECK constraints (useful_life > 0, NBV >= 0)
+- prevent_posted_record_mutation trigger on fixed_asset_depreciation (append-only)
+- RLS enable + tenant_read + tenant_write policies for all 5 tables (same pattern as 0017)
+- GRANT SELECT/INSERT/UPDATE/DELETE to app_role, SELECT to backup_role + reporting_role
+
+=== Part 3: Domain Commands ===
+Created src/domain/commands/m4/AssetManagement.ts:
+- postAssetAcquisition(tx, input, correlationId) — creates fixed asset,
+  validates GL accounts + financial account, posts journal: Dr Fixed Asset, Cr Cash/Bank
+- postDepreciation(tx, input, correlationId) — supports straight_line and
+  declining_balance methods; caps at salvage value; posts journal: Dr Dep Expense,
+  Cr Accumulated Depreciation; marks fully_depreciated when NBV hits salvage
+- postAssetDisposal(tx, input, correlationId) — disposes asset, calculates gain/loss,
+  posts journal: Dr Cash + Dr Accum Dep + Dr Loss (if loss), Cr Fixed Asset + Cr Gain (if gain)
+
+Created src/domain/commands/m4/BankReconciliation.ts:
+- createBankReconciliation(tx, input, correlationId) — creates reconciliation header,
+  auto-imports system lines from payments tied to financial_account_id (last 30 days),
+  computes system_closing_balance from opening + signed payment amounts
+- addStatementLine / addStatementLinesBulk — single + bulk statement line inserts
+- autoMatchTransactions(tx, reconciliationId, correlationId) — matches system ↔ statement
+  by exact amount + date within ±3 days tolerance, sets matchMethod='auto_amount_date'
+- manualMatch(tx, {systemLineId, statementLineId, userId}, correlationId) — pairs two
+  unmatched lines, sets matchMethod='manual'
+- postReconciliationVariance(tx, reconciliationId, userId, correlationId) — finalises:
+  if variance > 0.01, posts variance JE (Dr/Cr bank + counterpart to rounding/misc CoA),
+  sets status='has_variance'; else status='reconciled'
+
+=== Part 4: API Routes ===
+Created 9 API routes following existing patterns (authenticateRequest, requirePermission,
+requireIdempotencyKey, Zod validation, errorResponse):
+- src/app/api/v1/fixed-assets/route.ts — GET list + POST acquire (postAssetAcquisition)
+- src/app/api/v1/fixed-assets/[id]/route.ts — GET single with depreciation history
+- src/app/api/v1/fixed-assets/[id]/depreciate/route.ts — POST run depreciation
+- src/app/api/v1/fixed-assets/[id]/dispose/route.ts — POST dispose asset
+- src/app/api/v1/fixed-asset-categories/route.ts — GET list + POST create
+- src/app/api/v1/bank-reconciliations/route.ts — GET list + POST create (with optional statement_lines bulk insert)
+- src/app/api/v1/bank-reconciliations/[id]/route.ts — GET single with all lines
+- src/app/api/v1/bank-reconciliations/[id]/auto-match/route.ts — POST auto match
+- src/app/api/v1/bank-reconciliations/[id]/manual-match/route.ts — POST manual match
+- src/app/api/v1/bank-reconciliations/[id]/finalize/route.ts — POST finalize + variance JE
+- src/app/api/v1/bank-reconciliations/[id]/statement-lines/route.ts — POST bulk add statement lines
+
+=== Part 5: UI Pages ===
+Created 2 new dashboard pages:
+- src/app/(erp)/dashboard/assets/page.tsx — Fixed asset register:
+  - 4 KPI cards (count, purchase cost, accumulated dep, NBV)
+  - Inline acquisition form (asset code, name, dates, cost, salvage, useful life,
+    depreciation method, rate, GL accounts, financial account)
+  - Asset table with status badges, NBV column, depreciate + dispose action buttons
+  - Loading/error/empty states (using shared StateList component)
+  - Touch-friendly: min-h-[44px] buttons, overflow-x-auto table with min-w-[920px]
+- src/app/(erp)/dashboard/bank-reconciliation/page.tsx — Bank reconciliation list + drill-down:
+  - Left panel: reconciliation list with status badges + variance indicators
+  - Right panel: detail with 4 stat cards (system closing, statement closing, variance, status)
+  - Auto Match + Finalize buttons
+  - Side-by-side system vs statement lines with click-to-match manual pairing
+  - Loading/error/empty states
+
+Added nav links in dashboard layout (src/app/(erp)/dashboard/layout.tsx):
+- "Fixed Assets" with Building icon (after Accounting)
+- "Bank Reconciliation" with Landmark icon (after Fixed Assets)
+
+=== Part 6: Chart of Accounts ===
+Updated src/lib/accounting/seedCoa.ts with 8 new accounts:
+- 1800: Fixed Assets (control)
+- 1810: Office Equipment
+- 1820: Vehicles
+- 1830: Furniture & Fixtures
+- 1840: Computers & Software
+- 1850: Accumulated Depreciation (contra-asset, normalBalance C)
+- 1860: Depreciation Expense
+- 1870: Gain/Loss on Asset Disposal
+
+=== Part 7: Reconciliation Checks ===
+Added 2 new reconciliation checks to src/lib/reconciliation/checks.ts:
+- checkFixedAssetNetBookValue — verifies NBV = purchase_cost - accumulated_depreciation
+  for all active/fully_depreciated assets (severity: high)
+- checkBankReconciliationVariance — flags reconciliations with status='has_variance'
+  (severity: warning)
+- Both added to ALL_CHECKS array (now 22 checks total, was 20)
+
+=== Part 8: Permissions ===
+Added 6 new permission codes to src/lib/permissions/catalogue.ts PERMISSIONS array:
+- asset.view.branch — view fixed assets (branch-scoped)
+- asset.view.global — view all fixed assets across branches
+- asset.manage.branch — acquire/dispose fixed assets (branch)
+- asset.depreciate.company — run depreciation (company)
+- bank.reconciliation.view.company — view bank reconciliations
+- bank.reconciliation.manage.company — create/match/finalize bank reconciliations
+
+Updated SYSTEM_ROLES:
+- global_admin: added 'asset.*' and 'bank.*' wildcard permissions
+- branch_manager: added asset.view.branch, asset.manage.branch, bank.reconciliation.view.company
+- accountant: added asset.view.branch, asset.depreciate.company, bank.reconciliation.view.company, bank.reconciliation.manage.company
+
+=== Final Verification ===
+- `bun run lint` → PASS (0 errors, 0 warnings)
+- `bun run test` → PASS (395/395 tests, 33 test files)
+- `bunx prisma db push --skip-generate` → database in sync
+- `bunx prisma generate` → client regenerated
+- Dev server log: no new errors after changes; /dashboard continues to serve HTTP 200
+
+Work records saved to /home/z/my-project/agent-ctx/AM-BR-main.md.

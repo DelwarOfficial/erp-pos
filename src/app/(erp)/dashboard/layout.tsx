@@ -9,7 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, Menu, Loader2, AlertCircle } from 'lucide-react';
+import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, Menu, Loader2, AlertCircle, Building, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,8 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/purchases', icon: ShoppingCart, label: 'Purchases' },
   { href: '/dashboard/parties', icon: Users, label: 'Customers & Suppliers' },
   { href: '/dashboard/accounting', icon: Scale, label: 'Accounting' },
+  { href: '/dashboard/assets', icon: Building, label: 'Fixed Assets' },
+  { href: '/dashboard/bank-reconciliation', icon: Landmark, label: 'Bank Reconciliation' },
   { href: '/dashboard/deliveries', icon: Truck, label: 'Deliveries' },
   { href: '/dashboard/service', icon: Wrench, label: 'Service' },
   { href: '/dashboard/crm', icon: Megaphone, label: 'CRM — Leads' },
