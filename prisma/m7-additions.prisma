@@ -1,0 +1,160 @@
+// prisma/m7-additions.prisma
+// M7 — §5.16 Integration, Outbox, Imports, and Offline
+
+model OutboxEvent {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  businessEventId String   @map("business_event_id")
+  eventName       String   @map("event_name")
+  aggregateType   String   @map("aggregate_type")
+  aggregateId     String   @map("aggregate_id")
+  payload         String   @default("{}") // JSONB
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  publishedAt     DateTime? @map("published_at")
+  attemptCount    Int      @default(0) @map("attempt_count")
+  maxAttempts     Int      @default(10) @map("max_attempts")
+  nextAttemptAt   DateTime @default(now()) @map("next_attempt_at")
+  status          String   @default("pending") // pending/published/dead_letter/skipped
+  deadLetteredAt  DateTime? @map("dead_lettered_at")
+  deadLetterReason String? @map("dead_letter_reason")
+  lastError       String?  @map("last_error")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  businessEvent BusinessEvent @relation("OutboxBusinessEvent", fields: [businessEventId], references: [id])
+  webhookDeliveries WebhookDelivery[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([nextAttemptAt])
+  @@index([publishedAt])
+  @@map("outbox_events")
+}
+
+model WebhookEndpoint {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  url             String
+  secretCiphertext Bytes   @map("secret_ciphertext")
+  subscribedEvents String  @default("[]") // JSONB array
+  status          String   @default("active") // active/disabled
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deliveries WebhookDelivery[]
+
+  @@unique([companyId, url])
+  @@index([companyId])
+  @@index([status])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  webhookEndpointId String  @map("webhook_endpoint_id")
+  outboxEventId   String   @map("outbox_event_id")
+  deliveryId      String   @unique
+  signature       String
+  timestampHeader String   @map("timestamp_header")
+  status          String   @default("pending") // pending/delivered/failed/dead_letter
+  attemptCount    Int      @default(0) @map("attempt_count")
+  nextAttemptAt   DateTime @default(now()) @map("next_attempt_at")
+  lastAttemptedAt DateTime? @map("last_attempted_at")
+  responseStatus  Int?     @map("response_status")
+  responseBodyExcerpt String? @map("response_body_excerpt")
+  lastError       String?  @map("last_error")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id])
+  outboxEvent OutboxEvent @relation(fields: [outboxEventId], references: [id])
+
+  @@unique([webhookEndpointId, outboxEventId])
+  @@index([companyId])
+  @@index([status])
+  @@index([nextAttemptAt])
+  @@map("webhook_deliveries")
+}
+
+model ImportJob {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  jobType         String   @map("job_type") // product/customer/sale/transfer
+  fileName        String   @map("file_name")
+  status          String   @default("queued") // queued/validating/dry_run/committing/completed/failed/cancelled
+  totalRows       Int?     @map("total_rows")
+  validRows       Int?     @map("valid_rows")
+  errorRows       Int?     @map("error_rows")
+  committedRows   Int?     @map("committed_rows")
+  dryRun          Boolean  @default(true) @map("dry_run")
+  errorSummary    String?  @map("error_summary")
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  errors  ImportJobError[]
+
+  @@index([companyId])
+  @@index([status])
+  @@map("import_jobs")
+}
+
+model ImportJobError {
+  id              String   @id @default(uuid())
+  importJobId     String   @map("import_job_id")
+  rowNumber       Int      @map("row_number")
+  columnName      String?  @map("column_name")
+  errorValue      String?  @map("error_value")
+  errorMessage    String   @map("error_message")
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId])
+  @@map("import_job_errors")
+}
+
+model OfflineCommand {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  deviceId        String   @map("device_id")
+  commandType     String   @map("command_type") // cash_sale/held_sale_draft/shift_open/shift_close/customer_create/receipt_reprint
+  sequenceNumber  Int      @map("sequence_number")
+  payload         String   @default("{}") // JSONB — signed command data
+  payloadHash     String   @map("payload_hash")
+  idempotencyKey  String   @map("idempotency_key")
+  status          String   @default("pending") // pending/synced/conflict/cancelled
+  conflictReason  String?  @map("conflict_reason")
+  syncedAt        DateTime? @map("synced_at")
+  syncBatchId     String?  @map("sync_batch_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([deviceId, sequenceNumber])
+  @@index([companyId])
+  @@index([deviceId])
+  @@index([status])
+  @@index([syncBatchId])
+  @@map("offline_commands")
+}
+
+model OfflineSyncBatch {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  deviceId        String   @map("device_id")
+  batchNumber     Int      @map("batch_number")
+  commandCount    Int      @map("command_count")
+  syncedCount     Int      @default(0) @map("synced_count")
+  conflictCount   Int      @default(0) @map("conflict_count")
+  status          String   @default("processing") // processing/completed/partial
+  startedAt       DateTime @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([deviceId])
+  @@index([status])
+  @@map("offline_sync_batches")
+}

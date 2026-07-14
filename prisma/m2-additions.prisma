@@ -1,0 +1,847 @@
+// prisma/m2-additions.prisma
+// M2 schema additions — appended to schema.prisma.
+// §5.5 Inventory, Costing, Batches, IMEI
+// §5.5A Stock Count, Adjustment
+// §5.6 Parties (customers, suppliers)
+// §5.8 Purchasing and Supplier Returns
+// §5.9 Transfers
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.5 Inventory, Costing, Batches, IMEI
+// ──────────────────────────────────────────────────────────────────────
+
+model WarehouseStock {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  warehouseId       String   @map("warehouse_id")
+  productId         String   @map("product_id")
+  qtyOnHand         Decimal  @default(0) @map("qty_on_hand")
+  qtyReserved       Decimal  @default(0) @map("qty_reserved")
+  qtyInTransitOut   Decimal  @default(0) @map("qty_in_transit_out")
+  qtyDamaged        Decimal  @default(0) @map("qty_damaged")
+  movingAverageCost Decimal  @default(0) @map("moving_average_cost")
+  version           Int      @default(0)
+  updatedAt         DateTime @default(now()) @map("updated_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@unique([companyId, warehouseId, productId])
+  @@index([companyId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@map("warehouse_stocks")
+}
+
+model StockMovement {
+  id                   String   @id @default(uuid())
+  companyId            String   @map("company_id")
+  eventId              String   @map("event_id")
+  eventLineNo          Int      @map("event_line_no")
+  warehouseId          String   @map("warehouse_id")
+  productId            String   @map("product_id")
+  stockBucket          String   @default("on_hand") @map("stock_bucket")
+  movementType         String   @map("movement_type")
+  qtyDelta             Decimal  @map("qty_delta")
+  unitCost             Decimal  @map("unit_cost")
+  totalCostDelta       Decimal  @map("total_cost_delta")
+  referenceType        String   @map("reference_type")
+  referenceId          String   @map("reference_id")
+  sourceLineId         String?  @map("source_line_id")
+  reversalOfMovementId String?  @map("reversal_of_movement_id")
+  effectiveAt          DateTime @map("effective_at")
+  postedAt             DateTime @default(now()) @map("posted_at")
+  createdBy            String   @map("created_by")
+  metadata             String   @default("{}")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  businessEvent  BusinessEvent  @relation(fields: [eventId], references: [id])
+  warehouse      Warehouse      @relation(fields: [warehouseId], references: [id])
+  product        Product        @relation(fields: [productId], references: [id])
+  reversalOf     StockMovement? @relation("StockMovementReversal", fields: [reversalOfMovementId], references: [id])
+  reversedBy     StockMovement[] @relation("StockMovementReversal")
+  batchLinks     StockMovementBatch[]
+  serialEvents   SerialEvent[]
+
+  @@unique([companyId, eventId, eventLineNo])
+  @@index([companyId])
+  @@index([eventId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([stockBucket])
+  @@index([movementType])
+  @@index([referenceType, referenceId])
+  @@index([effectiveAt])
+  @@index([postedAt])
+  @@index([reversalOfMovementId])
+  @@map("stock_movements")
+}
+
+model StockReservation {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  warehouseId     String   @map("warehouse_id")
+  productId       String   @map("product_id")
+  reservationType String   @map("reservation_type")
+  referenceId     String   @map("reference_id")
+  qty             Decimal
+  status          String   @default("active")
+  expiresAt       DateTime? @map("expires_at")
+  consumedAt      DateTime? @map("consumed_at")
+  releasedAt      DateTime? @map("released_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id])
+  transferItems TransferItem[]
+
+  @@unique([companyId, reservationType, referenceId, productId, warehouseId])
+  @@index([companyId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([reservationType, referenceId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("stock_reservations")
+}
+
+model ProductBatch {
+  id            String   @id @default(uuid())
+  companyId     String   @map("company_id")
+  productId     String   @map("product_id")
+  warehouseId   String   @map("warehouse_id")
+  batchNo       String   @map("batch_no")
+  manufacturedAt DateTime? @map("manufactured_at")
+  expiryDate    DateTime? @map("expiry_date")
+  qtyOnHand     Decimal  @default(0) @map("qty_on_hand")
+  qtyReserved   Decimal  @default(0) @map("qty_reserved")
+  status        String   @default("active")
+
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product        Product   @relation(fields: [productId], references: [id])
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
+  movementBatches StockMovementBatch[]
+  countItems     StockCountItem[]
+
+  @@unique([companyId, productId, warehouseId, batchNo])
+  @@index([companyId])
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([expiryDate])
+  @@index([status])
+  @@map("product_batches")
+}
+
+model StockMovementBatch {
+  stockMovementId String  @map("stock_movement_id")
+  productBatchId  String  @map("product_batch_id")
+  companyId       String  @map("company_id")
+  qty             Decimal
+  overrideReason  String? @map("override_reason")
+
+  stockMovement StockMovement @relation(fields: [stockMovementId], references: [id], onDelete: Restrict)
+  productBatch  ProductBatch  @relation(fields: [productBatchId], references: [id], onDelete: Restrict)
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@id([stockMovementId, productBatchId])
+  @@index([productBatchId])
+  @@map("stock_movement_batches")
+}
+
+model ProductSerial {
+  id                       String   @id @default(uuid())
+  companyId                String   @map("company_id")
+  productId                String   @map("product_id")
+  serialNumber             String   @map("serial_number")
+  status                   String   @default("in_stock")
+  currentWarehouseId       String?  @map("current_warehouse_id")
+  currentReservationId     String?  @map("current_reservation_id")
+  originatingPurchaseItemId String? @map("originating_purchase_item_id")
+  soldSaleItemId           String?  @map("sold_sale_item_id")
+  warrantyStartDate        DateTime? @map("warranty_start_date")
+  warrantyExpiryDate       DateTime? @map("warranty_expiry_date")
+  version                  Int      @default(0)
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @default(now()) @map("updated_at")
+
+  company            Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product            Product           @relation(fields: [productId], references: [id])
+  currentWarehouse   Warehouse?        @relation(fields: [currentWarehouseId], references: [id])
+  currentReservation StockReservation? @relation(fields: [currentReservationId], references: [id])
+  originatingPurchaseItem PurchaseItem? @relation(fields: [originatingPurchaseItemId], references: [id])
+  serialEvents       SerialEvent[]
+  receivingSerials   PurchaseReceivingItemSerial[]
+  returnSerials      PurchaseReturnItemSerial[]
+
+  @@unique([companyId, serialNumber])
+  @@index([companyId])
+  @@index([productId])
+  @@index([status])
+  @@index([currentWarehouseId])
+  @@index([currentReservationId])
+  @@index([warrantyExpiryDate])
+  @@map("product_serials")
+}
+
+model SerialEvent {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  serialId        String   @map("serial_id")
+  eventId         String   @map("event_id")
+  eventLineNo     Int      @map("event_line_no")
+  eventType       String   @map("event_type")
+  fromStatus      String?  @map("from_status")
+  toStatus        String   @map("to_status")
+  fromWarehouseId String?  @map("from_warehouse_id")
+  toWarehouseId   String?  @map("to_warehouse_id")
+  stockMovementId String?  @map("stock_movement_id")
+  referenceType   String   @map("reference_type")
+  referenceId     String   @map("reference_id")
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  createdBy       String   @map("created_by")
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  serial        ProductSerial @relation(fields: [serialId], references: [id])
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
+  stockMovement StockMovement? @relation(fields: [stockMovementId], references: [id])
+  fromWarehouse Warehouse?    @relation("SerialEventFromWh", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse?    @relation("SerialEventToWh", fields: [toWarehouseId], references: [id])
+
+  @@unique([companyId, eventId, eventLineNo])
+  @@index([companyId])
+  @@index([serialId])
+  @@index([eventId])
+  @@index([eventType])
+  @@index([referenceType, referenceId])
+  @@index([occurredAt])
+  @@map("serial_events")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.5A Stock Count, Adjustment
+// ──────────────────────────────────────────────────────────────────────
+
+model InventoryReasonCode {
+  id                       String  @id @default(uuid())
+  companyId                String  @map("company_id")
+  code                     String
+  name                     String
+  reasonType               String  @default("adjustment") @map("reason_type")
+  requiresApproval         Boolean @default(false) @map("requires_approval")
+  defaultExpenseAccountId  String? @map("default_expense_account_id")
+  isActive                 Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([reasonType])
+  @@map("inventory_reason_codes")
+}
+
+model StockCount {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  branchId              String   @map("branch_id")
+  warehouseId           String   @map("warehouse_id")
+  referenceNo           String   @map("reference_no")
+  scopeType             String   @default("all") @map("scope_type")
+  categoryId            String?  @map("category_id")
+  brandId               String?  @map("brand_id")
+  status                String   @default("draft")
+  blindCount            Boolean  @default(true) @map("blind_count")
+  snapshotAt            DateTime? @map("snapshot_at")
+  movementFreezePolicy  String   @default("warn") @map("movement_freeze_policy")
+  notes                 String?
+  createdBy             String   @map("created_by")
+  reviewedBy            String?  @map("reviewed_by")
+  postedBy              String?  @map("posted_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+  postedAt              DateTime? @map("posted_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  category   Category?  @relation(fields: [categoryId], references: [id])
+  brand      Brand?     @relation(fields: [brandId], references: [id])
+  items      StockCountItem[]
+  adjustments StockAdjustment[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([status])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  stockCountId      String   @map("stock_count_id")
+  productId         String   @map("product_id")
+  batchId           String?  @map("batch_id")
+  expectedQuantity  Decimal  @map("expected_quantity")
+  countedQuantity   Decimal? @map("counted_quantity")
+  varianceQuantity  Decimal? @map("variance_quantity")
+  reasonCodeId      String?  @map("reason_code_id")
+  countNote         String?  @map("count_note")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  stockCount StockCount        @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  product    Product           @relation(fields: [productId], references: [id])
+  batch      ProductBatch?     @relation(fields: [batchId], references: [id])
+  reasonCode InventoryReasonCode? @relation(fields: [reasonCodeId], references: [id])
+  serials    StockCountSerial[]
+
+  @@index([companyId])
+  @@index([stockCountId])
+  @@index([productId])
+  @@index([batchId])
+  @@map("stock_count_items")
+}
+
+model StockCountSerial {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  stockCountItemId    String   @map("stock_count_item_id")
+  serialId            String?  @map("serial_id")
+  scannedSerialNumber String   @map("scanned_serial_number")
+  expectedPresent     Boolean  @default(true) @map("expected_present")
+  countedPresent      Boolean  @default(false) @map("counted_present")
+  resolution          String   @default("matched")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  stockCountItem StockCountItem @relation(fields: [stockCountItemId], references: [id])
+  serial         ProductSerial?  @relation(fields: [serialId], references: [id])
+
+  @@unique([stockCountItemId, scannedSerialNumber])
+  @@index([companyId])
+  @@index([stockCountItemId])
+  @@index([serialId])
+  @@index([resolution])
+  @@map("stock_count_serials")
+}
+
+model StockAdjustment {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  branchId            String   @map("branch_id")
+  warehouseId         String   @map("warehouse_id")
+  referenceNo         String   @map("reference_no")
+  clientTxnId         String   @map("client_txn_id")
+  adjustmentType      String   @default("adjustment") @map("adjustment_type")
+  reasonCodeId        String   @map("reason_code_id")
+  sourceStockCountId  String?  @map("source_stock_count_id")
+  reversalOfId        String?  @map("reversal_of_id")
+  status              String   @default("draft")
+  businessDate        DateTime @map("business_date")
+  notes               String
+  approvalRequestId   String?  @map("approval_request_id")
+  journalEntryId      String?  @map("journal_entry_id")
+  createdBy           String   @map("created_by")
+  approvedBy          String?  @map("approved_by")
+  postedAt            DateTime? @map("posted_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  warehouse       Warehouse        @relation(fields: [warehouseId], references: [id])
+  reasonCode      InventoryReasonCode @relation(fields: [reasonCodeId], references: [id])
+  sourceStockCount StockCount?     @relation(fields: [sourceStockCountId], references: [id])
+  reversalOf      StockAdjustment? @relation("StockAdjustmentReversal", fields: [reversalOfId], references: [id])
+  reversedBy      StockAdjustment[] @relation("StockAdjustmentReversal")
+  items           StockAdjustmentItem[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([adjustmentType])
+  @@index([reasonCodeId])
+  @@index([sourceStockCountId])
+  @@index([reversalOfId])
+  @@index([status])
+  @@index([businessDate])
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentItem {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  stockAdjustmentId   String   @map("stock_adjustment_id")
+  lineNo              Int      @map("line_no")
+  productId           String   @map("product_id")
+  batchId             String?  @map("batch_id")
+  quantityDelta       Decimal  @map("quantity_delta")
+  unitCostSnapshot    Decimal  @map("unit_cost_snapshot")
+  valueDelta          Decimal  @map("value_delta")
+  eventId             String?  @map("event_id")
+
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  stockAdjustment  StockAdjustment  @relation(fields: [stockAdjustmentId], references: [id])
+  product          Product          @relation(fields: [productId], references: [id])
+  batch            ProductBatch?    @relation(fields: [batchId], references: [id])
+  businessEvent    BusinessEvent?   @relation(fields: [eventId], references: [id])
+  serials          StockAdjustmentItemSerial[]
+
+  @@unique([stockAdjustmentId, lineNo])
+  @@index([companyId])
+  @@index([stockAdjustmentId])
+  @@index([productId])
+  @@index([batchId])
+  @@index([eventId])
+  @@map("stock_adjustment_items")
+}
+
+model StockAdjustmentItemSerial {
+  stockAdjustmentItemId String  @map("stock_adjustment_item_id")
+  serialId              String  @map("serial_id")
+  resultingStatus       String  @default("in_stock") @map("resulting_status")
+
+  stockAdjustmentItem StockAdjustmentItem @relation(fields: [stockAdjustmentItemId], references: [id], onDelete: Restrict)
+  serial              ProductSerial        @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([stockAdjustmentItemId, serialId])
+  @@index([serialId])
+  @@map("stock_adjustment_item_serials")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.6 Parties (customers, suppliers)
+// ──────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  customerGroupId   String?  @map("customer_group_id")
+  name              String
+  phone             String?
+  email             String?
+  address           String?
+  taxIdentifier     String?  @map("tax_identifier")
+  creditLimit       Decimal  @default(0) @map("credit_limit")
+  preferredBranchId String?  @map("preferred_branch_id")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  preferredBranch Branch?       @relation(fields: [preferredBranchId], references: [id])
+
+  @@index([companyId])
+  @@index([customerGroupId])
+  @@index([phone])
+  @@index([email])
+  @@index([preferredBranchId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("customers")
+}
+
+model Supplier {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  name              String
+  phone             String?
+  email             String?
+  address           String?
+  taxIdentifier     String?  @map("tax_identifier")
+  currencyCode      String   @default("BDT") @map("currency_code")
+  paymentTermsDays  Int      @default(0) @map("payment_terms_days")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @default(now()) @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  currency  Currency @relation(fields: [currencyCode], references: [code])
+  purchases Purchase[]
+  purchaseReturns PurchaseReturn[]
+  landedCostDocuments LandedCostDocument[]
+
+  @@index([companyId])
+  @@index([phone])
+  @@index([email])
+  @@index([currencyCode])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("suppliers")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.8 Purchasing and Supplier Returns
+// ──────────────────────────────────────────────────────────────────────
+
+model Purchase {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  branchId          String   @map("branch_id")
+  warehouseId       String   @map("warehouse_id")
+  referenceNo       String   @map("reference_no")
+  supplierInvoiceNo String?  @map("supplier_invoice_no")
+  supplierId        String   @map("supplier_id")
+  orderStatus       String   @default("draft") @map("order_status")
+  invoiceStatus     String   @default("not_invoiced") @map("invoice_status")
+  currencyCode      String   @default("BDT") @map("currency_code")
+  exchangeRate      Decimal  @default(1) @map("exchange_rate")
+  orderDate         DateTime @map("order_date")
+  expectedDate      DateTime? @map("expected_date")
+  subtotal          Decimal  @default(0)
+  discountTotal     Decimal  @default(0) @map("discount_total")
+  taxTotal          Decimal  @default(0) @map("tax_total")
+  landedCostTotal   Decimal  @default(0) @map("landed_cost_total")
+  grandTotal        Decimal  @default(0) @map("grand_total")
+  baseGrandTotal    Decimal  @default(0) @map("base_grand_total")
+  notes             String?
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  supplier   Supplier   @relation(fields: [supplierId], references: [id])
+  currency   Currency   @relation(fields: [currencyCode], references: [code])
+  items      PurchaseItem[]
+  receivings PurchaseReceiving[]
+  returns    PurchaseReturn[]
+  landedCostDocuments LandedCostDocument[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([supplierId])
+  @@index([orderStatus])
+  @@index([orderDate])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id                          String   @id @default(uuid())
+  companyId                   String   @map("company_id")
+  purchaseId                  String   @map("purchase_id")
+  lineNo                      Int      @map("line_no")
+  productId                   String   @map("product_id")
+  productNameSnapshot         String   @map("product_name_snapshot")
+  productCodeSnapshot         String   @map("product_code_snapshot")
+  qtyOrdered                  Decimal  @map("qty_ordered")
+  qtyReceived                 Decimal  @default(0) @map("qty_received")
+  qtyReturned                 Decimal  @default(0) @map("qty_returned")
+  unitCost                    Decimal  @map("unit_cost")
+  allocatedLandedCostPerUnit  Decimal  @default(0) @map("allocated_landed_cost_per_unit")
+  discountAmount              Decimal  @default(0) @map("discount_amount")
+  taxAmount                   Decimal  @default(0) @map("tax_amount")
+  lineTotal                   Decimal  @default(0) @map("line_total")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+  taxes      PurchaseItemTax[]
+  receivingItems PurchaseReceivingItem[]
+  returnItems PurchaseReturnItem[]
+  landedCostAllocations LandedCostAllocation[]
+  originatingSerials ProductSerial[]
+
+  @@unique([purchaseId, lineNo])
+  @@index([companyId])
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+model PurchaseItemTax {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  purchaseItemId        String   @map("purchase_item_id")
+  taxComponentId        String   @map("tax_component_id")
+  componentCodeSnapshot String   @map("component_code_snapshot")
+  rateSnapshot          Decimal  @map("rate_snapshot")
+  taxableBase           Decimal  @map("taxable_base")
+  taxAmount             Decimal  @map("tax_amount")
+  recoverableAmount     Decimal  @default(0) @map("recoverable_amount")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  purchaseItem   PurchaseItem   @relation(fields: [purchaseItemId], references: [id])
+  taxComponent   TaxComponent   @relation(fields: [taxComponentId], references: [id])
+
+  @@unique([purchaseItemId, taxComponentId])
+  @@index([companyId])
+  @@index([purchaseItemId])
+  @@index([taxComponentId])
+  @@map("purchase_item_taxes")
+}
+
+model PurchaseReceiving {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  branchId          String   @map("branch_id")
+  warehouseId       String   @map("warehouse_id")
+  purchaseId        String   @map("purchase_id")
+  referenceNo       String   @map("reference_no")
+  clientTxnId       String   @map("client_txn_id")
+  receivingStatus   String   @default("draft") @map("receiving_status")
+  businessDate      DateTime @map("business_date")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  supplierDocumentNo String? @map("supplier_document_no")
+  notes             String?
+  postedAt          DateTime? @map("posted_at")
+  receivedBy        String   @map("received_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  items      PurchaseReceivingItem[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([purchaseId])
+  @@index([receivingStatus])
+  @@index([businessDate])
+  @@map("purchase_receivings")
+}
+
+model PurchaseReceivingItem {
+  id                        String   @id @default(uuid())
+  companyId                 String   @map("company_id")
+  purchaseReceivingId       String   @map("purchase_receiving_id")
+  purchaseItemId            String   @map("purchase_item_id")
+  lineNo                    Int      @map("line_no")
+  qtyReceivedNow            Decimal  @map("qty_received_now")
+  unitCostSnapshot          Decimal  @map("unit_cost_snapshot")
+  landedCostPerUnitSnapshot Decimal  @default(0) @map("landed_cost_per_unit_snapshot")
+  inventoryUnitCost         Decimal  @map("inventory_unit_cost")
+  batchNo                   String?  @map("batch_no")
+  manufacturedAt            DateTime? @map("manufactured_at")
+  expiryDate                DateTime? @map("expiry_date")
+
+  company      Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  purchaseReceiving PurchaseReceiving @relation(fields: [purchaseReceivingId], references: [id])
+  purchaseItem PurchaseItem      @relation(fields: [purchaseItemId], references: [id])
+  serials      PurchaseReceivingItemSerial[]
+
+  @@unique([purchaseReceivingId, lineNo])
+  @@index([companyId])
+  @@index([purchaseReceivingId])
+  @@index([purchaseItemId])
+  @@map("purchase_receiving_items")
+}
+
+model PurchaseReceivingItemSerial {
+  purchaseReceivingItemId String  @map("purchase_receiving_item_id")
+  serialId                String  @map("serial_id")
+
+  purchaseReceivingItem PurchaseReceivingItem @relation(fields: [purchaseReceivingItemId], references: [id], onDelete: Restrict)
+  serial                ProductSerial         @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([purchaseReceivingItemId, serialId])
+  @@index([serialId])
+  @@map("purchase_receiving_item_serials")
+}
+
+model LandedCostDocument {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  purchaseId        String   @map("purchase_id")
+  referenceNo       String   @map("reference_no")
+  costType          String   @default("freight") @map("cost_type") // freight/insurance/customs/port/clearing/other
+  supplierId        String?  @map("supplier_id")
+  currencyCode      String   @default("BDT") @map("currency_code")
+  exchangeRate      Decimal  @default(1) @map("exchange_rate")
+  amount            Decimal  @default(0)
+  baseAmount        Decimal  @default(0) @map("base_amount")
+  allocationMethod  String   @default("quantity") @map("allocation_method") // quantity/value/weight/manual
+  status            String   @default("draft") // draft/posted/reversed
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  supplier   Supplier?  @relation(fields: [supplierId], references: [id])
+  currency   Currency   @relation(fields: [currencyCode], references: [code])
+  allocations LandedCostAllocation[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([purchaseId])
+  @@index([costType])
+  @@index([supplierId])
+  @@index([status])
+  @@map("landed_cost_documents")
+}
+
+model LandedCostAllocation {
+  landedCostDocumentId String  @map("landed_cost_document_id")
+  purchaseItemId       String  @map("purchase_item_id")
+  allocatedBaseAmount  Decimal @default(0) @map("allocated_base_amount")
+
+  landedCostDocument LandedCostDocument @relation(fields: [landedCostDocumentId], references: [id], onDelete: Restrict)
+  purchaseItem       PurchaseItem       @relation(fields: [purchaseItemId], references: [id], onDelete: Restrict)
+
+  @@id([landedCostDocumentId, purchaseItemId])
+  @@index([purchaseItemId])
+  @@map("landed_cost_allocations")
+}
+
+model PurchaseReturn {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  branchId          String   @map("branch_id")
+  warehouseId       String   @map("warehouse_id")
+  purchaseId        String   @map("purchase_id")
+  supplierId        String   @map("supplier_id")
+  referenceNo       String   @map("reference_no")
+  clientTxnId       String   @map("client_txn_id")
+  status            String   @default("draft") // draft/approved/posted/voided
+  businessDate      DateTime @map("business_date")
+  supplierCreditNo  String?  @map("supplier_credit_no")
+  reason            String
+  subtotalCredit    Decimal  @default(0) @map("subtotal_credit")
+  taxCredit         Decimal  @default(0) @map("tax_credit")
+  totalCredit       Decimal  @default(0) @map("total_credit")
+  baseTotalCredit   Decimal  @default(0) @map("base_total_credit")
+  refundStatus      String   @default("not_required") @map("refund_status")
+  approvedBy        String?  @map("approved_by")
+  postedAt          DateTime? @map("posted_at")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  supplier   Supplier   @relation(fields: [supplierId], references: [id])
+  items      PurchaseReturnItem[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([purchaseId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([businessDate])
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnItem {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  purchaseReturnId    String   @map("purchase_return_id")
+  purchaseItemId      String   @map("purchase_item_id")
+  qtyReturned         Decimal  @map("qty_returned")
+  supplierUnitCredit  Decimal  @map("supplier_unit_credit")
+  inventoryUnitCost   Decimal  @map("inventory_unit_cost")
+  taxCredit           Decimal  @default(0) @map("tax_credit")
+  lineCredit          Decimal  @default(0) @map("line_credit")
+  varianceAmount      Decimal  @default(0) @map("variance_amount")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  purchaseReturn PurchaseReturn @relation(fields: [purchaseReturnId], references: [id])
+  purchaseItem   PurchaseItem   @relation(fields: [purchaseItemId], references: [id])
+  serials        PurchaseReturnItemSerial[]
+
+  @@index([companyId])
+  @@index([purchaseReturnId])
+  @@index([purchaseItemId])
+  @@map("purchase_return_items")
+}
+
+model PurchaseReturnItemSerial {
+  purchaseReturnItemId String  @map("purchase_return_item_id")
+  serialId             String  @map("serial_id")
+
+  purchaseReturnItem PurchaseReturnItem @relation(fields: [purchaseReturnItemId], references: [id], onDelete: Restrict)
+  serial             ProductSerial       @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([purchaseReturnItemId, serialId])
+  @@index([serialId])
+  @@map("purchase_return_item_serials")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.9 Transfers
+// ──────────────────────────────────────────────────────────────────────
+
+model Transfer {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  referenceNo       String   @map("reference_no")
+  clientTxnId       String   @map("client_txn_id")
+  fromWarehouseId   String   @map("from_warehouse_id")
+  toWarehouseId     String   @map("to_warehouse_id")
+  status            String   @default("draft") // draft/pending/in_transit/completed/cancelled/returning/returned
+  requestedBy       String   @map("requested_by")
+  approvedBy        String?  @map("approved_by")
+  dispatchedBy      String?  @map("dispatched_by")
+  receivedBy        String?  @map("received_by")
+  requestedAt       DateTime @default(now()) @map("requested_at")
+  dispatchedAt      DateTime? @map("dispatched_at")
+  receivedAt        DateTime? @map("received_at")
+  cancellationReason String? @map("cancellation_reason")
+  notes             String?
+
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  fromWarehouse  Warehouse @relation("TransferFromWh", fields: [fromWarehouseId], references: [id])
+  toWarehouse    Warehouse @relation("TransferToWh", fields: [toWarehouseId], references: [id])
+  items          TransferItem[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([status])
+  @@index([dispatchedAt])
+  @@index([receivedAt])
+  @@map("transfers")
+}
+
+model TransferItem {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  transferId        String   @map("transfer_id")
+  lineNo            Int      @map("line_no")
+  productId         String   @map("product_id")
+  qtyRequested      Decimal  @map("qty_requested")
+  qtyDispatched     Decimal  @default(0) @map("qty_dispatched")
+  qtyReceived       Decimal  @default(0) @map("qty_received")
+  unitCostSnapshot  Decimal? @map("unit_cost_snapshot")
+  reservationId     String?  @map("reservation_id")
+
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  transfer    Transfer          @relation(fields: [transferId], references: [id])
+  product     Product           @relation(fields: [productId], references: [id])
+  reservation StockReservation? @relation(fields: [reservationId], references: [id])
+  serials     TransferItemSerial[]
+
+  @@unique([transferId, lineNo])
+  @@index([companyId])
+  @@index([transferId])
+  @@index([productId])
+  @@index([reservationId])
+  @@map("transfer_items")
+}
+
+model TransferItemSerial {
+  transferItemId String @map("transfer_item_id")
+  serialId       String @map("serial_id")
+
+  transferItem TransferItem  @relation(fields: [transferItemId], references: [id], onDelete: Restrict)
+  serial       ProductSerial @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([transferItemId, serialId])
+  @@index([serialId])
+  @@map("transfer_item_serials")
+}

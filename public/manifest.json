@@ -1,0 +1,16 @@
+{
+  "name": "ERP POS — Bangladesh",
+  "short_name": "ERP POS",
+  "description": "Multi-tenant ERP/POS for Bangladesh electronics retail + service + warranty",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "categories": ["business", "productivity", "finance"],
+  "lang": "bn-BD",
+  "dir": "ltr"
+}

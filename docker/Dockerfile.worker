@@ -1,0 +1,31 @@
+# docker/Dockerfile.worker
+# Worker process for outbox delivery, reconciliation, retention, offline sync.
+
+FROM node:20-slim AS base
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN npm install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=worker:nodejs /app/src ./src
+COPY --from=builder --chown=worker:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=worker:nodejs /app/package.json ./
+
+USER worker
+
+CMD ["npx", "tsx", "src/workers/outboxWorker.ts"]

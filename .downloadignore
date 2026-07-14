@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.git/
+dev.log
+dev.log.*
+server.log
+*.log
+tool-results/
+test-results/
+playwright-report/
+agent-ctx/
+skills/
+mini-services/
+db/*.db-wal
+db/*.db-shm

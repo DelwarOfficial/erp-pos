@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.local/
+dev.log
+server.log
+tool-results/
+agent-ctx/
+*.deb
+*.sst
+pgdata/
+pglogs/

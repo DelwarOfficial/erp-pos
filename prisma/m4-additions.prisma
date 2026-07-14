@@ -1,0 +1,226 @@
+// prisma/m4-additions.prisma
+// M4 schema — §5.10 Accounting (fiscal_periods, journal_entries, journal_lines,
+// accounting_policies) + §5.12 Expenses (expense_categories, expenses, expense_items,
+// expense_item_taxes, expense_attachments).
+
+model FiscalPeriod {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  periodName  String   @map("period_name")
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  status      String   @default("open") // open/soft_locked/locked
+  lockedBy    String?  @map("locked_by")
+  lockedAt    DateTime? @map("locked_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  locker  User?   @relation("FiscalPeriodLockedBy", fields: [lockedBy], references: [id])
+
+  @@unique([companyId, periodName])
+  @@index([companyId])
+  @@index([status])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@map("fiscal_periods")
+}
+
+model JournalEntry {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  entryNo           String   @map("entry_no")
+  eventId           String   @map("event_id")
+  postingKind       String   @map("posting_kind")
+  entryDate         DateTime @map("entry_date")
+  postingDate       DateTime @default(now()) @map("posting_date")
+  sourceType        String   @map("source_type")
+  sourceId          String   @map("source_id")
+  currencyCode      String   @default("BDT") @map("currency_code")
+  exchangeRate      Decimal  @default(1) @map("exchange_rate")
+  description       String
+  status            String   @default("posted") // draft/posted/reversed
+  reversalOfEntryId String?  @map("reversal_of_entry_id")
+  createdBy         String   @map("created_by")
+  postedBy          String?  @map("posted_by")
+  postedAt          DateTime? @map("posted_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  businessEvent BusinessEvent  @relation("JournalEntryEvent", fields: [eventId], references: [id])
+  currency      Currency       @relation(fields: [currencyCode], references: [code])
+  reversalOf    JournalEntry?  @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id])
+  reversedBy    JournalEntry[] @relation("JournalEntryReversal")
+  lines         JournalLine[]
+  creator       User           @relation("JournalEntryCreatedBy", fields: [createdBy], references: [id])
+  poster        User?          @relation("JournalEntryPostedBy", fields: [postedBy], references: [id])
+
+  @@unique([companyId, entryNo])
+  @@unique([companyId, eventId, postingKind])
+  @@index([companyId])
+  @@index([entryDate])
+  @@index([postingDate])
+  @@index([sourceType, sourceId])
+  @@index([status])
+  @@index([postedAt])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  journalEntryId      String   @map("journal_entry_id")
+  lineNo              Int      @map("line_no")
+  branchId            String?  @map("branch_id")
+  chartOfAccountId    String   @map("chart_of_account_id")
+  financialAccountId  String?  @map("financial_account_id")
+  customerId          String?  @map("customer_id")
+  supplierId          String?  @map("supplier_id")
+  productId           String?  @map("product_id")
+  debitBase           Decimal  @default(0) @map("debit_base")
+  creditBase          Decimal  @default(0) @map("credit_base")
+  amountCurrency      Decimal? @map("amount_currency")
+  currencyCode        String?  @map("currency_code")
+  memo                String?
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  branch         Branch?        @relation("JournalLineBranch", fields: [branchId], references: [id])
+  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id])
+  customer       Customer?      @relation("JournalLineCustomer", fields: [customerId], references: [id])
+  supplier       Supplier?      @relation("JournalLineSupplier", fields: [supplierId], references: [id])
+  product        Product?       @relation("JournalLineProduct", fields: [productId], references: [id])
+  currency       Currency?      @relation("JournalLineCurrency", fields: [currencyCode], references: [code])
+
+  @@unique([journalEntryId, lineNo])
+  @@index([companyId])
+  @@index([journalEntryId])
+  @@index([branchId])
+  @@index([chartOfAccountId])
+  @@index([financialAccountId])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([productId])
+  @@map("journal_lines")
+}
+
+model AccountingPolicy {
+  id                          String  @id @default(uuid())
+  companyId                   String  @map("company_id") @unique
+  inventoryAccountId          String  @map("inventory_account_id")
+  cogsAccountId               String  @map("cogs_account_id")
+  salesRevenueAccountId       String  @map("sales_revenue_account_id")
+  arAccountId                 String  @map("ar_account_id")
+  apAccountId                 String  @map("ap_account_id")
+  customerAdvanceAccountId    String  @map("customer_advance_account_id")
+  supplierAdvanceAccountId    String  @map("supplier_advance_account_id")
+  purchaseVarianceAccountId   String  @map("purchase_variance_account_id")
+  giftCardLiabilityAccountId  String  @map("gift_card_liability_account_id")
+  rewardExpenseAccountId      String? @map("reward_expense_account_id")
+  branchClearingAccountId     String? @map("branch_clearing_account_id")
+  inventoryDamageAccountId    String? @map("inventory_damage_account_id")
+  inventoryWriteOffAccountId  String? @map("inventory_write_off_account_id")
+  exchangeGainLossAccountId   String? @map("exchange_gain_loss_account_id")
+  courierClearingAccountId    String? @map("courier_clearing_account_id")
+  serviceCogsAccountId        String? @map("service_cogs_account_id")
+  repairWipAccountId          String? @map("repair_wip_account_id")
+  chequeClearingAccountId     String? @map("cheque_clearing_account_id")
+  roundingAccountId           String? @map("rounding_account_id")
+  grniAccountId               String? @map("grni_account_id")
+  openingBalanceEquityAccountId String? @map("opening_balance_equity_account_id")
+  impairmentAllowanceAccountId String? @map("impairment_allowance_account_id")
+  chequeBounceFeeAccountId    String? @map("cheque_bounce_fee_account_id")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  inventoryAccount          ChartOfAccount @relation("PolInventory", fields: [inventoryAccountId], references: [id])
+  cogsAccount               ChartOfAccount @relation("PolCOGS", fields: [cogsAccountId], references: [id])
+  salesRevenueAccount       ChartOfAccount @relation("PolRevenue", fields: [salesRevenueAccountId], references: [id])
+  arAccount                 ChartOfAccount @relation("PolAR", fields: [arAccountId], references: [id])
+  apAccount                 ChartOfAccount @relation("PolAP", fields: [apAccountId], references: [id])
+  customerAdvanceAccount    ChartOfAccount @relation("PolCustAdv", fields: [customerAdvanceAccountId], references: [id])
+  supplierAdvanceAccount    ChartOfAccount @relation("PolSupAdv", fields: [supplierAdvanceAccountId], references: [id])
+  purchaseVarianceAccount   ChartOfAccount @relation("PolPurchVar", fields: [purchaseVarianceAccountId], references: [id])
+  giftCardLiabilityAccount  ChartOfAccount @relation("PolGiftCard", fields: [giftCardLiabilityAccountId], references: [id])
+
+  @@map("accounting_policies")
+}
+
+model ExpenseCategory {
+  id                String  @id @default(uuid())
+  companyId         String  @map("company_id")
+  name              String
+  expenseAccountId  String  @map("expense_account_id")
+  requiresApproval  Boolean @default(true) @map("requires_approval")
+  isActive          Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  expenseAccount ChartOfAccount @relation("ExpCatAccount", fields: [expenseAccountId], references: [id])
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  branchId          String   @map("branch_id")
+  referenceNo       String   @map("reference_no")
+  clientTxnId       String   @map("client_txn_id")
+  supplierId        String?  @map("supplier_id")
+  payeeName         String?  @map("payee_name")
+  status            String   @default("draft") // draft/pending_approval/approved/posted/rejected/voided
+  expenseDate       DateTime @map("expense_date")
+  currencyCode      String   @default("BDT") @map("currency_code")
+  exchangeRate      Decimal  @default(1) @map("exchange_rate")
+  subtotal          Decimal  @default(0)
+  taxTotal          Decimal  @default(0) @map("tax_total")
+  grandTotal        Decimal  @default(0) @map("grand_total")
+  baseGrandTotal    Decimal  @default(0) @map("base_grand_total")
+  description       String
+  requestedBy       String   @map("requested_by")
+  approvedBy        String?  @map("approved_by")
+  approvalRequestId String?  @map("approval_request_id")
+  journalEntryId    String?  @map("journal_entry_id")
+  postedAt          DateTime? @map("posted_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation("ExpenseBranch", fields: [branchId], references: [id])
+  supplier   Supplier?  @relation("ExpenseSupplier", fields: [supplierId], references: [id])
+  currency   Currency   @relation("ExpenseCurrency", fields: [currencyCode], references: [code])
+  requester  User       @relation("ExpenseRequestedBy", fields: [requestedBy], references: [id])
+  approver   User?      @relation("ExpenseApprovedBy", fields: [approvedBy], references: [id])
+  journalEntry JournalEntry? @relation("ExpenseJournalEntry", fields: [journalEntryId], references: [id])
+  items      ExpenseItem[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([expenseDate])
+  @@map("expenses")
+}
+
+model ExpenseItem {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  expenseId           String   @map("expense_id")
+  lineNo              Int      @map("line_no")
+  expenseCategoryId   String   @map("expense_category_id")
+  description         String
+  amount              Decimal  @default(0)
+  taxAmount           Decimal  @default(0) @map("tax_amount")
+  baseAmount          Decimal  @default(0) @map("base_amount")
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  expense       Expense         @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  expenseCategory ExpenseCategory @relation(fields: [expenseCategoryId], references: [id])
+
+  @@unique([expenseId, lineNo])
+  @@index([companyId])
+  @@index([expenseId])
+  @@index([expenseCategoryId])
+  @@map("expense_items")
+}

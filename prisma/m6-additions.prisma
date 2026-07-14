@@ -1,0 +1,232 @@
+// prisma/m6-additions.prisma
+// M6 — §5.6A CRM + §5.13 Gift Cards/Coupons/Loyalty + §5.14 HR/Payroll
+
+// ── CRM ──
+model LeadSubject {
+  id         String  @id @default(uuid())
+  companyId  String  @map("company_id")
+  name       String
+  isActive   Boolean @default(true) @map("is_active")
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  leads      Lead[]
+  @@unique([companyId, name])
+  @@map("lead_subjects")
+}
+
+model LeadSource {
+  id         String  @id @default(uuid())
+  companyId  String  @map("company_id")
+  name       String
+  isActive   Boolean @default(true) @map("is_active")
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  leads      Lead[]
+  @@unique([companyId, name])
+  @@map("lead_sources")
+}
+
+model LeadStatus {
+  id         String  @id @default(uuid())
+  companyId  String  @map("company_id")
+  name       String
+  position   Int
+  isWon      Boolean @default(false) @map("is_won")
+  isLost     Boolean @default(false) @map("is_lost")
+  isActive   Boolean @default(true) @map("is_active")
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  leads      Lead[]
+  @@unique([companyId, name])
+  @@unique([companyId, position])
+  @@map("lead_statuses")
+}
+
+model Lead {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  branchId            String?  @map("branch_id")
+  subjectId           String?  @map("subject_id")
+  sourceId            String?  @map("source_id")
+  statusId            String   @map("status_id")
+  assignedTo          String?  @map("assigned_to")
+  name                String
+  companyName         String?  @map("company_name")
+  phone               String?
+  email               String?
+  estimatedValue      Decimal? @map("estimated_value")
+  nextActionAt        DateTime? @map("next_action_at")
+  notes               String?
+  convertedCustomerId String?  @unique @map("converted_customer_id")
+  convertedQuotationId String? @map("converted_quotation_id")
+  lostReason          String?  @map("lost_reason")
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @map("updated_at")
+
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch?       @relation("LeadBranch", fields: [branchId], references: [id])
+  subject    LeadSubject?  @relation(fields: [subjectId], references: [id])
+  source     LeadSource?   @relation(fields: [sourceId], references: [id])
+  status     LeadStatus    @relation(fields: [statusId], references: [id])
+  assignee   User?         @relation("LeadAssignedTo", fields: [assignedTo], references: [id])
+  convertedCustomer Customer? @relation(fields: [convertedCustomerId], references: [id])
+  creator    User          @relation("LeadCreatedBy", fields: [createdBy], references: [id])
+  activities LeadActivity[]
+
+  @@index([companyId])
+  @@index([statusId])
+  @@index([assignedTo])
+  @@index([nextActionAt])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+model LeadActivity {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  leadId       String   @map("lead_id")
+  activityType String   @map("activity_type")
+  summary      String
+  details      String?
+  scheduledAt  DateTime? @map("scheduled_at")
+  completedAt  DateTime? @map("completed_at")
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  lead    Lead    @relation(fields: [leadId], references: [id])
+  creator User    @relation("LeadActivityCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([companyId])
+  @@index([leadId])
+  @@index([activityType])
+  @@index([scheduledAt])
+  @@map("lead_activities")
+}
+
+// ── Gift Cards ──
+model GiftCard {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  code         String   @unique
+  pinHash      String?  @map("pin_hash")
+  faceValue    Decimal  @map("face_value")
+  status       String   @default("active") // active/redeemed/expired/lost_replaced
+  issuedAt     DateTime @default(now()) @map("issued_at")
+  expiresAt    DateTime? @map("expires_at")
+  issuedBy     String   @map("issued_by")
+  issuedSaleId String?  @map("issued_sale_id")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  issuer  User    @relation("GiftCardIssuedBy", fields: [issuedBy], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+  @@map("gift_cards")
+}
+
+// ── HR ──
+model Department {
+  id                  String  @id @default(uuid())
+  companyId           String  @map("company_id")
+  name                String
+  managerEmployeeId   String? @map("manager_employee_id")
+  isActive            Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name])
+  @@map("departments")
+}
+
+model Designation {
+  id         String  @id @default(uuid())
+  companyId  String  @map("company_id")
+  name       String
+  isActive   Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name])
+  @@map("designations")
+}
+
+model Employee {
+  id                       String   @id @default(uuid())
+  companyId                String   @map("company_id")
+  userId                   String?  @unique @map("user_id")
+  employeeNo               String   @map("employee_no")
+  branchId                 String   @map("branch_id")
+  departmentId             String?  @map("department_id")
+  designationId            String?  @map("designation_id")
+  name                     String
+  phone                    String?
+  email                    String?
+  address                  String?
+  joinDate                 DateTime @map("join_date")
+  employmentStatus         String   @default("active") @map("employment_status") // active/on_leave/terminated
+  baseSalary               Decimal  @default(0) @map("base_salary")
+  payrollExpenseAccountId  String   @map("payroll_expense_account_id")
+  payrollPayableAccountId  String   @map("payroll_payable_account_id")
+  terminatedAt             DateTime? @map("terminated_at")
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user         User?        @relation("EmployeeUser", fields: [userId], references: [id])
+  branch       Branch       @relation("EmployeeBranch", fields: [branchId], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  designation  Designation? @relation(fields: [designationId], references: [id])
+
+  @@unique([companyId, employeeNo])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([employmentStatus])
+  @@map("employees")
+}
+
+model PayrollRun {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  branchId        String?  @map("branch_id")
+  referenceNo     String   @map("reference_no")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  status          String   @default("draft") // draft/approved/posted/paid/reversed
+  grossTotal      Decimal  @default(0) @map("gross_total")
+  deductionTotal  Decimal  @default(0) @map("deduction_total")
+  netTotal        Decimal  @default(0) @map("net_total")
+  approvedBy      String?  @map("approved_by")
+  postedAt        DateTime? @map("posted_at")
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch? @relation("PayrollRunBranch", fields: [branchId], references: [id])
+  approver   User?   @relation("PayrollRunApprovedBy", fields: [approvedBy], references: [id])
+  creator    User    @relation("PayrollRunCreatedBy", fields: [createdBy], references: [id])
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([status])
+  @@map("payroll_runs")
+}
+
+// ── Notifications (already have CommunicationTemplate from M1) ──
+model Notification {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  notificationType String  @map("notification_type")
+  severity        String   @default("info") // info/warning/high/critical
+  title           String
+  body            String
+  actionUrl       String?  @map("action_url")
+  entityType      String?  @map("entity_type")
+  entityId        String?  @map("entity_id")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("notifications")
+}

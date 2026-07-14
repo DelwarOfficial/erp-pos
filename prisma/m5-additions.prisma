@@ -1,0 +1,278 @@
+// prisma/m5-additions.prisma
+// M5 — §5.7A Delivery, Courier, Service, and Warranty
+
+// Delivery
+model DeliveryOrder {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  branchId            String   @map("branch_id")
+  saleId              String   @map("sale_id")
+  referenceNo         String   @map("reference_no")
+  status              String   @default("pending") // pending/packing/ready/dispatched/in_transit/delivered/failed/returned/cancelled
+  recipientName       String   @map("recipient_name")
+  recipientPhone      String   @map("recipient_phone")
+  addressSnapshot     String   @map("address_snapshot")
+  district            String?
+  area                String?
+  deliveryMethod      String   @default("internal") @map("delivery_method") // internal/courier/pickup
+  courierCode         String?  @map("courier_code")
+  codAmount           Decimal  @default(0) @map("cod_amount")
+  deliveryFee         Decimal  @default(0) @map("delivery_fee")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  deliveredAt         DateTime? @map("delivered_at")
+  receivedByName      String?  @map("received_by_name")
+  assignedUserId      String?  @map("assigned_user_id")
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  sale       Sale       @relation(fields: [saleId], references: [id])
+  assignedUser User?   @relation("DeliveryAssignedTo", fields: [assignedUserId], references: [id])
+  creator    User       @relation("DeliveryCreatedBy", fields: [createdBy], references: [id])
+  items      DeliveryItem[]
+  events     DeliveryEvent[]
+  shipment   CourierShipment?
+  codSettlementItems CourierCodSettlementItem[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([saleId])
+  @@index([status])
+  @@index([deliveryMethod])
+  @@index([courierCode])
+  @@index([recipientPhone])
+  @@index([createdAt])
+  @@map("delivery_orders")
+}
+
+model DeliveryItem {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  deliveryOrderId String   @map("delivery_order_id")
+  saleItemId      String   @map("sale_item_id")
+  quantity        Decimal
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deliveryOrder DeliveryOrder @relation(fields: [deliveryOrderId], references: [id])
+  saleItem      SaleItem      @relation(fields: [saleItemId], references: [id])
+
+  @@unique([deliveryOrderId, saleItemId])
+  @@index([companyId])
+  @@index([deliveryOrderId])
+  @@index([saleItemId])
+  @@map("delivery_items")
+}
+
+model DeliveryEvent {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  deliveryOrderId String   @map("delivery_order_id")
+  fromStatus      String?  @map("from_status")
+  toStatus        String   @map("to_status")
+  eventAt         DateTime @default(now()) @map("event_at")
+  providerStatus  String?  @map("provider_status")
+  locationText    String?  @map("location_text")
+  note            String?
+  createdBy       String?  @map("created_by")
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deliveryOrder DeliveryOrder @relation(fields: [deliveryOrderId], references: [id])
+  creator       User?         @relation("DeliveryEventCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([companyId])
+  @@index([deliveryOrderId])
+  @@index([toStatus])
+  @@index([eventAt])
+  @@map("delivery_events")
+}
+
+model CourierShipment {
+  id                     String   @id @default(uuid())
+  companyId              String   @map("company_id")
+  deliveryOrderId        String   @unique @map("delivery_order_id")
+  integrationCredentialId String  @map("integration_credential_id")
+  providerShipmentId     String?  @map("provider_shipment_id")
+  trackingCode           String?  @map("tracking_code")
+  bookingStatus          String   @default("pending") @map("booking_status") // pending/booked/failed/cancelled
+  labelMediaId           String?  @map("label_media_id")
+  quotedCharge           Decimal? @map("quoted_charge")
+  finalCharge            Decimal? @map("final_charge")
+  lastProviderStatus     String?  @map("last_provider_status")
+  lastSyncedAt           DateTime? @map("last_synced_at")
+  sanitizedProviderData  String   @default("{}") @map("sanitized_provider_data")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deliveryOrder  DeliveryOrder  @relation(fields: [deliveryOrderId], references: [id])
+
+  @@index([companyId])
+  @@index([bookingStatus])
+  @@index([trackingCode])
+  @@map("courier_shipments")
+}
+
+model CourierCodSettlement {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  branchId            String   @map("branch_id")
+  referenceNo         String   @map("reference_no")
+  courierCode         String   @map("courier_code")
+  settlementDate      DateTime @map("settlement_date")
+  grossCodAmount      Decimal  @default(0) @map("gross_cod_amount")
+  feeAmount           Decimal  @default(0) @map("fee_amount")
+  adjustmentAmount    Decimal  @default(0) @map("adjustment_amount")
+  netReceivedAmount   Decimal  @default(0) @map("net_received_amount")
+  status              String   @default("draft") // draft/reconciled/posted/reversed
+  financialAccountId  String   @map("financial_account_id")
+  journalEntryId      String?  @map("journal_entry_id")
+  createdBy           String   @map("created_by")
+  postedAt            DateTime? @map("posted_at")
+
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch           Branch           @relation(fields: [branchId], references: [id])
+  financialAccount FinancialAccount @relation(fields: [financialAccountId], references: [id])
+  journalEntry     JournalEntry?    @relation("CodSettlementJournal", fields: [journalEntryId], references: [id])
+  creator          User             @relation("CodSettlementCreatedBy", fields: [createdBy], references: [id])
+  items            CourierCodSettlementItem[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([courierCode])
+  @@index([status])
+  @@index([settlementDate])
+  @@map("courier_cod_settlements")
+}
+
+model CourierCodSettlementItem {
+  settlementId      String  @map("settlement_id")
+  deliveryOrderId   String  @map("delivery_order_id")
+  codAmount         Decimal @default(0) @map("cod_amount")
+  feeAmount         Decimal @default(0) @map("fee_amount")
+  adjustmentAmount  Decimal @default(0) @map("adjustment_amount")
+
+  settlement     CourierCodSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  deliveryOrder  DeliveryOrder        @relation(fields: [deliveryOrderId], references: [id], onDelete: Restrict)
+
+  @@id([settlementId, deliveryOrderId])
+  @@unique([deliveryOrderId])
+  @@map("courier_cod_settlement_items")
+}
+
+// Service
+model ServiceRequest {
+  id                       String   @id @default(uuid())
+  companyId                String   @map("company_id")
+  branchId                 String   @map("branch_id")
+  repairWarehouseId        String?  @map("repair_warehouse_id")
+  referenceNo              String   @map("reference_no")
+  customerId               String?  @map("customer_id")
+  saleId                   String?  @map("sale_id")
+  serviceSaleId            String?  @unique @map("service_sale_id")
+  serialId                 String?  @map("serial_id")
+  serviceType              String   @default("paid_repair") @map("service_type") // warranty/paid_repair/installation/inspection
+  status                   String   @default("received") // received/diagnosing/awaiting_customer_approval/approved/in_repair/awaiting_parts/ready/delivered/unrepairable/cancelled
+  issueDescription         String   @map("issue_description")
+  intakeCondition          String?  @map("intake_condition")
+  accessoriesReceived      String?  @map("accessories_received")
+  estimatedAmount          Decimal  @default(0) @map("estimated_amount")
+  approvedAmount           Decimal? @map("approved_amount")
+  depositRequiredAmount    Decimal  @default(0) @map("deposit_required_amount")
+  promisedDate             DateTime? @map("promised_date")
+  warrantyEligibleSnapshot Boolean? @map("warranty_eligible_snapshot")
+  warrantyExpirySnapshot   DateTime? @map("warranty_expiry_snapshot")
+  createdBy                String   @map("created_by")
+  receivedAt               DateTime @default(now()) @map("received_at")
+  deliveredAt              DateTime? @map("delivered_at")
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  repairWarehouse Warehouse?  @relation(fields: [repairWarehouseId], references: [id])
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  sale          Sale?          @relation("ServiceRequestSale", fields: [saleId], references: [id])
+  serviceSale   Sale?          @relation("ServiceRequestServiceSale", fields: [serviceSaleId], references: [id])
+  serial        ProductSerial? @relation(fields: [serialId], references: [id])
+  creator       User           @relation("ServiceRequestCreatedBy", fields: [createdBy], references: [id])
+  parts         ServiceRequestPart[]
+  events        ServiceEvent[]
+  warrantyClaim WarrantyClaim?
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([saleId])
+  @@index([serialId])
+  @@index([serviceType])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("service_requests")
+}
+
+model ServiceRequestPart {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  serviceRequestId  String   @map("service_request_id")
+  lineNo            Int      @map("line_no")
+  productId         String   @map("product_id")
+  quantity          Decimal
+  unitCostSnapshot  Decimal  @map("unit_cost_snapshot")
+  unitPrice         Decimal  @map("unit_price")
+  warrantyCovered   Boolean  @default(false) @map("warranty_covered")
+  consumedEventId   String?  @map("consumed_event_id")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  product        Product        @relation(fields: [productId], references: [id])
+  consumedEvent  BusinessEvent? @relation("ServicePartConsumedEvent", fields: [consumedEventId], references: [id])
+
+  @@unique([serviceRequestId, lineNo])
+  @@index([companyId])
+  @@index([serviceRequestId])
+  @@index([productId])
+  @@map("service_request_parts")
+}
+
+model ServiceEvent {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  serviceRequestId  String   @map("service_request_id")
+  eventType         String   @map("event_type") // status_change/diagnosis/estimate/customer_approval/part_used/note/message/delivery
+  eventData         String   @default("{}") @map("event_data")
+  createdBy         String?  @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  creator        User?          @relation("ServiceEventCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([companyId])
+  @@index([serviceRequestId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("service_events")
+}
+
+model WarrantyClaim {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  serviceRequestId    String   @unique @map("service_request_id")
+  claimType           String   @default("repair") @map("claim_type") // repair/replace/refund/supplier_claim
+  status              String   @default("draft") // draft/submitted/approved/rejected/fulfilled/reversed
+  eligibilityReason   String   @map("eligibility_reason")
+  replacementSerialId String?  @unique @map("replacement_serial_id")
+  supplierReference   String?  @map("supplier_reference")
+  approvalRequestId   String?  @map("approval_request_id")
+  approvedBy          String?  @map("approved_by")
+  approvedAt          DateTime? @map("approved_at")
+  fulfilledAt         DateTime? @map("fulfilled_at")
+
+  company             Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  serviceRequest      ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  replacementSerial   ProductSerial? @relation(fields: [replacementSerialId], references: [id])
+  approver            User?          @relation("WarrantyClaimApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([companyId])
+  @@index([claimType])
+  @@index([status])
+  @@map("warranty_claims")
+}

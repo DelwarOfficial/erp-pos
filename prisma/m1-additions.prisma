@@ -1,0 +1,714 @@
+// prisma/m1-additions.prisma
+// M1 schema additions — appended to schema.prisma via cat.
+// Models for §5.4 (Catalogue, Pricing, Tax) + §5.14A (Configuration, Feature Flags,
+// Templates, Translations, POS Profiles, Languages, Notifications, Support).
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.4 Catalogue, Pricing, and Tax
+// ──────────────────────────────────────────────────────────────────────
+
+model Category {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  parentId   String?  @map("parent_id")
+  name       String
+  code       String
+  isActive   Boolean  @default(true) @map("is_active")
+  deletedAt  DateTime? @map("deleted_at")
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  parent     Category? @relation("CategoryTree", fields: [parentId], references: [id])
+  children   Category[] @relation("CategoryTree")
+  products   Product[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, parentId, name])
+  @@index([companyId])
+  @@index([parentId])
+  @@index([isActive])
+  @@map("categories")
+}
+
+model Brand {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  name       String
+  isActive   Boolean  @default(true) @map("is_active")
+  deletedAt  DateTime? @map("deleted_at")
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("brands")
+}
+
+model Unit {
+  id                 String   @id @default(uuid())
+  companyId          String   @map("company_id")
+  name               String
+  code               String
+  baseUnitId         String?  @map("base_unit_id")
+  conversionFactor   Decimal  @default(1) @map("conversion_factor")
+  allowFractional    Boolean  @default(false) @map("allow_fractional")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  baseUnit  Unit?    @relation("UnitTree", fields: [baseUnitId], references: [id])
+  derived   Unit[]   @relation("UnitTree")
+  products  Product[]
+  productUnitOptions ProductUnitOption[]
+  productBarcodes ProductBarcode[]
+  comboComponents  ProductComboItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([baseUnitId])
+  @@map("units")
+}
+
+model CustomerGroup {
+  id                    String  @id @default(uuid())
+  companyId             String  @map("company_id")
+  name                  String
+  defaultDiscountRate   Decimal @default(0) @map("default_discount_rate")
+  creditLimitDefault    Decimal @default(0) @map("credit_limit_default")
+  isActive              Boolean @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  discountPolicies DiscountPolicy[]
+  productPrices ProductPrice[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("customer_groups")
+}
+
+model Product {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  name                  String
+  code                  String
+  categoryId            String   @map("category_id")
+  brandId               String?  @map("brand_id")
+  unitId                String   @map("unit_id")
+  productType           String   @default("standard") @map("product_type") // standard/combo/service/digital
+  isSerialized          Boolean  @default(false) @map("is_serialized")
+  trackBatches          Boolean  @default(false) @map("track_batches")
+  warrantyPeriodMonths  Int?     @map("warranty_period_months")
+  referenceCost         Decimal  @default(0) @map("reference_cost")
+  defaultPrice          Decimal  @default(0) @map("default_price")
+  defaultTaxCodeId      String?  @map("default_tax_code_id")
+  alertQuantity         Decimal  @default(0) @map("alert_quantity")
+  shortDescription      String?  @map("short_description")
+  description           String?
+  isFeatured            Boolean  @default(false) @map("is_featured")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  category         Category      @relation(fields: [categoryId], references: [id])
+  brand            Brand?        @relation(fields: [brandId], references: [id])
+  unit             Unit          @relation(fields: [unitId], references: [id])
+  defaultTaxCode   TaxCode?      @relation(fields: [defaultTaxCodeId], references: [id])
+  barcodes         ProductBarcode[]
+  unitOptions      ProductUnitOption[]
+  comboAsParent    ProductComboItem[] @relation("ComboParent")
+  comboAsComponent ProductComboItem[] @relation("ComboComponent")
+  discountPolicies DiscountPolicy[]
+  prices           ProductPrice[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([unitId])
+  @@index([productType])
+  @@index([isSerialized])
+  @@index([trackBatches])
+  @@index([isFeatured])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+model MediaAsset {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  objectKey        String   @map("object_key")
+  originalFilename String   @map("original_filename")
+  mimeType         String   @map("mime_type")
+  sizeBytes        Int      @default(0) @map("size_bytes")
+  sha256           String
+  widthPx          Int?     @map("width_px")
+  heightPx         Int?     @map("height_px")
+  altText          String?  @map("alt_text")
+  scanStatus       String   @default("pending") @map("scan_status") // pending/clean/quarantined/rejected
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  creator  User   @relation("MediaCreatedBy", fields: [createdBy], references: [id])
+  entityLinks EntityMediaLink[]
+  exportJobs ReportExportJob[]
+
+  @@unique([companyId, objectKey])
+  @@index([companyId])
+  @@index([mimeType])
+  @@index([sha256])
+  @@index([scanStatus])
+  @@index([deletedAt])
+  @@map("media_assets")
+}
+
+model EntityMediaLink {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  mediaAssetId String   @map("media_asset_id")
+  entityType   String   @map("entity_type") // company/branch/product/category/brand/employee/service_request/support_ticket/expense
+  entityId     String   @map("entity_id")
+  mediaRole    String   @map("media_role") // logo/primary/gallery/document/receipt/evidence/attachment
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id])
+
+  @@unique([companyId, entityType, entityId, mediaAssetId, mediaRole])
+  @@index([companyId])
+  @@index([mediaAssetId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([mediaRole])
+  @@map("entity_media_links")
+}
+
+model ProductBarcode {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  productId         String   @map("product_id")
+  code              String
+  symbology         String   @default("CODE128") // CODE128/CODE39/EAN8/EAN13/UPCA/QR
+  unitId            String?  @map("unit_id")
+  packageQuantity   Decimal  @default(1) @map("package_quantity")
+  isPrimary         Boolean  @default(false) @map("is_primary")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product  Product @relation(fields: [productId], references: [id])
+  unit     Unit?   @relation(fields: [unitId], references: [id])
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([productId])
+  @@index([symbology])
+  @@index([unitId])
+  @@index([isPrimary])
+  @@map("product_barcodes")
+}
+
+model ProductUnitOption {
+  companyId              String  @map("company_id")
+  productId              String  @map("product_id")
+  unitId                 String  @map("unit_id")
+  conversionToStockUnit  Decimal @default(1) @map("conversion_to_stock_unit")
+  canPurchase            Boolean @default(false) @map("can_purchase")
+  canSell                Boolean @default(false) @map("can_sell")
+  isDefaultPurchase      Boolean @default(false) @map("is_default_purchase")
+  isDefaultSale          Boolean @default(false) @map("is_default_sale")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product  Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unit     Unit    @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, productId, unitId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("product_unit_options")
+}
+
+model ProductComboItem {
+  companyId             String  @map("company_id")
+  comboProductId        String  @map("combo_product_id")
+  componentProductId    String  @map("component_product_id")
+  componentQuantity     Decimal @map("component_quantity")
+  componentUnitId       String  @map("component_unit_id")
+  allowSubstitution     Boolean @default(false) @map("allow_substitution")
+
+  company           Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  comboProduct      Product @relation("ComboParent", fields: [comboProductId], references: [id], onDelete: Restrict)
+  componentProduct  Product @relation("ComboComponent", fields: [componentProductId], references: [id], onDelete: Restrict)
+  componentUnit     Unit    @relation(fields: [componentUnitId], references: [id])
+
+  @@id([companyId, comboProductId, componentProductId])
+  @@index([comboProductId])
+  @@index([componentProductId])
+  @@index([componentUnitId])
+  @@map("product_combo_items")
+}
+
+model DiscountPolicy {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  name                String
+  discountType        String   @map("discount_type") // percentage/fixed
+  value               Decimal  @default(0)
+  maxDiscountAmount   Decimal? @map("max_discount_amount")
+  productId           String?  @map("product_id")
+  categoryId          String?  @map("category_id")
+  customerGroupId     String?  @map("customer_group_id")
+  branchId            String?  @map("branch_id")
+  validFrom           DateTime @map("valid_from")
+  validTo             DateTime? @map("valid_to")
+  priority            Int      @default(0)
+  combinable          Boolean  @default(false)
+  isActive            Boolean  @default(true) @map("is_active")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product        Product?       @relation(fields: [productId], references: [id])
+  category       Category?      @relation("DiscountPolicyCategory", fields: [categoryId], references: [id])
+  customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  branch         Branch?        @relation("DiscountPolicyBranch", fields: [branchId], references: [id])
+
+  @@index([companyId])
+  @@index([productId])
+  @@index([categoryId])
+  @@index([customerGroupId])
+  @@index([branchId])
+  @@index([validFrom])
+  @@index([validTo])
+  @@index([isActive])
+  @@map("discount_policies")
+}
+
+model ProductPrice {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  productId        String   @map("product_id")
+  branchId         String?  @map("branch_id")
+  customerGroupId  String?  @map("customer_group_id")
+  currencyCode     String   @map("currency_code")
+  price            Decimal  @default(0)
+  validFrom        DateTime @map("valid_from")
+  validTo          DateTime? @map("valid_to")
+  priority         Int      @default(0)
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product        Product        @relation(fields: [productId], references: [id])
+  branch         Branch?        @relation("ProductPriceBranch", fields: [branchId], references: [id])
+  customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  currency       Currency       @relation(fields: [currencyCode], references: [code])
+
+  @@unique([companyId, productId, branchId, customerGroupId, currencyCode, validFrom])
+  @@index([companyId])
+  @@index([productId])
+  @@index([branchId])
+  @@index([customerGroupId])
+  @@index([validFrom])
+  @@index([validTo])
+  @@map("product_prices")
+}
+
+model TaxCode {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  code             String
+  name             String
+  priceIncludesTax Boolean  @default(false) @map("price_includes_tax")
+  effectiveFrom    DateTime @map("effective_from")
+  effectiveTo      DateTime? @map("effective_to")
+  isActive         Boolean  @default(true) @map("is_active")
+
+  company     Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  components  TaxCodeComponent[]
+  products    Product[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([effectiveFrom])
+  @@index([effectiveTo])
+  @@index([isActive])
+  @@map("tax_codes")
+}
+
+model TaxComponent {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  componentCode       String   @map("component_code")
+  name                String
+  componentType       String   @default("VAT") @map("component_type") // VAT/SD/RD/ATV/OTHER
+  rate                Decimal  @default(0)
+  calculationOrder    Int      @default(1) @map("calculation_order")
+  compoundOnPrevious  Boolean  @default(false) @map("compound_on_previous")
+  effectiveFrom       DateTime @map("effective_from")
+  effectiveTo         DateTime? @map("effective_to")
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  taxCodeComponents TaxCodeComponent[]
+
+  @@unique([companyId, componentCode])
+  @@index([companyId])
+  @@index([componentType])
+  @@map("tax_components")
+}
+
+model TaxCodeComponent {
+  taxCodeId       String @map("tax_code_id")
+  taxComponentId  String @map("tax_component_id")
+
+  taxCode       TaxCode       @relation(fields: [taxCodeId], references: [id], onDelete: Cascade)
+  taxComponent  TaxComponent  @relation(fields: [taxComponentId], references: [id], onDelete: Restrict)
+
+  @@id([taxCodeId, taxComponentId])
+  @@index([taxComponentId])
+  @@map("tax_code_components")
+}
+
+model WithholdingRule {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  code                String
+  withholdingType     String   @default("TDS") @map("withholding_type") // TDS/VDS/OTHER
+  appliesTo           String   @default("supplier_payment") @map("applies_to") // supplier_payment/customer_payment/expense
+  rate                Decimal  @default(0)
+  minimumBaseAmount   Decimal  @default(0) @map("minimum_base_amount")
+  effectiveFrom       DateTime @map("effective_from")
+  effectiveTo         DateTime? @map("effective_to")
+  conditions          String   @default("{}") // JSONB
+  isActive            Boolean  @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([withholdingType])
+  @@index([appliesTo])
+  @@index([effectiveFrom])
+  @@index([effectiveTo])
+  @@index([isActive])
+  @@map("withholding_rules")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.14A Configuration, Feature Flags, Templates, Translations, POS Profiles
+// ──────────────────────────────────────────────────────────────────────
+
+model ConfigurationDefinition {
+  key            String  @id
+  module         String
+  valueType      String  @map("value_type") // string/integer/decimal/boolean/json
+  jsonSchema     String? @map("json_schema") // JSONB
+  allowedScopes  String  @default("company,branch") @map("allowed_scopes") // CSV
+  isSecret       Boolean @default(false) @map("is_secret")
+  defaultValue   String? @map("default_value") // JSONB
+  description    String
+
+  values ConfigurationValue[]
+
+  @@index([module])
+  @@map("configuration_definitions")
+}
+
+model ConfigurationValue {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  definitionKey   String   @map("definition_key")
+  scopeType       String   @default("company") @map("scope_type") // company/branch/warehouse/pos_profile/user
+  scopeId         String   @map("scope_id")
+  value           String   @default("{}") // JSONB
+  version         Int      @default(1)
+  updatedBy       String   @map("updated_by")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  company     Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  definition  ConfigurationDefinition @relation(fields: [definitionKey], references: [key])
+  updater     User                   @relation("ConfigUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([companyId, definitionKey, scopeType, scopeId])
+  @@index([companyId])
+  @@index([definitionKey])
+  @@index([scopeType, scopeId])
+  @@map("configuration_values")
+}
+
+model PosProfile {
+  id                      String   @id @default(uuid())
+  companyId               String   @map("company_id")
+  branchId                String   @map("branch_id")
+  name                    String
+  defaultWarehouseId      String   @map("default_warehouse_id")
+  defaultCustomerId       String?  @map("default_customer_id")
+  receiptTemplateId       String?  @map("receipt_template_id")
+  invoiceTemplateId       String?  @map("invoice_template_id")
+  holdReservationMinutes  Int      @default(15) @map("hold_reservation_minutes")
+  allowDueSale            Boolean  @default(false) @map("allow_due_sale")
+  requireCustomerForDue   Boolean  @default(true) @map("require_customer_for_due")
+  printerMode             String   @default("browser") @map("printer_mode") // browser/escpos_bridge/system
+  isActive                Boolean  @default(true) @map("is_active")
+
+  company            Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch             Branch            @relation(fields: [branchId], references: [id])
+  defaultWarehouse   Warehouse         @relation(fields: [defaultWarehouseId], references: [id])
+  receiptTemplate    DocumentTemplate? @relation("PosProfileReceiptTemplate", fields: [receiptTemplateId], references: [id])
+  invoiceTemplate    DocumentTemplate? @relation("PosProfileInvoiceTemplate", fields: [invoiceTemplateId], references: [id])
+
+  @@unique([companyId, branchId, name])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([isActive])
+  @@map("pos_profiles")
+}
+
+model DocumentTemplate {
+  id             String   @id @default(uuid())
+  companyId      String   @map("company_id")
+  templateType   String   @map("template_type") // receipt80/a4_invoice/quotation/warranty_card/service_receipt/barcode_sheet/statutory
+  name           String
+  locale         String
+  version        Int      @default(1)
+  templateSchema String   @default("{}") @map("template_schema") // JSONB
+  isActive       Boolean  @default(true) @map("is_active")
+  approvedBy     String?  @map("approved_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  approver        User?           @relation("TemplateApprovedBy", fields: [approvedBy], references: [id])
+  posProfilesReceipt PosProfile[] @relation("PosProfileReceiptTemplate")
+  posProfilesInvoice PosProfile[] @relation("PosProfileInvoiceTemplate")
+
+  @@unique([companyId, templateType, name, locale, version])
+  @@index([companyId])
+  @@index([templateType])
+  @@index([locale])
+  @@index([isActive])
+  @@map("document_templates")
+}
+
+model SupportedLanguage {
+  locale        String  @id
+  name          String
+  nativeName    String  @map("native_name")
+  textDirection String  @default("ltr") @map("text_direction") // ltr/rtl
+  isActive      Boolean @default(true) @map("is_active")
+
+  companyLanguages     CompanyLanguage[]
+  translationOverrides TranslationOverride[]
+  communicationTemplates CommunicationTemplate[]
+
+  @@map("supported_languages")
+}
+
+model CompanyLanguage {
+  companyId String  @map("company_id")
+  locale    String
+  isDefault Boolean @default(false) @map("is_default")
+  isEnabled Boolean @default(true) @map("is_enabled")
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  language SupportedLanguage @relation(fields: [locale], references: [locale])
+
+  @@id([companyId, locale])
+  @@index([locale])
+  @@map("company_languages")
+}
+
+model TranslationOverride {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  locale           String
+  translationKey   String   @map("translation_key")
+  translatedValue  String   @map("translated_value")
+  updatedBy        String   @map("updated_by")
+  updatedAt        DateTime @default(now()) @map("updated_at")
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  language SupportedLanguage @relation(fields: [locale], references: [locale])
+  updater User              @relation("TranslationUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([companyId, locale, translationKey])
+  @@index([companyId])
+  @@index([locale])
+  @@index([translationKey])
+  @@map("translation_overrides")
+}
+
+model FeatureFlag {
+  id            String   @id @default(uuid())
+  companyId     String   @map("company_id")
+  flagKey       String   @map("flag_key")
+  enabled       Boolean  @default(false)
+  rolloutRules  String   @default("{}") @map("rollout_rules") // JSONB
+  updatedBy     String   @map("updated_by")
+  updatedAt     DateTime @default(now()) @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  updater User    @relation("FeatureFlagUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([companyId, flagKey])
+  @@index([companyId])
+  @@index([enabled])
+  @@map("feature_flags")
+}
+
+model DashboardPreference {
+  userId            String  @id
+  companyId         String  @map("company_id")
+  widgetLayout      String  @default("[]") @map("widget_layout") // JSONB
+  defaultDateRange  String  @default("today") @map("default_date_range")
+  defaultBranchIds  String  @default("[]") @map("default_branch_ids") // JSONB array
+  updatedAt         DateTime @default(now()) @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@map("dashboard_preferences")
+}
+
+model SalesTarget {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  branchId        String   @map("branch_id")
+  userId          String?  @map("user_id")
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  targetAmount    Decimal  @default(0) @map("target_amount")
+  targetQuantity  Decimal? @map("target_quantity")
+  createdBy       String   @map("created_by")
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch   Branch  @relation("SalesTargetBranch", fields: [branchId], references: [id])
+  user     User?   @relation("SalesTargetUser", fields: [userId], references: [id])
+  creator  User    @relation("SalesTargetCreator", fields: [createdBy], references: [id])
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([userId])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@map("sales_targets")
+}
+
+model SavedReportFilter {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  userId      String   @map("user_id")
+  reportCode  String   @map("report_code")
+  name        String
+  filterJson  String   @default("{}") @map("filter_json") // JSONB
+  isShared    Boolean  @default(false) @map("is_shared")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User    @relation("SavedReportFilterUser", fields: [userId], references: [id])
+
+  @@unique([userId, reportCode, name])
+  @@index([companyId])
+  @@index([userId])
+  @@index([reportCode])
+  @@map("saved_report_filters")
+}
+
+model ReportExportJob {
+  id             String   @id @default(uuid())
+  companyId      String   @map("company_id")
+  requestedBy    String   @map("requested_by")
+  reportCode     String   @map("report_code")
+  format         String   @default("pdf") // pdf/csv/xlsx
+  filterJson     String   @default("{}") @map("filter_json") // JSONB
+  dataCutoffAt   DateTime @map("data_cutoff_at")
+  status         String   @default("queued") // queued/running/completed/failed/expired
+  outputMediaId  String?  @map("output_media_id")
+  errorSummary   String?  @map("error_summary")
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requester  User       @relation("ReportExportRequester", fields: [requestedBy], references: [id])
+  outputMedia MediaAsset? @relation(fields: [outputMediaId], references: [id])
+
+  @@index([companyId])
+  @@index([requestedBy])
+  @@index([reportCode])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("report_export_jobs")
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  referenceNo String   @map("reference_no")
+  subject     String
+  priority    String   @default("normal") // low/normal/high/urgent
+  status      String   @default("open") // open/in_progress/waiting/resolved/closed
+  openedBy    String   @map("opened_by")
+  assignedTo  String?  @map("assigned_to")
+  createdAt   DateTime @default(now()) @map("created_at")
+  closedAt    DateTime? @map("closed_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  opener    User    @relation("SupportTicketOpener", fields: [openedBy], references: [id])
+  assignee  User?   @relation("SupportTicketAssignee", fields: [assignedTo], references: [id])
+  messages  SupportTicketMessage[]
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId])
+  @@index([priority])
+  @@index([status])
+  @@index([openedBy])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  supportTicketId String   @map("support_ticket_id")
+  authorUserId    String   @map("author_user_id")
+  body            String
+  isInternal      Boolean  @default(false) @map("is_internal")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  ticket  SupportTicket @relation(fields: [supportTicketId], references: [id])
+  author  User          @relation("SupportTicketAuthor", fields: [authorUserId], references: [id])
+
+  @@index([companyId])
+  @@index([supportTicketId])
+  @@index([authorUserId])
+  @@index([createdAt])
+  @@map("support_ticket_messages")
+}
+
+model CommunicationTemplate {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  code             String
+  channel          String   @default("sms") // sms/email/push/in_app
+  purpose          String   @default("transactional") // transactional/marketing/internal
+  locale           String
+  subjectTemplate  String?  @map("subject_template")
+  bodyTemplate     String   @map("body_template")
+  allowedTokens    String   @default("[]") @map("allowed_tokens") // JSONB array
+  version          Int      @default(1)
+  isActive         Boolean  @default(true) @map("is_active")
+  approvedBy       String?  @map("approved_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  language SupportedLanguage @relation(fields: [locale], references: [locale])
+  approver User?            @relation("CommTemplateApprovedBy", fields: [approvedBy], references: [id])
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([channel])
+  @@index([purpose])
+  @@index([locale])
+  @@index([isActive])
+  @@map("communication_templates")
+}

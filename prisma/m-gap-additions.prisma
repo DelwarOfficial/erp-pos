@@ -1,0 +1,697 @@
+// prisma/m-gap-additions.prisma
+// All 28 missing tables from §5 blueprint audit.
+
+// ── §5.11 Payment-adjacent tables ──
+
+model AccountTransfer {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  branchId            String   @map("branch_id")
+  referenceNo         String   @map("reference_no")
+  clientTxnId         String   @map("client_txn_id")
+  fromFinancialAccountId String  @map("from_financial_account_id")
+  toFinancialAccountId   String  @map("to_financial_account_id")
+  fromCurrencyCode    String   @map("from_currency_code")
+  toCurrencyCode      String   @map("to_currency_code")
+  fromAmount          Decimal  @map("from_amount")
+  toAmount            Decimal  @map("to_amount")
+  exchangeRate        Decimal  @default(1) @map("exchange_rate")
+  transferFee         Decimal  @default(0) @map("transfer_fee")
+  status              String   @default("draft") // draft/approved/posted/reversed/cancelled
+  businessDate        DateTime @map("business_date")
+  journalEntryId      String?  @map("journal_entry_id")
+  approvalRequestId   String?  @map("approval_request_id")
+  reversalOfId        String?  @map("reversal_of_id")
+  notes               String?
+  createdBy           String   @map("created_by")
+  approvedBy          String?  @map("approved_by")
+  postedAt            DateTime? @map("posted_at")
+
+  company             Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch              Branch            @relation(fields: [branchId], references: [id])
+  fromFinancialAccount FinancialAccount @relation("TransferFromFA", fields: [fromFinancialAccountId], references: [id])
+  toFinancialAccount   FinancialAccount @relation("TransferToFA", fields: [toFinancialAccountId], references: [id])
+  fromCurrency        Currency          @relation("TransferFromCurrency", fields: [fromCurrencyCode], references: [code])
+  toCurrency          Currency          @relation("TransferToCurrency", fields: [toCurrencyCode], references: [code])
+  journalEntry        JournalEntry?     @relation("TransferJournalEntry", fields: [journalEntryId], references: [id])
+  reversalOf          AccountTransfer?  @relation("AccountTransferReversal", fields: [reversalOfId], references: [id])
+  reversedBy          AccountTransfer[] @relation("AccountTransferReversal")
+  creator             User              @relation("TransferCreatedBy", fields: [createdBy], references: [id])
+  approver            User?             @relation("TransferApprovedBy", fields: [approvedBy], references: [id])
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([status])
+  @@index([businessDate])
+  @@map("account_transfers")
+}
+
+model CustomerAdvanceLedger {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  customerId          String   @map("customer_id")
+  paymentId           String?  @map("payment_id")
+  saleReturnId        String?  @map("sale_return_id")
+  purchaseReturnId    String?  @map("purchase_return_id")
+  paymentAllocationId String?  @unique @map("payment_allocation_id")
+  entryType           String   @map("entry_type") // received/applied/refunded/reversed/store_credit_issued
+  amountDelta         Decimal  @map("amount_delta")
+  baseAmountDelta     Decimal  @map("base_amount_delta")
+  eventId             String   @map("event_id")
+  eventLineNo         Int      @map("event_line_no")
+  createdAt           DateTime @default(now()) @map("created_at")
+  createdBy           String   @map("created_by")
+
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer      Customer     @relation(fields: [customerId], references: [id])
+  payment       Payment?     @relation(fields: [paymentId], references: [id])
+  saleReturn    SaleReturn?  @relation(fields: [saleReturnId], references: [id])
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
+  creator       User         @relation(fields: [createdBy], references: [id])
+
+  @@unique([companyId, eventId, eventLineNo])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([paymentId])
+  @@index([saleReturnId])
+  @@index([entryType])
+  @@map("customer_advance_ledger")
+}
+
+model SupplierAdvanceLedger {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  supplierId          String   @map("supplier_id")
+  paymentId           String?  @map("payment_id")
+  purchaseReturnId    String?  @map("purchase_return_id")
+  paymentAllocationId String?  @unique @map("payment_allocation_id")
+  entryType           String   @map("entry_type") // paid/applied/refunded/reversed/credit_issued
+  amountDelta         Decimal  @map("amount_delta")
+  baseAmountDelta     Decimal  @map("base_amount_delta")
+  eventId             String   @map("event_id")
+  eventLineNo         Int      @map("event_line_no")
+  createdAt           DateTime @default(now()) @map("created_at")
+  createdBy           String   @map("created_by")
+
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  supplier      Supplier     @relation(fields: [supplierId], references: [id])
+  payment       Payment?     @relation("SupplierAdvancePayment", fields: [paymentId], references: [id])
+  purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
+  creator       User         @relation(fields: [createdBy], references: [id])
+
+  @@unique([companyId, eventId, eventLineNo])
+  @@index([companyId])
+  @@index([supplierId])
+  @@index([paymentId])
+  @@index([entryType])
+  @@map("supplier_advance_ledger")
+}
+
+model WithholdingTransaction {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  paymentId           String   @map("payment_id")
+  withholdingRuleId   String   @map("withholding_rule_id")
+  supplierId          String?  @map("supplier_id")
+  customerId          String?  @map("customer_id")
+  taxableBase         Decimal  @map("taxable_base")
+  rateSnapshot        Decimal  @map("rate_snapshot")
+  withheldAmount      Decimal  @map("withheld_amount")
+  certificateNo       String?  @map("certificate_no")
+  remittanceStatus    String   @default("pending") @map("remittance_status") // pending/remitted/reversed
+  remittedAt          DateTime? @map("remitted_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payment           Payment           @relation(fields: [paymentId], references: [id])
+  withholdingRule   WithholdingRule   @relation(fields: [withholdingRuleId], references: [id])
+  supplier          Supplier?         @relation("WithholdingSupplier", fields: [supplierId], references: [id])
+  customer          Customer?         @relation("WithholdingCustomer", fields: [customerId], references: [id])
+
+  @@index([companyId])
+  @@index([paymentId])
+  @@index([withholdingRuleId])
+  @@index([remittanceStatus])
+  @@map("withholding_transactions")
+}
+
+// ── §5.12 Expense detail tables ──
+
+model ExpenseItemTax {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  expenseItemId     String   @map("expense_item_id")
+  taxComponentId    String   @map("tax_component_id")
+  componentCodeSnapshot String @map("component_code_snapshot")
+  rateSnapshot      Decimal  @map("rate_snapshot")
+  taxableBase       Decimal  @map("taxable_base")
+  taxAmount         Decimal  @map("tax_amount")
+  recoverableAmount Decimal  @default(0) @map("recoverable_amount")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  expenseItem    ExpenseItem    @relation(fields: [expenseItemId], references: [id], onDelete: Restrict)
+  taxComponent   TaxComponent   @relation(fields: [taxComponentId], references: [id])
+
+  @@unique([expenseItemId, taxComponentId])
+  @@index([companyId])
+  @@index([expenseItemId])
+  @@map("expense_item_taxes")
+}
+
+model ExpenseAttachment {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  expenseId       String   @map("expense_id")
+  objectKey       String   @map("object_key")
+  fileName        String   @map("file_name")
+  mimeType        String   @map("mime_type")
+  sizeBytes       Int      @map("size_bytes")
+  sha256          String
+  uploadedBy      String   @map("uploaded_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  expense   Expense  @relation(fields: [expenseId], references: [id])
+  uploader  User     @relation("ExpenseAttachmentUploadedBy", fields: [uploadedBy], references: [id])
+
+  @@unique([companyId, objectKey])
+  @@index([companyId])
+  @@index([expenseId])
+  @@index([sha256])
+  @@map("expense_attachments")
+}
+
+// ── §5.13 Gift card detail + Coupons + Reward points ──
+
+model GiftCardTransaction {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  giftCardId      String   @map("gift_card_id")
+  entryType       String   @map("entry_type") // issue/redeem/refund/expire/transfer/adjustment
+  amountDelta     Decimal  @map("amount_delta")
+  saleId          String?  @map("sale_id")
+  saleReturnId    String?  @map("sale_return_id")
+  eventId         String?  @map("event_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdBy       String   @map("created_by")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  giftCard   GiftCard   @relation(fields: [giftCardId], references: [id])
+
+  @@index([companyId])
+  @@index([giftCardId])
+  @@index([entryType])
+  @@map("gift_card_transactions")
+}
+
+model Coupon {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  code            String
+  name            String
+  discountType    String   @default("percentage") @map("discount_type") // percentage/fixed
+  value           Decimal  @default(0)
+  maxDiscountAmount Decimal? @map("max_discount_amount")
+  minOrderAmount  Decimal  @default(0) @map("min_order_amount")
+  validFrom       DateTime @map("valid_from")
+  validTo         DateTime? @map("valid_to")
+  usageLimit      Int?     @map("usage_limit")
+  usageCount      Int      @default(0) @map("usage_count")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  redemptions CouponRedemption[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([isActive])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  couponId        String   @map("coupon_id")
+  saleId          String   @map("sale_id")
+  discountAmount  Decimal  @map("discount_amount")
+  redeemedAt      DateTime @default(now()) @map("redeemed_at")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  sale      Sale     @relation(fields: [saleId], references: [id])
+
+  @@unique([couponId, saleId])
+  @@index([companyId])
+  @@index([couponId])
+  @@index([saleId])
+  @@map("coupon_redemptions")
+}
+
+model RewardPointTransaction {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  customerId      String   @map("customer_id")
+  entryType       String   @map("entry_type") // earn/redeem/expire/reverse
+  pointsDelta     Int      @map("points_delta")
+  saleId          String?  @map("sale_id")
+  eventId         String?  @map("event_id")
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer  Customer @relation("RewardPointCustomer", fields: [customerId], references: [id])
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([entryType])
+  @@map("reward_point_transactions")
+}
+
+model RewardPointConsumption {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  customerId          String   @map("customer_id")
+  earnTransactionId   String   @map("earn_transaction_id")
+  consumeTransactionId String  @map("consume_transaction_id")
+  pointsConsumed      Int      @map("points_consumed")
+
+  company   Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer  Customer                @relation("RewardPointConsumptionCustomer", fields: [customerId], references: [id])
+  earnTxn   RewardPointTransaction  @relation("RewardPointEarn", fields: [earnTransactionId], references: [id])
+  consumeTxn RewardPointTransaction @relation("RewardPointConsume", fields: [consumeTransactionId], references: [id])
+
+  @@index([companyId])
+  @@index([customerId])
+  @@map("reward_point_consumptions")
+}
+
+// ── §5.14 HR detail tables ──
+
+model Holiday {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  branchId    String?  @map("branch_id")
+  title       String
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  isPaid      Boolean  @default(true) @map("is_paid")
+  notes       String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch  Branch? @relation("HolidayBranch", fields: [branchId], references: [id])
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([startDate])
+  @@map("holidays")
+}
+
+model LeaveType {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  name                String
+  annualAllowanceDays Decimal? @map("annual_allowance_days")
+  isPaid              Boolean  @default(true) @map("is_paid")
+  requiresAttachment  Boolean  @default(false) @map("requires_attachment")
+  isActive            Boolean  @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name])
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  employeeId          String   @map("employee_id")
+  leaveTypeId         String   @map("leave_type_id")
+  startDate           DateTime @map("start_date")
+  endDate             DateTime @map("end_date")
+  requestedDays       Decimal  @map("requested_days")
+  status              String   @default("pending") // pending/approved/rejected/cancelled
+  reason              String
+  approvalRequestId   String?  @map("approval_request_id")
+  approvedBy          String?  @map("approved_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  leaveType   LeaveType   @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([startDate])
+  @@map("leave_requests")
+}
+
+model PayrollComponent {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  code            String
+  name            String
+  componentType   String   @default("earning") @map("component_type") // earning/deduction/employer_cost/withholding
+  calculationType String  @default("fixed") @map("calculation_type") // fixed/percentage/formula/manual
+  defaultValue    Decimal  @default(0) @map("default_value")
+  accountId       String   @map("account_id")
+  isActive        Boolean  @default(true) @map("is_active")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  account ChartOfAccount @relation("PayrollCompAccount", fields: [accountId], references: [id])
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([componentType])
+  @@map("payroll_components")
+}
+
+model PayrollItemComponent {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  payrollItemId       String   @map("payroll_item_id")
+  payrollComponentId  String   @map("payroll_component_id")
+  amount              Decimal  @default(0)
+  calculationBasis    String   @default("{}") @map("calculation_basis")
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payrollComponent  PayrollComponent  @relation(fields: [payrollComponentId], references: [id])
+
+  @@unique([payrollItemId, payrollComponentId])
+  @@index([companyId])
+  @@index([payrollItemId])
+  @@map("payroll_item_components")
+}
+
+model AttendanceRecord {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  employeeId  String   @map("employee_id")
+  workDate    DateTime @map("work_date")
+  checkInAt   DateTime? @map("check_in_at")
+  checkOutAt  DateTime? @map("check_out_at")
+  status      String   @default("present") // present/absent/leave/holiday
+  approvedBy  String?  @map("approved_by")
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, workDate])
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@map("attendance_records")
+}
+
+model PayrollItem {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  payrollRunId        String   @map("payroll_run_id")
+  employeeId          String   @map("employee_id")
+  baseSalary          Decimal  @map("base_salary")
+  allowanceTotal      Decimal  @default(0) @map("allowance_total")
+  overtimeTotal       Decimal  @default(0) @map("overtime_total")
+  deductionTotal      Decimal  @default(0) @map("deduction_total")
+  withholdingTotal    Decimal  @default(0) @map("withholding_total")
+  netPay              Decimal  @map("net_pay")
+  calculationDetail   String   @default("{}") @map("calculation_detail")
+  components          PayrollItemComponent[]
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payrollRun  PayrollRun  @relation(fields: [payrollRunId], references: [id])
+  employee    Employee    @relation("PayrollItemEmployee", fields: [employeeId], references: [id])
+
+  @@unique([payrollRunId, employeeId])
+  @@index([companyId])
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@map("payroll_items")
+}
+
+// ── §5.14A Communication detail tables ──
+
+model CommunicationConsent {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  customerId      String?  @map("customer_id")
+  supplierId      String?  @map("supplier_id")
+  channel         String   @default("sms") // sms/email/push/whatsapp
+  purpose         String   @default("transactional") // transactional/marketing
+  consentStatus   String   @default("not_required") @map("consent_status") // granted/withdrawn/not_required
+  source          String
+  capturedAt      DateTime @default(now()) @map("captured_at")
+  capturedBy      String?  @map("captured_by")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer  Customer? @relation("ConsentCustomer", fields: [customerId], references: [id])
+  supplier  Supplier? @relation("ConsentSupplier", fields: [supplierId], references: [id])
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([consentStatus])
+  @@map("communication_consents")
+}
+
+model CommunicationCampaign {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  name                String
+  channel             String   @default("sms") // sms/email/push/whatsapp
+  templateId          String   @map("template_id")
+  audienceDefinition  String   @default("{}") @map("audience_definition")
+  status              String   @default("draft") // draft/scheduled/running/completed/cancelled/failed
+  scheduledAt         DateTime? @map("scheduled_at")
+  createdBy           String   @map("created_by")
+  approvedBy          String?  @map("approved_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  template  CommunicationTemplate @relation(fields: [templateId], references: [id])
+  creator   User                 @relation("CampaignCreatedBy", fields: [createdBy], references: [id])
+  approver  User?                @relation("CampaignApprovedBy", fields: [approvedBy], references: [id])
+  recipients CommunicationCampaignRecipient[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("communication_campaigns")
+}
+
+model CommunicationCampaignRecipient {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  campaignId      String   @map("campaign_id")
+  recipientType   String   @default("customer") @map("recipient_type") // customer/supplier/manual
+  customerId      String?  @map("customer_id")
+  supplierId      String?  @map("supplier_id")
+  destination     String
+  consentSnapshot String   @default("not_required") @map("consent_snapshot")
+  status          String   @default("queued") // queued/sent/delivered/failed/skipped
+  skipReason      String?  @map("skip_reason")
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  campaign  CommunicationCampaign @relation(fields: [campaignId], references: [id])
+  customer  Customer?            @relation("CampaignRecipientCustomer", fields: [customerId], references: [id])
+
+  @@unique([campaignId, destination])
+  @@index([companyId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("communication_campaign_recipients")
+}
+
+model OutboundMessage {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  templateId          String?  @map("template_id")
+  campaignRecipientId String?  @map("campaign_recipient_id")
+  channel             String   @default("sms") // sms/email/push/whatsapp
+  purpose             String   @default("transactional") // transactional/marketing/internal
+  destinationHash     String   @map("destination_hash")
+  destinationEncrypted String  @map("destination_encrypted")
+  encryptionKeyVersion String  @default("1") @map("encryption_key_version")
+  renderedSubject     String?  @map("rendered_subject")
+  renderedBody        String   @map("rendered_body")
+  providerCode        String?  @map("provider_code")
+  providerMessageId   String?  @map("provider_message_id")
+  status              String   @default("queued") // queued/sending/sent/delivered/failed/dead_letter
+  attemptCount        Int      @default(0) @map("attempt_count")
+  nextAttemptAt       DateTime? @map("next_attempt_at")
+  lastErrorCode       String?  @map("last_error_code")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  template  CommunicationTemplate? @relation("OutboundTemplate", fields: [templateId], references: [id])
+
+  @@index([companyId])
+  @@index([templateId])
+  @@index([status])
+  @@index([providerMessageId])
+  @@index([createdAt])
+  @@map("outbound_messages")
+}
+
+model UserNotification {
+  notificationId  String   @map("notification_id")
+  userId          String   @map("user_id")
+  readAt          DateTime? @map("read_at")
+  dismissedAt     DateTime? @map("dismissed_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation("UserNotificationUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId])
+  @@index([readAt])
+  @@map("user_notifications")
+}
+
+// ── §5.16 Integration detail tables ──
+
+model PrintJob {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  printType       String   @map("print_type") // receipt80/a4_invoice/quotation/warranty_card/service_receipt/barcode_sheet/statutory
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id")
+  locale          String   @default("bn-BD")
+  status          String   @default("queued") // queued/rendering/printed/failed
+  printerMode     String   @default("browser") @map("printer_mode") // browser/escpos_bridge/system
+  outputMediaId   String?  @map("output_media_id")
+  errorSummary    String?  @map("error_summary")
+  requestedBy     String   @map("requested_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requester User     @relation("PrintJobRequestedBy", fields: [requestedBy], references: [id])
+
+  @@index([companyId])
+  @@index([status])
+  @@index([entityType, entityId])
+  @@map("print_jobs")
+}
+
+model StockBudgetLease {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  branchId        String   @map("branch_id")
+  deviceId        String   @map("device_id")
+  productId       String   @map("product_id")
+  warehouseId     String   @map("warehouse_id")
+  qtyGranted      Decimal  @map("qty_granted")
+  qtyConsumed     Decimal  @default(0) @map("qty_consumed")
+  expiresAt       DateTime @map("expires_at")
+  status          String   @default("active") // active/exhausted/expired/revoked
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch    @relation("StockBudgetBranch", fields: [branchId], references: [id])
+  device     Device    @relation("StockBudgetDevice", fields: [deviceId], references: [id])
+  product    Product   @relation("StockBudgetProduct", fields: [productId], references: [id])
+  warehouse  Warehouse @relation("StockBudgetWarehouse", fields: [warehouseId], references: [id])
+
+  @@index([companyId])
+  @@index([deviceId])
+  @@index([productId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("stock_budget_leases")
+}
+
+model RiskAssessment {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  providerCode    String   @map("provider_code")
+  subjectType     String   @map("subject_type") // customer/lead/sale/delivery
+  subjectId       String   @map("subject_id")
+  requestEventId  String   @map("request_event_id")
+  score           Decimal? 
+  decision        String   @default("allow") // allow/review/block/unavailable
+  reasonCodes     String   @default("[]") // JSONB array
+  providerReference String? @map("provider_reference")
+  sanitizedResponse String @default("{}") @map("sanitized_response")
+  assessedAt      DateTime @default(now()) @map("assessed_at")
+  expiresAt       DateTime @map("expires_at")
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestEvent  BusinessEvent @relation("RiskAssessmentEvent", fields: [requestEventId], references: [id])
+
+  @@unique([companyId, requestEventId, providerCode])
+  @@index([companyId])
+  @@index([subjectType, subjectId])
+  @@index([decision])
+  @@index([expiresAt])
+  @@map("risk_assessments")
+}
+
+// ── §20.D09 Privacy tables ──
+
+model DataSubjectRequest {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  requestType     String   @map("request_type") // access/rectification/erasure/portability/objection
+  customerId      String?  @map("customer_id")
+  supplierId      String?  @map("supplier_id")
+  status          String   @default("open") // open/in_progress/completed/rejected
+  details         String?
+  resolvedBy      String?  @map("resolved_by")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer  Customer? @relation("DSRCustomer", fields: [customerId], references: [id])
+
+  @@index([companyId])
+  @@index([requestType])
+  @@index([status])
+  @@map("data_subject_requests")
+}
+
+model LegalHold {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id")
+  reason          String
+  declaredBy      String   @map("declared_by")
+  declaredAt      DateTime @default(now()) @map("declared_at")
+  releasedAt      DateTime? @map("released_at")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  declarer  User    @relation("LegalHoldDeclaredBy", fields: [declaredBy], references: [id])
+
+  @@index([companyId])
+  @@index([entityType, entityId])
+  @@index([releasedAt])
+  @@map("legal_holds")
+}
+
+// ── Risk Assessment Outcomes (for tuning thresholds) ──
+// Records the actual outcome of a transaction that was risk-assessed,
+// so admins can measure false-positive (review/block → no issue) and
+// false-negative (allow → chargeback/return/fraud) rates per threshold.
+
+model RiskAssessmentOutcome {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  riskAssessmentId    String   @map("risk_assessment_id")
+  outcomeType         String   @map("outcome_type") // completed/returned/charged_back/refunded/fraud_confirmed/no_issue
+  outcomeNotes        String?  @map("outcome_notes")
+  outcomeAmount       Decimal? @map("outcome_amount") // ৳ loss amount (0 for no_issue)
+  recordedBy          String?  @map("recorded_by") // user ID or "system"
+  recordedAt          DateTime @default(now()) @map("recorded_at")
+
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  riskAssessment    RiskAssessment  @relation(fields: [riskAssessmentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([riskAssessmentId])
+  @@index([outcomeType])
+  @@index([recordedAt])
+  @@map("risk_assessment_outcomes")
+}

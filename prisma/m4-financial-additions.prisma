@@ -1,0 +1,59 @@
+// prisma/m4-financial-additions.prisma
+// M4 financial models needed early for M3 (financial_accounts referenced by payments).
+// Full M4 schema (journal_entries, fiscal_periods, accounting_policies, expenses) added later.
+
+model ChartOfAccount {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  code                String
+  name                String
+  accountClass        String   @default("asset") @map("account_class") // asset/liability/equity/revenue/expense
+  accountSubtype      String   @map("account_subtype")
+  parentId            String?  @map("parent_id")
+  normalBalance       String   @default("D") @map("normal_balance") // D/C
+  allowManualPosting  Boolean  @default(false) @map("allow_manual_posting")
+  isControlAccount    Boolean  @default(false) @map("is_control_account")
+  isActive            Boolean  @default(true) @map("is_active")
+
+  company  Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  parent   ChartOfAccount?  @relation("CoaTree", fields: [parentId], references: [id])
+  children ChartOfAccount[] @relation("CoaTree")
+  financialAccounts FinancialAccount[]
+  taxComponentInputs   TaxComponent[] @relation("TaxCompInputAccount")
+  taxComponentOutputs  TaxComponent[] @relation("TaxCompOutputAccount")
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([accountClass])
+  @@index([accountSubtype])
+  @@index([parentId])
+  @@index([isControlAccount])
+  @@map("chart_of_accounts")
+}
+
+model FinancialAccount {
+  id                       String   @id @default(uuid())
+  companyId                String   @map("company_id")
+  branchId                 String?  @map("branch_id")
+  chartOfAccountId         String   @map("chart_of_account_id")
+  name                     String
+  accountType              String   @default("cash") @map("account_type") // cash/bank/mobile_wallet/clearing
+  currencyCode             String   @default("BDT") @map("currency_code")
+  accountNumberMasked      String?  @map("account_number_masked")
+  accountNumberEncrypted   Bytes?   @map("account_number_encrypted")
+  accountNumberKeyVersion  Int      @default(1) @map("account_number_key_version")
+  isActive                 Boolean  @default(true) @map("is_active")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch         Branch?        @relation(fields: [branchId], references: [id])
+  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
+  currency       Currency       @relation(fields: [currencyCode], references: [code])
+  payments       Payment[]
+  cashierShifts  CashierShift[]
+
+  @@unique([companyId, chartOfAccountId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([accountType])
+  @@map("financial_accounts")
+}

@@ -1,0 +1,487 @@
+// prisma/m3-additions.prisma
+// M3 schema additions — §5.7 Sales + §5.11 Payments/Cashier Shifts
+// Appended to schema.prisma.
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.7 Quotations, Sales, Taxes, and Returns
+// ──────────────────────────────────────────────────────────────────────
+
+model Quotation {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  branchId              String   @map("branch_id")
+  referenceNo           String   @map("reference_no")
+  clientTxnId           String   @map("client_txn_id")
+  customerId            String?  @map("customer_id")
+  customerNameSnapshot  String?  @map("customer_name_snapshot")
+  currencyCode          String   @default("BDT") @map("currency_code")
+  exchangeRate          Decimal  @default(1) @map("exchange_rate")
+  status                String   @default("draft") // draft/sent/accepted/rejected/expired/converted
+  validUntil            DateTime? @map("valid_until")
+  businessDate          DateTime @map("business_date")
+  subtotal              Decimal  @default(0)
+  discountTotal         Decimal  @default(0) @map("discount_total")
+  taxTotal              Decimal  @default(0) @map("tax_total")
+  grandTotal            Decimal  @default(0) @map("grand_total")
+  notes                 String?
+  convertedSaleId       String?  @map("converted_sale_id")
+  createdBy             String   @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  customer   Customer?  @relation(fields: [customerId], references: [id])
+  currency   Currency   @relation(fields: [currencyCode], references: [code])
+  convertedSale Sale?   @relation("QuotationConvertedSale", fields: [convertedSaleId], references: [id])
+  items      QuotationItem[]
+  sales      Sale[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([status])
+  @@index([businessDate])
+  @@index([validUntil])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  quotationId           String   @map("quotation_id")
+  lineNo                Int      @map("line_no")
+  productId             String   @map("product_id")
+  productNameSnapshot   String   @map("product_name_snapshot")
+  productCodeSnapshot   String   @map("product_code_snapshot")
+  qty                   Decimal
+  unitPrice             Decimal  @map("unit_price")
+  discountAmount        Decimal  @default(0) @map("discount_amount")
+  taxAmount             Decimal  @default(0) @map("tax_amount")
+  lineTotal             Decimal  @default(0) @map("line_total")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([quotationId, lineNo])
+  @@index([companyId])
+  @@index([quotationId])
+  @@index([productId])
+  @@map("quotation_items")
+}
+
+model Sale {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  branchId              String   @map("branch_id")
+  warehouseId           String   @map("warehouse_id")
+  referenceNo           String   @map("reference_no")
+  clientTxnId           String   @map("client_txn_id")
+  quotationId           String?  @map("quotation_id")
+  customerId            String?  @map("customer_id")
+  customerNameSnapshot  String?  @map("customer_name_snapshot")
+  customerPhoneSnapshot String?  @map("customer_phone_snapshot")
+  billerId              String   @map("biller_id")
+  cashierShiftId        String?  @map("cashier_shift_id")
+  saleStatus            String   @default("completed") @map("sale_status") // draft/held/completed/voided/partially_returned/returned
+  currencyCode          String   @default("BDT") @map("currency_code")
+  exchangeRate          Decimal  @default(1) @map("exchange_rate")
+  subtotal              Decimal  @default(0)
+  discountTotal         Decimal  @default(0) @map("discount_total")
+  taxTotal              Decimal  @default(0) @map("tax_total")
+  shippingTotal         Decimal  @default(0) @map("shipping_total")
+  grandTotal            Decimal  @default(0) @map("grand_total")
+  baseGrandTotal        Decimal  @default(0) @map("base_grand_total")
+  saleNote              String?  @map("sale_note")
+  businessDate          DateTime @map("business_date")
+  offlineCreatedAt      DateTime? @map("offline_created_at")
+  postedAt              DateTime? @map("posted_at")
+  voidedAt              DateTime? @map("voided_at")
+  voidedBy              String?  @map("voided_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  warehouse      Warehouse      @relation(fields: [warehouseId], references: [id])
+  quotation      Quotation?     @relation(fields: [quotationId], references: [id])
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+  currency       Currency       @relation(fields: [currencyCode], references: [code])
+  biller         User           @relation("SaleBiller", fields: [billerId], references: [id])
+  cashierShift   CashierShift?  @relation(fields: [cashierShiftId], references: [id])
+  voidedByUser   User?          @relation("SaleVoidedBy", fields: [voidedBy], references: [id])
+  items          SaleItem[]
+  returns        SaleReturn[]
+  payments       PaymentAllocation[]
+  installments   Installment[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([customerId])
+  @@index([billerId])
+  @@index([cashierShiftId])
+  @@index([saleStatus])
+  @@index([businessDate])
+  @@index([postedAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  saleId                String   @map("sale_id")
+  lineNo                Int      @map("line_no")
+  productId             String   @map("product_id")
+  productNameSnapshot   String   @map("product_name_snapshot")
+  productCodeSnapshot   String   @map("product_code_snapshot")
+  unitCodeSnapshot      String   @map("unit_code_snapshot")
+  qty                   Decimal
+  unitCostSnapshot      Decimal  @map("unit_cost_snapshot")
+  unitPriceSnapshot     Decimal  @map("unit_price_snapshot")
+  grossAmount           Decimal  @map("gross_amount")
+  discountAmount        Decimal  @default(0) @map("discount_amount")
+  taxableAmount         Decimal  @map("taxable_amount")
+  taxAmount             Decimal  @default(0) @map("tax_amount")
+  lineTotal             Decimal  @default(0) @map("line_total")
+  warrantyMonthsSnapshot Int?   @map("warranty_months_snapshot")
+  inventoryIssueSource  String   @default("sale") @map("inventory_issue_source") // sale/service_request/none
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  sale       Sale       @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product    Product    @relation(fields: [productId], references: [id])
+  serials    SaleItemSerial[]
+  taxes      SaleItemTax[]
+  returnItems SaleReturnItem[]
+
+  @@unique([saleId, lineNo])
+  @@index([companyId])
+  @@index([saleId])
+  @@index([productId])
+  @@index([inventoryIssueSource])
+  @@map("sale_items")
+}
+
+model SaleItemSerial {
+  saleItemId String @map("sale_item_id")
+  serialId   String @map("serial_id")
+
+  saleItem SaleItem      @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  serial   ProductSerial @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([saleItemId, serialId])
+  @@index([serialId])
+  @@map("sale_item_serials")
+}
+
+model SaleItemTax {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  saleItemId        String   @map("sale_item_id")
+  taxComponentId    String   @map("tax_component_id")
+  componentCodeSnapshot String @map("component_code_snapshot")
+  rateSnapshot      Decimal  @map("rate_snapshot")
+  taxableBase       Decimal  @map("taxable_base")
+  taxAmount         Decimal  @map("tax_amount")
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  saleItem      SaleItem      @relation(fields: [saleItemId], references: [id])
+  taxComponent  TaxComponent  @relation(fields: [taxComponentId], references: [id])
+
+  @@unique([saleItemId, taxComponentId])
+  @@index([companyId])
+  @@index([saleItemId])
+  @@index([taxComponentId])
+  @@map("sale_item_taxes")
+}
+
+model SaleReturn {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  branchId          String   @map("branch_id")
+  warehouseId       String   @map("warehouse_id")
+  referenceNo       String   @map("reference_no")
+  clientTxnId       String   @map("client_txn_id")
+  saleId            String   @map("sale_id")
+  status            String   @default("draft") // draft/approved/posted/voided
+  businessDate      DateTime @map("business_date")
+  disposition       String   @default("restock") // restock/damaged/repair/scrap/mixed
+  reason            String
+  subtotalCredit    Decimal  @default(0) @map("subtotal_credit")
+  taxCredit         Decimal  @default(0) @map("tax_credit")
+  totalCredit       Decimal  @default(0) @map("total_credit")
+  baseTotalCredit   Decimal  @default(0) @map("base_total_credit")
+  refundStatus      String   @default("not_required") @map("refund_status") // not_required/pending/partial/refunded
+  approvedBy        String?  @map("approved_by")
+  postedAt          DateTime? @map("posted_at")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  warehouse  Warehouse  @relation(fields: [warehouseId], references: [id])
+  sale       Sale       @relation(fields: [saleId], references: [id])
+  approver   User?      @relation("SaleReturnApprovedBy", fields: [approvedBy], references: [id])
+  creator    User       @relation("SaleReturnCreatedBy", fields: [createdBy], references: [id])
+  items      SaleReturnItem[]
+  payments   ReturnRefundAllocation[]
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([saleId])
+  @@index([status])
+  @@index([businessDate])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id                String   @id @default(uuid())
+  companyId         String   @map("company_id")
+  saleReturnId      String   @map("sale_return_id")
+  saleItemId        String   @map("sale_item_id")
+  qtyReturned       Decimal  @map("qty_returned")
+  unitPriceCredit   Decimal  @map("unit_price_credit")
+  unitCostSnapshot  Decimal  @map("unit_cost_snapshot")
+  discountCredit    Decimal  @default(0) @map("discount_credit")
+  taxCredit         Decimal  @default(0) @map("tax_credit")
+  lineCredit        Decimal  @default(0) @map("line_credit")
+  condition         String   @default("resalable") // resalable/damaged/repair/scrap
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  saleReturn  SaleReturn  @relation(fields: [saleReturnId], references: [id])
+  saleItem    SaleItem    @relation(fields: [saleItemId], references: [id])
+  serials     SaleReturnItemSerial[]
+
+  @@index([companyId])
+  @@index([saleReturnId])
+  @@index([saleItemId])
+  @@map("sale_return_items")
+}
+
+model SaleReturnItemSerial {
+  saleReturnItemId String @map("sale_return_item_id")
+  serialId         String @map("serial_id")
+
+  saleReturnItem SaleReturnItem @relation(fields: [saleReturnItemId], references: [id], onDelete: Restrict)
+  serial         ProductSerial   @relation(fields: [serialId], references: [id], onDelete: Restrict)
+
+  @@id([saleReturnItemId, serialId])
+  @@index([serialId])
+  @@map("sale_return_item_serials")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// §5.11 Payments, Cashier Shifts, Account Transfers
+// ──────────────────────────────────────────────────────────────────────
+
+model CashierShift {
+  id                   String   @id @default(uuid())
+  companyId            String   @map("company_id")
+  branchId             String   @map("branch_id")
+  warehouseId          String   @map("warehouse_id")
+  cashierId            String   @map("cashier_id")
+  cashAccountId        String   @map("cash_account_id")
+  status               String   @default("open") // open/closing/closed/approved
+  openedAt             DateTime @default(now()) @map("opened_at")
+  closedAt             DateTime? @map("closed_at")
+  openingFloat         Decimal  @default(0) @map("opening_float")
+  expectedClosingCash  Decimal? @map("expected_closing_cash")
+  countedClosingCash   Decimal? @map("counted_closing_cash")
+  variance             Decimal?
+  varianceReason       String?  @map("variance_reason")
+  approvedBy           String?  @map("approved_by")
+  approvedAt           DateTime? @map("approved_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch      Branch     @relation(fields: [branchId], references: [id])
+  warehouse   Warehouse  @relation(fields: [warehouseId], references: [id])
+  cashier     User       @relation("CashierShiftCashier", fields: [cashierId], references: [id])
+  approver    User?      @relation("CashierShiftApprover", fields: [approvedBy], references: [id])
+  sales       Sale[]
+  payments    Payment[]
+  drawerCounts CashDrawerCount[]
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([cashierId])
+  @@index([cashAccountId])
+  @@index([status])
+  @@index([openedAt])
+  @@index([closedAt])
+  @@map("cashier_shifts")
+}
+
+model CashDrawerCount {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  cashierShiftId      String   @map("cashier_shift_id")
+  countType           String   @default("opening") @map("count_type") // opening/spot/closing/recount
+  countedAmount       Decimal  @default(0) @map("counted_amount")
+  denominationDetail  String   @default("{}") @map("denomination_detail") // JSONB
+  countedBy           String   @map("counted_by")
+  countedAt           DateTime @default(now()) @map("counted_at")
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  cashierShift  CashierShift  @relation(fields: [cashierShiftId], references: [id])
+  counter       User          @relation("CashDrawerCountBy", fields: [countedBy], references: [id])
+
+  @@index([companyId])
+  @@index([cashierShiftId])
+  @@index([countType])
+  @@map("cash_drawer_counts")
+}
+
+model Payment {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id")
+  branchId              String   @map("branch_id")
+  referenceNo           String   @map("reference_no")
+  clientTxnId           String   @map("client_txn_id")
+  paymentType           String   @map("payment_type") // sale_receipt/purchase_payment/customer_advance/sale_refund/expense_payment/other
+  direction             String   @default("incoming") // incoming/outgoing
+  customerId            String?  @map("customer_id")
+  supplierId            String?  @map("supplier_id")
+  saleReturnId          String?  @map("sale_return_id")
+  financialAccountId    String   @map("financial_account_id")
+  cashierShiftId        String?  @map("cashier_shift_id")
+  currencyCode          String   @default("BDT") @map("currency_code")
+  exchangeRate          Decimal  @default(1) @map("exchange_rate")
+  amount                Decimal  @default(0)
+  baseAmount            Decimal  @default(0) @map("base_amount")
+  paymentMethod         String   @default("cash") @map("payment_method") // cash/card/cheque/bkash/nagad/rocket/bank_transfer/gift_card/store_credit/other
+  methodReference       String?  @map("method_reference")
+  chequeStatus          String   @default("not_applicable") @map("cheque_status") // not_applicable/pending_clearance/cleared/bounced/cancelled
+  paymentStatus         String   @default("posted") @map("payment_status") // pending/posted/failed/reversed
+  businessDate          DateTime @map("business_date")
+  receivedOrPaidAt      DateTime @default(now()) @map("received_or_paid_at")
+  reversedPaymentId     String?  @map("reversed_payment_id")
+  notes                 String?
+  createdBy             String   @map("created_by")
+  postedAt              DateTime? @map("posted_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch           Branch        @relation(fields: [branchId], references: [id])
+  customer         Customer?     @relation(fields: [customerId], references: [id])
+  supplier         Supplier?     @relation(fields: [supplierId], references: [id])
+  saleReturn       SaleReturn?   @relation(fields: [saleReturnId], references: [id])
+  cashierShift     CashierShift? @relation(fields: [cashierShiftId], references: [id])
+  currency         Currency      @relation(fields: [currencyCode], references: [code])
+  reversedPayment  Payment?      @relation("PaymentReversal", fields: [reversedPaymentId], references: [id])
+  reversingPayment Payment[]     @relation("PaymentReversal")
+  allocations      PaymentAllocation[]
+  refundAllocations ReturnRefundAllocation[]
+  creator          User          @relation("PaymentCreatedBy", fields: [createdBy], references: [id])
+
+  @@unique([companyId, referenceNo])
+  @@unique([companyId, clientTxnId])
+  @@index([companyId])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([saleReturnId])
+  @@index([cashierShiftId])
+  @@index([paymentType])
+  @@index([direction])
+  @@index([paymentMethod])
+  @@index([chequeStatus])
+  @@index([paymentStatus])
+  @@index([businessDate])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  paymentId           String   @map("payment_id")
+  eventId             String   @map("event_id")
+  eventLineNo         Int      @map("event_line_no")
+  saleId              String?  @map("sale_id")
+  purchaseId          String?  @map("purchase_id")
+  allocationSource    String   @default("direct") @map("allocation_source") // direct/advance/store_credit/courier_cod
+  allocatedAmount     Decimal  @map("allocated_amount")
+  allocatedBaseAmount Decimal  @map("allocated_base_amount")
+  allocatedAt         DateTime @default(now()) @map("allocated_at")
+  createdBy           String   @map("created_by")
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id])
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
+  sale         Sale?        @relation(fields: [saleId], references: [id])
+  purchase     Purchase?    @relation(fields: [purchaseId], references: [id])
+  creator      User         @relation("PaymentAllocCreatedBy", fields: [createdBy], references: [id])
+  installments InstallmentAllocation[]
+
+  @@unique([companyId, eventId, eventLineNo])
+  @@index([companyId])
+  @@index([paymentId])
+  @@index([eventId])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@index([allocationSource])
+  @@map("payment_allocations")
+}
+
+model ReturnRefundAllocation {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  paymentId           String   @map("payment_id")
+  saleReturnId        String?  @map("sale_return_id")
+  purchaseReturnId    String?  @map("purchase_return_id")
+  allocatedAmount     Decimal  @map("allocated_amount")
+  allocatedBaseAmount Decimal  @map("allocated_base_amount")
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id])
+  saleReturn   SaleReturn?  @relation(fields: [saleReturnId], references: [id])
+
+  @@unique([paymentId])
+  @@index([companyId])
+  @@index([paymentId])
+  @@index([saleReturnId])
+  @@index([purchaseReturnId])
+  @@map("return_refund_allocations")
+}
+
+model Installment {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  saleId      String   @map("sale_id")
+  installmentNo Int    @map("installment_no")
+  dueDate     DateTime @map("due_date")
+  amount      Decimal
+  status      String   @default("scheduled") // scheduled/cancelled
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  sale    Sale       @relation(fields: [saleId], references: [id])
+  allocations InstallmentAllocation[]
+
+  @@unique([saleId, installmentNo])
+  @@index([companyId])
+  @@index([saleId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("installments")
+}
+
+model InstallmentAllocation {
+  id                  String   @id @default(uuid())
+  companyId           String   @map("company_id")
+  installmentId       String   @map("installment_id")
+  paymentAllocationId String   @unique @map("payment_allocation_id")
+  allocatedAmount     Decimal  @map("allocated_amount")
+  allocatedAt         DateTime @default(now()) @map("allocated_at")
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  installment       Installment       @relation(fields: [installmentId], references: [id])
+  paymentAllocation PaymentAllocation @relation(fields: [paymentAllocationId], references: [id])
+
+  @@index([companyId])
+  @@index([installmentId])
+  @@map("installment_allocations")
+}
