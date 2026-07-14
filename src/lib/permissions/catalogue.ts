@@ -245,4 +245,29 @@ export const SYSTEM_ROLES = [
     description: 'Service technician. Handles service requests and warranty claims.',
     permissions: ['service.*', 'warranty.fulfill', 'inventory.read', 'product.read'],
   },
+  {
+    name: 'purchase_officer',
+    description: 'Purchase officer. Manages suppliers, POs, receiving prep, supplier returns.',
+    permissions: ['supplier.*', 'purchase.*', 'purchase_return.post', 'landed_cost.post', 'inventory.read', 'product.read', 'report.execute'],
+  },
+  {
+    name: 'sales_agent',
+    description: 'Sales staff. Customers, quotations, sales, CRM, allowed discounts.',
+    permissions: ['customer.*', 'quotation.*', 'sale.post', 'sale.read', 'sale.hold.branch', 'sale.refund.branch', 'discount.override', 'crm.lead.*', 'product.read', 'inventory.read', 'report.execute'],
+  },
+  {
+    name: 'delivery_staff',
+    description: 'Delivery staff. Assigned deliveries and proof of delivery only.',
+    permissions: ['delivery.view.assigned', 'delivery.dispatch', 'delivery.complete', 'inventory.read', 'product.read'],
+  },
+  {
+    name: 'hr_manager',
+    description: 'HR manager. Employees, attendance, leave, payroll prep/approval per segregation.',
+    permissions: ['hr.*', 'employee.*', 'attendance.*', 'leave.*', 'payroll.prepare', 'payroll.approve', 'report.execute'],
+  },
+  {
+    name: 'auditor_viewer',
+    description: 'Auditor / viewer. Read-only access across modules, no mutations, no secrets.',
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.read', 'inventory.read', 'purchase.read', 'sale.read', 'sale.view.global', 'shift.read', 'payment.read', 'journal.read', 'expense.read', 'report.execute', 'reconciliation.read', 'audit.view', 'asset.view.global', 'bank.reconciliation.view.company'],
+  },
 ] as const;

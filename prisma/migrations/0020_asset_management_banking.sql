@@ -160,13 +160,20 @@ CREATE TABLE IF NOT EXISTS bank_reconciliation_lines (
   matched_by UUID,
   matched_at TIMESTAMPTZ,
   CONSTRAINT fk_bank_rec_lines_company_id FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT,
-  CONSTRAINT fk_bank_rec_lines_reconciliation_id FOREIGN KEY (reconciliation_id) REFERENCES bank_reconciliations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_bank_rec_lines_payment_id FOREIGN KEY (payment_id) REFERENCES payments(id)
+  CONSTRAINT fk_bank_rec_lines_reconciliation_id FOREIGN KEY (reconciliation_id) REFERENCES bank_reconciliations(id) ON DELETE CASCADE
+  -- NOTE: FK to partitioned table payments(id) on column 'payment_id' is enforced at
+  -- the application layer. The payments table is partitioned by business_date and its
+  -- PRIMARY KEY is (id, business_date), so a single-column FK on payment_id alone is
+  -- not possible. Application-layer validation in createBankReconciliation + autoMatch
+  -- ensures payment_id resolves to a real payment within the same tenant.
 );
 
 CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_company_id ON bank_reconciliation_lines(company_id);
 CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_reconciliation_id ON bank_reconciliation_lines(reconciliation_id);
 CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_match_status ON bank_reconciliation_lines(match_status);
+CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_payment_id ON bank_reconciliation_lines(payment_id);
+CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_matched_line_id ON bank_reconciliation_lines(matched_line_id);
+CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_transaction_date ON bank_reconciliation_lines(transaction_date);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY (same pattern as 0017)
@@ -174,6 +181,8 @@ CREATE INDEX IF NOT EXISTS idx_bank_rec_lines_match_status ON bank_reconciliatio
 DO $$
 DECLARE
   tbl TEXT;
+  pol_read TEXT;
+  pol_write TEXT;
 BEGIN
   FOR tbl IN SELECT unnest(ARRAY[
     'fixed_asset_categories',
@@ -183,17 +192,18 @@ BEGIN
     'bank_reconciliation_lines'
   ])
   LOOP
+    pol_read := tbl || '_tenant_read';
+    pol_write := tbl || '_tenant_write';
+
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', tbl);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', tbl);
 
-    EXECUTE format(
-      'DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = ''%s_tenant_read'' AND tablename = ''%s'') THEN EXECUTE ''CREATE POLICY %s_tenant_read ON %s FOR SELECT TO app_role USING (app_is_global() OR company_id = app_company_id());''; END IF; END $$;',
-      tbl, tbl, tbl, tbl
-    );
-    EXECUTE format(
-      'DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = ''%s_tenant_write'' AND tablename = ''%s'') THEN EXECUTE ''CREATE POLICY %s_tenant_write ON %s FOR ALL TO app_role USING (app_is_global() OR company_id = app_company_id()) WITH CHECK (app_is_global() OR company_id = app_company_id());''; END IF; END $$;',
-      tbl, tbl, tbl, tbl
-    );
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = pol_read AND tablename = tbl) THEN
+      EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO app_role USING (app_is_global() OR company_id = app_company_id());', pol_read, tbl);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = pol_write AND tablename = tbl) THEN
+      EXECUTE format('CREATE POLICY %I ON %I FOR ALL TO app_role USING (app_is_global() OR company_id = app_company_id()) WITH CHECK (app_is_global() OR company_id = app_company_id());', pol_write, tbl);
+    END IF;
 
     -- app_role: full DML (subject to RLS)
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO app_role;', tbl);

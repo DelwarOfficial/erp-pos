@@ -73,6 +73,7 @@ const DEFAULT_COA: CoaSpec[] = [
   { code: '6100', name: 'Rent Expense', accountClass: 'expense', accountSubtype: 'rent', normalBalance: 'D' },
   { code: '6200', name: 'Utilities', accountClass: 'expense', accountSubtype: 'utilities', normalBalance: 'D' },
   { code: '6900', name: 'Miscellaneous Expense', accountClass: 'expense', accountSubtype: 'miscellaneous', normalBalance: 'D', allowManualPosting: true },
+  { code: '7000', name: 'Operating Expenses (Control)', accountClass: 'expense', accountSubtype: 'operating_control', normalBalance: 'D', isControlAccount: true },
 ];
 
 export async function seedDefaultCoa(

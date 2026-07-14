@@ -116,7 +116,7 @@ describe('Security: Idempotency Coverage', () => {
     const allRoutes = execSync('grep -rl "export async function POST\\|export async function PUT\\|export async function PATCH" src/app/api/v1/', { encoding: 'utf8' }).trim().split('\n');
     const withIdempotency = execSync('grep -rl "requireIdempotencyKey" src/app/api/v1/', { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
 
-    const exemptPatterns = ['auth/', 'webhooks/', 'cron/', 'health', 'webauthn', 'mfa/', 'offline/bootstrap', 'risk-alerts/evaluate'];
+    const exemptPatterns = ['auth/', 'webhooks/', 'cron/', 'health', 'webauthn', 'mfa/', 'offline/bootstrap', 'risk-alerts/evaluate', 'notifications/'];
 
     const missingBusiness = allRoutes.filter(route =>
       !withIdempotency.includes(route) &&

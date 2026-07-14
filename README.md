@@ -25,7 +25,7 @@
 │  └──────────┘  └───────────┘  └────────────┘  └────────────────┘  │
 │  ┌──────────┐  ┌───────────┐  ┌────────────┐  ┌────────────────┐  │
 │  │  Reports │  │ Reconcile │  │   i18n     │  │   Providers    │  │
-│  │ 28 types │  │ 20 checks │  │ bn-BD/en-BD│  │ Slack/Telegram │  │
+│  │ 28 types │  │ 22 checks │  │ bn-BD/en-BD│  │ Slack/Telegram │  │
 │  └──────────┘  └───────────┘  └────────────┘  └────────────────┘  │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │
@@ -34,8 +34,8 @@
 ┌─────────────┐  ┌──────────────┐  ┌────────────────┐
 │ PostgreSQL  │  │    Redis     │  │  S3 / MinIO    │
 │  16+        │  │  7 (BullMQ)  │  │  (Media/Backup)│
-│  184 tables │  │  5 Workers   │  │  Encrypted     │
-│  170 RLS    │  │  Outbox/Recon│  │  Versioned     │
+│  201 tables │  │  5 Workers   │  │  Encrypted     │
+│  175 RLS    │  │  Outbox/Recon│  │  Versioned     │
 │  352 funcs  │  │  Retention   │  │  Signed URLs   │
 └─────────────┘  └──────────────┘  └────────────────┘
 ```
@@ -46,26 +46,26 @@
 
 | Metric | Count |
 |--------|-------|
-| Prisma models | 176 |
-| PostgreSQL tables (migrations) | 184 |
-| RLS-enabled tables | 170 |
+| Prisma models | 181 |
+| PostgreSQL tables (migrations) | 201 |
+| RLS-enabled tables | 175 |
 | SQL functions (SECURITY DEFINER) | 352 |
-| SQL triggers | 38 |
-| CHECK constraints | 1,687 |
+| SQL triggers | 62 |
+| CHECK constraints | 1,700+ |
 | EXCLUDE constraints | 2 |
 | SQL views | 13 |
-| Domain commands | 37 (prompt rule 8) |
-| API routes | 118 |
-| UI pages | 32 |
+| Domain commands | 26 (across M2–M6) |
+| API routes | 132 |
+| UI pages | 38 |
 | Reports | 28 |
-| Reconciliation checks | 20 |
-| Permission codes | 130 |
-| System roles | 8 |
-| Feature flags | 10 |
+| Reconciliation checks | 22 |
+| Permission codes | 134 |
+| System roles | 13 |
+| Feature flags | 12 |
 | Test files | 45 |
 | Tests passing | 395 |
 | Translation keys (per locale) | 150+ |
-| Migrations | 19 (forward-only) |
+| Migrations | 20 (forward-only) |
 | ADRs | 6 |
 | Runbooks | 4 |
 
@@ -76,13 +76,14 @@
 ```
 erp-pos/
 ├── prisma/
-│   ├── schema.prisma                    # 176 Prisma models (mirrors DB schema)
-│   ├── migrations/                      # 19 forward-only SQL migrations
+│   ├── schema.prisma                    # 181 Prisma models (mirrors DB schema)
+│   ├── migrations/                      # 20 forward-only SQL migrations
 │   │   ├── 0001_extensions_and_schemas.sql
 │   │   ├── 0002_organization_currency.sql
 │   │   ├── ...
 │   │   ├── 0018_journal_payment_immutable_triggers.sql
-│   │   └── 0019_required_views.sql      # 13 SQL views (§11.2)
+│   │   ├── 0019_required_views.sql      # 13 SQL views (§11.2)
+│   │   └── 0020_asset_management_banking.sql  # §21.1 Fixed Assets + §21.2 Bank Rec
 │   ├── functions/                       # 33 SECURITY DEFINER SQL functions
 │   │   ├── additional_functions.sql     # post_stock_movement, validate_*, etc.
 │   │   ├── missing_functions.sql        # 9 functions added in audit
@@ -358,6 +359,48 @@ Client → POST /api/v1/auth/login { email, password }
   ├─ 7. Issue refresh token (hashed, device-bound, family-based)
   └─ 8. Return { user, access_token_expires_in }
 ```
+
+---
+
+
+## Fixed Asset Management (§21.1)
+
+Feature-flagged module (`asset_management_enabled`, default OFF) for capitalising fixed assets,
+running depreciation (straight-line or declining-balance), and recording disposals with gain/loss
+accounting. All asset events post through `post_journal_entry()` so the GL stays in sync with the
+asset register.
+
+| Layer | File / Object |
+|-------|---------------|
+| Prisma models | `FixedAsset`, `FixedAssetCategory`, `FixedAssetDepreciation` |
+| Migration | `prisma/migrations/0020_asset_management_banking.sql` |
+| Domain commands | `src/domain/commands/m4/AssetManagement.ts` → `postAssetAcquisition`, `postDepreciation`, `postAssetDisposal` |
+| API routes | `POST /api/v1/fixed-assets`, `GET /api/v1/fixed-assets/[id]`, `POST /api/v1/fixed-assets/[id]/depreciate`, `POST /api/v1/fixed-assets/[id]/dispose` |
+| UI page | `/dashboard/assets` |
+| Reconciliation | `FIXED_ASSET_NBV` (NBV = cost − accumulated depreciation) |
+| Permissions | `asset.view.branch`, `asset.view.global`, `asset.manage.branch`, `asset.depreciate.company` |
+| CoA accounts | 1800 (control), 1810 Office Equipment, 1820 Vehicles, 1830 Furniture, 1840 Computers, 1850 Accumulated Depreciation (contra), 1860 Depreciation Expense, 1870 Gain/Loss on Disposal |
+| Trigger | `trg_fixed_asset_dep_immutable` prevents mutation of posted depreciation rows |
+
+---
+
+## Bank Reconciliation (§21.2)
+
+Feature-flagged module (`bank_reconciliation_enabled`, default OFF) for matching system payment
+lines to bank statement lines with auto-match (amount + ±3 day tolerance) and manual match.
+Variance posting creates an adjustment journal entry so the GL bank account equals the bank
+statement closing balance.
+
+| Layer | File / Object |
+|-------|---------------|
+| Prisma models | `BankReconciliation`, `BankReconciliationLine` |
+| Migration | `prisma/migrations/0020_asset_management_banking.sql` |
+| Domain commands | `src/domain/commands/m4/BankReconciliation.ts` → `createBankReconciliation`, `addStatementLinesBulk`, `autoMatchTransactions`, `manualMatch`, `postReconciliationVariance` |
+| API routes | `POST /api/v1/bank-reconciliations`, `GET /api/v1/bank-reconciliations/[id]`, `POST /api/v1/bank-reconciliations/[id]/statement-lines`, `POST /api/v1/bank-reconciliations/[id]/auto-match`, `POST /api/v1/bank-reconciliations/[id]/manual-match`, `POST /api/v1/bank-reconciliations/[id]/finalize` |
+| UI page | `/dashboard/bank-reconciliation` |
+| Reconciliation | `BANK_RECONCILIATION_VARIANCE` (flags reconciliations with unresolved variance) |
+| Permissions | `bank.reconciliation.view.company`, `bank.reconciliation.manage.company` |
+| Note | The `payments` table is partitioned by `business_date` with composite PK `(id, business_date)`. The FK from `bank_reconciliation_lines.payment_id` is therefore enforced at the application layer (matches the pattern used by `payment_allocations` and `return_refund_allocations`). |
 
 ---
 
