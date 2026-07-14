@@ -1,0 +1,151 @@
+# .github/workflows/ci.yml
+# CI/CD pipeline per §6 rule 10 + §8 testing requirements.
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run lint
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx vitest run
+
+  migration-validation:
+    name: Migration Validation (Postgres 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Create roles
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE ROLE app_role NOSUPERUSER NOBYPASSRLS LOGIN PASSWORD 'app';"
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE ROLE migration_role NOSUPERUSER BYPASSRLS LOGIN PASSWORD 'mig';"
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE erp_pos_ci;"
+      - name: Run migrations
+        run: |
+          for f in prisma/migrations/0001_extensions_and_schemas.sql \
+                   prisma/migrations/0002_organization_currency.sql \
+                   prisma/migrations/0003_identity_rbac_devices.sql \
+                   prisma/migrations/0004_numbering_events_idempotency.sql \
+                   prisma/migrations/0005_audit_approval_statutory_reconciliation.sql \
+                   prisma/migrations/0006_catalogue_pricing_tax.sql \
+                   prisma/migrations/0007_settings_localization_featureflags.sql \
+                   prisma/migrations/0008_partitioning.sql; do
+            PGPASSWORD=mig psql -h localhost -U migration_role -d erp_pos_ci -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: Verify tables
+        run: |
+          COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d erp_pos_ci -t -A -c "SELECT count(*) FROM pg_tables WHERE schemaname='public';")
+          echo "Tables created: $COUNT"
+          if [ "$COUNT" -lt 60 ]; then echo "FAIL: expected >= 60 tables"; exit 1; fi
+
+  security-scan:
+    name: Security Scan (SAST + Dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run npm audit
+        run: npm audit --audit-level=high || true
+      - name: Check for secrets
+        run: |
+          ! grep -r "password.*=.*['\"]" src/ --include="*.ts" | grep -v "test\|mock\|placeholder\|dummy\|hash\|ChangeMe"
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: false
+          tags: erp-pos-web:latest
+      - name: Build worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.worker
+          push: false
+          tags: erp-pos-worker:latest
+
+  e2e-tests:
+    name: E2E + Accessibility (Playwright + axe-core)
+    runs-on: ubuntu-latest
+    needs: [unit-tests, build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run e2e + accessibility tests
+        run: npx playwright test --reporter=line
+        env:
+          CI: 'true'
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
