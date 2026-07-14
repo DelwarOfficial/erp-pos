@@ -35,7 +35,15 @@ export async function GET(req: NextRequest) {
     const employees = await db.employee.findMany({
       where: { companyId: auth.companyId },
       take: 100, orderBy: { name: 'asc' },
-      include: {
+      select: {
+        id: true,
+        employeeNo: true,
+        name: true,
+        phone: true,
+        email: true,
+        employmentStatus: true,
+        baseSalary: true,
+        joinDate: true,
         branch: { select: { id: true, name: true, code: true } },
         department: { select: { id: true, name: true } },
         designation: { select: { id: true, name: true } },

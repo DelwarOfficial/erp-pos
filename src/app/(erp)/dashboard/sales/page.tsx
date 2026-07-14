@@ -3,12 +3,13 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Sale {
   id: string;
@@ -29,14 +30,26 @@ interface Sale {
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch('/api/v1/sales?limit=50')
-      .then(r => r.json())
-      .then(d => setSales(d.items ?? []))
-      .catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/v1/sales?limit=50');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load sales');
+      setSales(data.items ?? []);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   async function handleVoid(saleId: string) {
     const reason = prompt('Void reason?');
@@ -61,52 +74,60 @@ export default function SalesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Receipt className="h-6 w-6" /> Sales</h1>
-        <p className="text-muted-foreground">Posted POS/customer invoices. Voidable within 24 hours.</p>
+        <p className="text-muted-foreground">Recent POS/customer invoices (last 30 days). Voidable within 24 hours.</p>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Sales ({sales.length})</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Sales ({sales.length})</CardTitle>
+          {!loading && !error && (
+            <Button size="sm" variant="ghost" onClick={load}>Refresh</Button>
+          )}
+        </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <LoadingState label="Loading sales…" />
+          ) : error ? (
+            <ErrorState message={error} onRetry={load} />
           ) : sales.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No sales yet. Go to <a href="/dashboard/pos" className="text-primary hover:underline">POS</a> to make a sale.
-            </div>
+            <EmptyState
+              icon={<Receipt className="h-8 w-8 text-muted-foreground/50" />}
+              message={<>No sales in the last 30 days. Go to <a href="/dashboard/pos" className="text-primary hover:underline">POS</a> to make a sale.</>}
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-2">Reference</th>
-                    <th>Customer</th>
-                    <th>Biller</th>
-                    <th>Status</th>
-                    <th className="text-right">Total</th>
-                    <th className="text-right">Items</th>
-                    <th className="text-right">Payments</th>
-                    <th>Date</th>
+                    <th className="py-2 pr-3">Reference</th>
+                    <th className="pr-3">Customer</th>
+                    <th className="pr-3">Biller</th>
+                    <th className="pr-3">Status</th>
+                    <th className="pr-3 text-right">Total</th>
+                    <th className="pr-3 text-right">Items</th>
+                    <th className="pr-3 text-right">Payments</th>
+                    <th className="pr-3">Date</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {sales.map(s => (
                     <tr key={s.id} className="border-b hover:bg-slate-50">
-                      <td className="py-2 font-mono">{s.reference_no}</td>
-                      <td>{s.customer?.name ?? 'Walk-in'}</td>
-                      <td className="text-xs">{s.biller?.name}</td>
-                      <td>
+                      <td className="py-2 pr-3 font-mono whitespace-nowrap">{s.reference_no}</td>
+                      <td className="pr-3 truncate max-w-[160px]">{s.customer?.name ?? 'Walk-in'}</td>
+                      <td className="pr-3 text-xs truncate max-w-[120px]">{s.biller?.name ?? '—'}</td>
+                      <td className="pr-3">
                         <Badge variant={s.sale_status === 'completed' ? 'default' : s.sale_status === 'voided' ? 'destructive' : 'secondary'}>
                           {s.sale_status}
                         </Badge>
                       </td>
-                      <td className="text-right font-mono">{s.currency_code} {parseFloat(s.grand_total).toFixed(2)}</td>
-                      <td className="text-right">{s.item_count}</td>
-                      <td className="text-right">{s.payment_count}</td>
-                      <td className="text-xs">{s.posted_at ? new Date(s.posted_at).toLocaleString() : '—'}</td>
+                      <td className="pr-3 text-right font-mono whitespace-nowrap">{s.currency_code} {parseFloat(s.grand_total).toFixed(2)}</td>
+                      <td className="pr-3 text-right">{s.item_count}</td>
+                      <td className="pr-3 text-right">{s.payment_count}</td>
+                      <td className="pr-3 text-xs whitespace-nowrap">{s.posted_at ? new Date(s.posted_at).toLocaleString() : '—'}</td>
                       <td>
                         {s.sale_status === 'completed' && (
-                          <Button size="sm" variant="ghost" onClick={() => handleVoid(s.id)}>Void</Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleVoid(s.id)} className="min-h-[36px]">Void</Button>
                         )}
                       </td>
                     </tr>

@@ -48,15 +48,38 @@ export async function GET(req: NextRequest) {
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
+    // Default to last 30 days if no date filters supplied — keeps the list bounded.
+    const fromParam = url.searchParams.get('from');
+    const toParam = url.searchParams.get('to');
+    const applyDateFilter = url.searchParams.get('all_dates') !== 'true';
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const from = fromParam ? new Date(fromParam) : (applyDateFilter ? thirtyDaysAgo : undefined);
+    const to = toParam ? new Date(toParam) : undefined;
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.saleStatus = status;
+    if (from || to) {
+      where.businessDate = {};
+      if (from) (where.businessDate as Record<string, unknown>).gte = from;
+      if (to) (where.businessDate as Record<string, unknown>).lte = to;
+    }
 
+    // Use `select` to limit payload (no full row dump). _count avoids per-sale item queries.
     const sales = await db.sale.findMany({
       where,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        referenceNo: true,
+        saleStatus: true,
+        currencyCode: true,
+        grandTotal: true,
+        baseGrandTotal: true,
+        businessDate: true,
+        postedAt: true,
+        voidedAt: true,
         customer: { select: { id: true, name: true } },
         biller: { select: { id: true, name: true, email: true } },
         _count: { select: { items: true, payments: true } },

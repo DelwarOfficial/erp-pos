@@ -25,7 +25,15 @@ export async function GET(req: NextRequest) {
     const stocks = await db.warehouseStock.findMany({
       where,
       take: limit,
-      include: {
+      select: {
+        id: true,
+        qtyOnHand: true,
+        qtyReserved: true,
+        qtyInTransitOut: true,
+        qtyDamaged: true,
+        movingAverageCost: true,
+        version: true,
+        updatedAt: true,
         product: {
           select: {
             id: true, name: true, code: true,

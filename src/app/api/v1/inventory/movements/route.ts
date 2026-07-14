@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     const from = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : undefined;
     const to = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : undefined;
     const cursor = url.searchParams.get('cursor') ?? undefined;
-    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
+    // Default to 500 rows max (per task §slow-queries #4); hard cap 500.
+    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '500', 10), 500);
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (warehouseId) where.warehouseId = warehouseId;
@@ -36,7 +37,23 @@ export async function GET(req: NextRequest) {
       where,
       take: limit + 1,
       orderBy: { effectiveAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        eventId: true,
+        eventLineNo: true,
+        warehouseId: true,
+        productId: true,
+        stockBucket: true,
+        movementType: true,
+        qtyDelta: true,
+        unitCost: true,
+        totalCostDelta: true,
+        referenceType: true,
+        referenceId: true,
+        effectiveAt: true,
+        postedAt: true,
+        reversalOfMovementId: true,
+        metadata: true,
         product: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
       },

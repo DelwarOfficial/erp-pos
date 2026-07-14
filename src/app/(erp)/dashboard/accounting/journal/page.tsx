@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Plus, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface JournalEntry {
   id: string; entry_no: string; status: string;
@@ -29,6 +30,7 @@ export default function JournalPage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [coa, setCoa] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [posting, setPosting] = useState(false);
   const [form, setForm] = useState({
@@ -46,12 +48,17 @@ export default function JournalPage() {
 
   async function loadEntries() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/v1/journal-entries?limit=20');
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load journal entries');
       setEntries(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally { setLoading(false); }
   }
 
   function updateLine(idx: number, field: string, value: string) {
@@ -154,20 +161,30 @@ export default function JournalPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Entries ({entries.length})</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Entries ({entries.length})</CardTitle>
+          {!loading && !error && <Button size="sm" variant="ghost" onClick={loadEntries}>Refresh</Button>}
+        </CardHeader>
         <CardContent>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : entries.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No journal entries yet.</div>
+          {loading ? (
+            <LoadingState label="Loading journal entries…" />
+          ) : error ? (
+            <ErrorState message={error} onRetry={loadEntries} />
+          ) : entries.length === 0 ? (
+            <EmptyState
+              icon={<BookOpen className="h-8 w-8 text-muted-foreground/50" />}
+              message="No journal entries yet."
+            />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
               {entries.map(e => (
                 <div key={e.id} className="border rounded p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <code className="font-mono text-sm font-medium">{e.entry_no}</code>
                       <Badge variant={e.status === 'posted' ? 'default' : e.status === 'reversed' ? 'destructive' : 'secondary'}>{e.status}</Badge>
                     </div>
-                    <span className="text-xs text-muted-foreground">{new Date(e.entry_date).toLocaleDateString()}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.entry_date).toLocaleDateString()}</span>
                   </div>
                   <div className="text-sm mt-1">{e.description}</div>
                   <div className="text-xs text-muted-foreground mt-1">
@@ -176,9 +193,9 @@ export default function JournalPage() {
                   {e.lines && e.lines.length > 0 && (
                     <div className="mt-2 pl-4 border-l-2 space-y-1">
                       {e.lines.map(l => (
-                        <div key={l.line_no} className="text-xs flex justify-between">
-                          <span><code>{l.account.code}</code> {l.account.name} {l.memo && `— ${l.memo}`}</span>
-                          <span className="font-mono">
+                        <div key={l.line_no} className="text-xs flex flex-col sm:flex-row sm:justify-between gap-1">
+                          <span className="break-all"><code>{l.account.code}</code> {l.account.name} {l.memo && `— ${l.memo}`}</span>
+                          <span className="font-mono whitespace-nowrap">
                             {parseFloat(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}
                           </span>
                         </div>

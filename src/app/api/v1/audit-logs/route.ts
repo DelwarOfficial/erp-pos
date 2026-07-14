@@ -18,8 +18,13 @@ export async function GET(req: NextRequest) {
     const entityType = url.searchParams.get('entity_type') ?? undefined;
     const entityId = url.searchParams.get('entity_id') ?? undefined;
     const userId = url.searchParams.get('user_id') ?? undefined;
-    const from = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : undefined;
-    const to = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : undefined;
+    // Default to last 30 days if no date filters supplied (prevents full-table scans).
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fromParam = url.searchParams.get('from');
+    const toParam = url.searchParams.get('to');
+    const from = fromParam ? new Date(fromParam) : thirtyDaysAgo;
+    const to = toParam ? new Date(toParam) : undefined;
     const cursor = url.searchParams.get('cursor') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
 
@@ -28,18 +33,29 @@ export async function GET(req: NextRequest) {
     if (entityType) where.entityType = entityType;
     if (entityId) where.entityId = entityId;
     if (userId) where.userId = userId;
-    if (from || to) {
-      where.occurredAt = {};
-      if (from) (where.occurredAt as Record<string, unknown>).gte = from;
-      if (to) (where.occurredAt as Record<string, unknown>).lte = to;
-    }
+    // Always apply a date filter (default 30 days) to keep queries bounded.
+    where.occurredAt = {};
+    (where.occurredAt as Record<string, unknown>).gte = from;
+    if (to) (where.occurredAt as Record<string, unknown>).lte = to;
     if (cursor) where.id = { lt: cursor };
 
+    // Use `select` (not include-all) to keep payload small.
     const logs = await db.auditLog.findMany({
       where,
       take: limit + 1,
       orderBy: { occurredAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        userId: true,
+        correlationId: true,
+        beforeValue: true,
+        afterValue: true,
+        clientIp: true,
+        userAgent: true,
+        occurredAt: true,
         user: { select: { id: true, name: true, email: true } },
         device: { select: { id: true, label: true } },
       },
@@ -61,7 +77,6 @@ export async function GET(req: NextRequest) {
         before_value: l.beforeValue ? JSON.parse(l.beforeValue) : null,
         after_value: l.afterValue ? JSON.parse(l.afterValue) : null,
         client_ip: l.clientIp,
-        sync_ip: l.syncIp,
         user_agent: l.userAgent,
         occurred_at: l.occurredAt,
       })),

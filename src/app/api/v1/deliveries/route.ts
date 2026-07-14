@@ -37,12 +37,38 @@ export async function GET(req: NextRequest) {
   await requirePermission(auth, 'delivery.create');
   await requirePermission(auth, 'inventory.read');
     const status = req.nextUrl.searchParams.get('status') ?? undefined;
+    // Default to last 30 days to bound the result set on large tenant datasets.
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fromParam = req.nextUrl.searchParams.get('from');
+    const toParam = req.nextUrl.searchParams.get('to');
+    const applyDateFilter = req.nextUrl.searchParams.get('all_dates') !== 'true';
+    const from = fromParam ? new Date(fromParam) : (applyDateFilter ? thirtyDaysAgo : undefined);
+    const to = toParam ? new Date(toParam) : undefined;
+    const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '50', 10), 200);
+
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
+    if (from || to) {
+      where.createdAt = {};
+      if (from) (where.createdAt as Record<string, unknown>).gte = from;
+      if (to) (where.createdAt as Record<string, unknown>).lte = to;
+    }
 
     const deliveries = await db.deliveryOrder.findMany({
-      where, take: 50, orderBy: { createdAt: 'desc' },
-      include: {
+      where, take: limit, orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        referenceNo: true,
+        status: true,
+        deliveryMethod: true,
+        courierCode: true,
+        recipientName: true,
+        recipientPhone: true,
+        codAmount: true,
+        deliveryFee: true,
+        createdAt: true,
+        deliveredAt: true,
         sale: { select: { id: true, referenceNo: true, grandTotal: true } },
         _count: { select: { items: true, events: true } },
       },

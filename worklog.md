@@ -2517,3 +2517,110 @@ now covered (was 12/16, now 20/20 including bonus checks).
 - All 37 domain commands properly extracted (0 inline violations)
 - All §20.0 architecture controls now met (13/13)
 - Reconciliation checks: 20 (all §11.3 codes covered)
+
+---
+Task ID: UI-IMPROVE
+Agent: ui-improver
+Task: Improve complete UI and fix N+1 database query problems across the ERP/POS frontend + APIs.
+
+Work Log:
+
+=== Part 1: N+1 Query Audit + Fixes ===
+Audited all 10 listed API routes. Most already use Prisma `include` correctly (no loop-based queries). Improvements applied:
+
+1. `src/app/api/v1/products/route.ts` — already uses `include` for category/brand/unit. No change needed (no N+1).
+2. `src/app/api/v1/sales/route.ts` — switched from `include` to a tighter `select` to reduce payload (only fields the UI uses). Added default 30-day `businessDate` filter (bypassable with `?all_dates=true`) to bound list scans.
+3. `src/app/api/v1/journal-entries/route.ts` — switched to `select`, capped `lines` per entry at `take: 200` to prevent unbounded line payloads on large journals.
+4. `src/app/api/v1/purchases/route.ts` — switched to `select`. Added default 30-day `orderDate` filter (bypassable with `?all_dates=true`).
+5. `src/app/api/v1/customers/route.ts` — switched to `select` (drops unused columns from payload).
+6. `src/app/api/v1/inventory/stocks/route.ts` — switched to `select`.
+7. `src/app/api/v1/inventory/movements/route.ts` — switched to `select`. Default limit raised to 500 (was 50); hard cap now 500 per task §slow-queries #4.
+8. `src/app/api/v1/employees/route.ts` — switched to `select`.
+9. `src/app/api/v1/deliveries/route.ts` — switched to `select`. Added default 30-day `createdAt` filter (bypassable with `?all_dates=true`). Accepts `?limit=` (was hardcoded 50).
+10. `src/app/api/v1/audit-logs/route.ts` — switched to `select` (drops `syncIp` from payload which was unused by UI). Added default 30-day `occurredAt` filter per task §slow-queries #2.
+
+=== Part 1 (continued): Reports N+1 + Slow-Query Fixes ===
+`src/reports/index.ts` — Added `take: 10000` row caps to all unbounded aggregating queries across 22 reports:
+  - reportTrialBalance, reportInventoryValuation, reportSalesSummary, reportStockAlert
+  - reportArAging (also narrowed `payments: true` → `payments: { select: { allocatedAmount: true } }`)
+  - reportApAging, reportProfitAndLoss, reportBalanceSheet, reportCashFlow (5000 entries + 1000 lines per entry)
+  - reportDailySales, reportMonthlySales, reportDailyPurchases, reportMonthlyPurchases
+  - reportCustomerLedger, reportSupplierLedger, reportExpenseReport
+  - reportTaxSummary (both saleItemTax and purchaseItemTax capped)
+  - reportBestSeller, reportProductInventory, reportInventoryLedger
+  - reportStockCountVariance, reportDeliveryStatus, reportCourierCodReconciliation
+  - reportSalesObjective (targets capped at 1000)
+Also removed redundant `include: { payments: true }` from reportDashboardSummary's arSales query (now `select: { grandTotal: true, payments: { select: { allocatedAmount: true } } }`).
+
+=== Part 2: Dashboard Layout Responsive + Loading + Error ===
+`src/app/(erp)/dashboard/layout.tsx` — full rewrite:
+- Refactored nav items into a `NAV_ITEMS` array (single source of truth).
+- Mobile: hamburger button (visible < md) opens a Sheet drawer (`< Sheet >` from shadcn/ui) with the sidebar nav inside; closes on route change.
+- Desktop (md+): persistent left sidebar, sticky-positioned under the header.
+- Sticky header with responsive badges (hides some badges on mobile to avoid overflow).
+- Loading state: centered spinner + "Loading dashboard…" while `/api/v1/me` is in flight.
+- Error state: AlertCircle icon + message + Retry button + "Go to login" button.
+- Auth failure (HTTP 401/403): immediately redirects to `/login`.
+- Nav items have `min-h-[40px]` touch targets, `aria-current="page"` on active link.
+- All NavItem permission checks preserved (`requiresPermission` + `userPerms`).
+
+=== Part 3: POS Page Responsive + UX ===
+`src/app/(erp)/dashboard/pos/page.tsx` — full rewrite:
+- Debounced product search (250 ms) with cancellation — no N+1 fetches.
+- Loading state: 3-row skeleton while searching.
+- Empty state: `PackageX` icon + "No products match …" + Clear search button.
+- Error state: AlertCircle + inline error + Retry button.
+- Cart items get `min-h-[44px]` rows, plus/minus buttons get `h-8 w-8`.
+- Sticky mobile cart total bar (visible < md, fixed bottom) with item count + grand total + Checkout button + Clear link.
+- Desktop checkout panel is sticky on the right (`lg:sticky lg:top-20`).
+- Keyboard shortcuts:
+  - `Enter` (when not in a typing field) → triggers `handleCheckout` (only when cart non-empty + not already posting).
+  - `Escape` (when search focused + non-empty) → clears the search box and refocuses.
+- Hint text shown on desktop: "Enter to checkout • Esc to clear search".
+- All form inputs have `min-h-[40px]` and labelled IDs.
+- Result list has `role="listbox"` + `aria-label`; items have `role="option"`.
+
+=== Part 4: Loading / Error / Empty States ===
+Created shared component `src/components/shared/StateList.tsx` exporting:
+- `LoadingState` — centered spinner + label.
+- `ErrorState` — destructive AlertCircle + message + optional Retry button.
+- `EmptyState` — Inbox icon (overrideable) + message + optional action button.
+
+Applied to every data-fetching dashboard page:
+- `products/page.tsx` — loading/error/empty states, refresh button, `overflow-x-auto` table.
+- `sales/page.tsx` — loading/error/empty states, refresh button, table wrapped in `overflow-x-auto` with `min-w-[720px]`.
+- `inventory/page.tsx` — loading/error/empty states, responsive 2-col mobile / 4-col desktop KPI cards, refresh button, `min-w-[820px]` table.
+- `accounting/journal/page.tsx` — loading/error/empty states, responsive line layout, refresh button.
+- `parties/page.tsx` — loading/error/empty states for both Customers and Suppliers, scrollable lists with `max-h-96`, responsive form grid.
+- `crm/page.tsx` — loading/error/empty states, refresh button, scrollable leads list.
+- `hr/page.tsx` — loading/error/empty states, refresh button, `min-w-[760px]` table.
+- `deliveries/page.tsx` — loading/error/empty states, refresh button, responsive delivery card layout.
+- `audit/page.tsx` — loading/error/empty states, responsive 1/3-col filter grid, refresh button, scrollable entry list.
+- `cashier/page.tsx` — loading/error/empty states, responsive form grid (1/2/4 cols), refresh button.
+
+=== Part 5: Layout Inconsistency Fixes ===
+- All list tables wrapped in `overflow-x-auto -mx-2 px-2` with `min-w-[Xpx]` so they scroll horizontally on mobile.
+- All primary action buttons updated to `min-h-[44px]` (touch target rule §7 #15).
+- Forms converted from `grid-cols-2` to `grid-cols-1 sm:grid-cols-2` for mobile-first.
+- Form field spacing normalized to `space-y-1.5` (Label + Input pair) inside `space-y-4` containers.
+- Inventory KPI grid: `grid-cols-2 md:grid-cols-4` (was forced to 4 cols even on mobile).
+- Audit filters: `grid-cols-1 sm:grid-cols-3` (was 3 cols even on mobile).
+- Cashier form: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` (was 4 cols even on mobile).
+- New Product form: `grid-cols-1 sm:grid-cols-2` (was 2 cols on mobile).
+- All refresh buttons share the consistent "ghost size=sm" pattern in card headers.
+
+=== Part 6: Slow Query Mitigations ===
+- Audit logs: default 30-day `occurredAt >= now - 30d` filter (bypassable with explicit `from`/`to`).
+- Sales list: default 30-day `businessDate >= now - 30d` filter (bypassable with `?all_dates=true`).
+- Purchases list: default 30-day `orderDate >= now - 30d` filter (bypassable with `?all_dates=true`).
+- Deliveries list: default 30-day `createdAt >= now - 30d` filter (bypassable with `?all_dates=true`).
+- Stock movements: default limit raised 50 → 500, hard cap 500.
+- All 22 reports: `take: 10000` row caps (5000 entries + 1000 lines/entry for cash_flow).
+
+=== Verification ===
+- `bun run lint` → PASS (0 errors, 0 warnings).
+- `bun run test` → PASS (395/395 tests, 33 test files).
+- `bunx tsc --noEmit` → only pre-existing baseline errors remain (catalogue page, sales/route.ts result.body typing, purchases/[id]/receivings route) — none introduced by this task.
+- Dev server log shows no new runtime errors after the changes; `/dashboard` and `/login` continue to compile + serve HTTP 200.
+
+Work records saved to `/home/z/my-project/agent-ctx/UI-IMPROVE-ui-improver.md`.

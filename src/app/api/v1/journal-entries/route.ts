@@ -53,8 +53,21 @@ export async function GET(req: NextRequest) {
 
     const entries = await db.journalEntry.findMany({
       where, take: limit, orderBy: { entryDate: 'desc' },
-      include: {
+      select: {
+        id: true,
+        entryNo: true,
+        status: true,
+        entryDate: true,
+        postingDate: true,
+        description: true,
+        currencyCode: true,
+        sourceType: true,
+        sourceId: true,
+        reversalOfEntryId: true,
+        createdBy: true,
         lines: {
+          // Cap lines per entry to keep payload bounded on large journals.
+          take: 200,
           include: {
             chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },
             branch: { select: { id: true, name: true, code: true } },

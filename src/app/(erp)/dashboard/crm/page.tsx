@@ -7,10 +7,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Loader2, Users, Plus, Calendar } from 'lucide-react';
+import { Loader2, Users, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Lead {
   id: string;
@@ -29,57 +28,63 @@ interface Lead {
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [todayOnly, setTodayOnly] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', company_name: '', notes: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/v1/leads?${todayOnly ? 'today=true' : ''}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load leads');
       setLeads(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }, [todayOnly]);
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    const idempotencyKey = `lead-${Date.now()}`;
-    // Need a status_id — fetch the first active status for this company
-    // For now, the API requires status_id; we'd need a /lead-statuses endpoint
-    // Simplified: use a placeholder
-    toast.info('Lead creation requires a status_id — use the API directly for now');
-    setShowForm(false);
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6" /> CRM — Leads</h1>
-          <p className="text-muted-foreground">Sales pipeline with today's actions.</p>
+          <p className="text-muted-foreground">Sales pipeline with today&rsquo;s actions.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant={todayOnly ? 'default' : 'outline'} onClick={() => setTodayOnly(!todayOnly)}>
-            <Calendar className="h-4 w-4 mr-2" /> Today's Actions ({todayOnly ? leads.length : '...'})
+          <Button variant={todayOnly ? 'default' : 'outline'} onClick={() => setTodayOnly(!todayOnly)} className="min-h-[44px]">
+            <Calendar className="h-4 w-4 mr-2" /> Today&rsquo;s Actions ({todayOnly ? leads.length : '…'})
           </Button>
+          {!loading && !error && <Button size="sm" variant="ghost" onClick={load}>Refresh</Button>}
         </div>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Leads ({leads.length})</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Leads ({leads.length})</CardTitle>
+        </CardHeader>
         <CardContent>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : leads.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No leads {todayOnly ? 'with actions today' : 'yet'}.</div>
+          {loading ? (
+            <LoadingState label="Loading leads…" />
+          ) : error ? (
+            <ErrorState message={error} onRetry={load} />
+          ) : leads.length === 0 ? (
+            <EmptyState
+              icon={<Users className="h-8 w-8 text-muted-foreground/50" />}
+              message={<>No leads {todayOnly ? 'with actions today' : 'yet'}.</>}
+            />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
               {leads.map(l => (
-                <div key={l.id} className="border rounded p-3 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                <div key={l.id} className="border rounded p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{l.name}</span>
                       {l.company_name && <span className="text-sm text-muted-foreground">({l.company_name})</span>}
                       <Badge variant={l.status.isWon ? 'default' : l.status.isLost ? 'destructive' : 'secondary'}>
@@ -87,11 +92,11 @@ export default function CRMPage() {
                       </Badge>
                       {l.converted_customer_id && <Badge variant="outline">converted</Badge>}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {l.phone && `📞 ${l.phone}`}
-                      {l.email && ` ✉️ ${l.email}`}
-                      {l.estimated_value && ` 💰 ৳ ${parseFloat(l.estimated_value).toFixed(0)}`}
-                      {l.assignee && ` 👤 ${l.assignee.name}`}
+                    <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                      {l.phone && <span>📞 {l.phone}</span>}
+                      {l.email && <span>✉️ {l.email}</span>}
+                      {l.estimated_value && <span>💰 ৳ {parseFloat(l.estimated_value).toFixed(0)}</span>}
+                      {l.assignee && <span>👤 {l.assignee.name}</span>}
                     </div>
                     {l.next_action_at && (
                       <div className="text-xs text-amber-600 mt-1">

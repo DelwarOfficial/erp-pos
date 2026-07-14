@@ -3,14 +3,15 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Users, Truck } from 'lucide-react';
+import { Plus, Users, Truck } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Customer { id: string; name: string; phone: string | null; email: string | null; credit_limit: string; is_active: boolean }
 interface Supplier { id: string; name: string; phone: string | null; email: string | null; currency_code: string; payment_terms_days: number; is_active: boolean }
@@ -19,19 +20,33 @@ export default function PartiesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/v1/customers?limit=50').then(r => r.json()),
-      fetch('/api/v1/suppliers?limit=50').then(r => r.json()),
-    ]).then(([c, s]) => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [cRes, sRes] = await Promise.all([
+        fetch('/api/v1/customers?limit=50'),
+        fetch('/api/v1/suppliers?limit=50'),
+      ]);
+      const [c, s] = await Promise.all([cRes.json(), sRes.json()]);
+      if (!cRes.ok) throw new Error(c?.error?.message ?? 'Failed to load customers');
+      if (!sRes.ok) throw new Error(s?.error?.message ?? 'Failed to load suppliers');
       setCustomers(c.items ?? []);
       setSuppliers(s.items ?? []);
-    }).catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="space-y-6">
@@ -47,25 +62,31 @@ export default function PartiesPage() {
               <CardTitle className="flex items-center gap-2 text-base"><Users className="h-5 w-5" /> Customers ({customers.length})</CardTitle>
               <CardDescription>Walk-in sales use NULL customer_id.</CardDescription>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setShowCustomerForm(!showCustomerForm)}><Plus className="h-4 w-4" /></Button>
+            <Button size="icon" variant="outline" onClick={() => setShowCustomerForm(!showCustomerForm)} aria-label="Add customer" className="min-h-[40px] min-w-[40px]">
+              <Plus className="h-4 w-4" />
+            </Button>
           </CardHeader>
           <CardContent>
-            {showCustomerForm && <CustomerForm onCreated={() => { setShowCustomerForm(false); window.location.reload(); }} />}
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {customers.length === 0 ? <div className="text-sm text-muted-foreground text-center py-4">No customers yet.</div> :
-                  customers.map(c => (
-                    <div key={c.id} className="flex items-center justify-between p-2 border rounded text-sm">
-                      <div>
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">{c.phone ?? c.email ?? '—'}</div>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="outline" className="text-xs">৳ {parseFloat(c.credit_limit).toFixed(0)}</Badge>
-                      </div>
+            {showCustomerForm && <CustomerForm onCreated={() => { setShowCustomerForm(false); load(); }} />}
+            {loading ? (
+              <LoadingState label="Loading customers…" />
+            ) : error ? (
+              <ErrorState message={error} onRetry={load} />
+            ) : customers.length === 0 ? (
+              <EmptyState message="No customers yet." />
+            ) : (
+              <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+                {customers.map(c => (
+                  <div key={c.id} className="flex items-center justify-between p-2 border rounded text-sm gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{c.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{c.phone ?? c.email ?? '—'}</div>
                     </div>
-                  ))
-                }
+                    <div className="text-right flex-shrink-0">
+                      <Badge variant="outline" className="text-xs">৳ {parseFloat(c.credit_limit).toFixed(0)}</Badge>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
@@ -77,26 +98,32 @@ export default function PartiesPage() {
               <CardTitle className="flex items-center gap-2 text-base"><Truck className="h-5 w-5" /> Suppliers ({suppliers.length})</CardTitle>
               <CardDescription>Suppliers have a currency + payment terms.</CardDescription>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setShowSupplierForm(!showSupplierForm)}><Plus className="h-4 w-4" /></Button>
+            <Button size="icon" variant="outline" onClick={() => setShowSupplierForm(!showSupplierForm)} aria-label="Add supplier" className="min-h-[40px] min-w-[40px]">
+              <Plus className="h-4 w-4" />
+            </Button>
           </CardHeader>
           <CardContent>
-            {showSupplierForm && <SupplierForm onCreated={() => { setShowSupplierForm(false); window.location.reload(); }} />}
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {suppliers.length === 0 ? <div className="text-sm text-muted-foreground text-center py-4">No suppliers yet.</div> :
-                  suppliers.map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-2 border rounded text-sm">
-                      <div>
-                        <div className="font-medium">{s.name}</div>
-                        <div className="text-xs text-muted-foreground">{s.phone ?? s.email ?? '—'}</div>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="outline" className="text-xs">{s.currency_code}</Badge>
-                        <div className="text-xs text-muted-foreground">{s.payment_terms_days}d terms</div>
-                      </div>
+            {showSupplierForm && <SupplierForm onCreated={() => { setShowSupplierForm(false); load(); }} />}
+            {loading ? (
+              <LoadingState label="Loading suppliers…" />
+            ) : error ? (
+              <ErrorState message={error} onRetry={load} />
+            ) : suppliers.length === 0 ? (
+              <EmptyState message="No suppliers yet." />
+            ) : (
+              <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+                {suppliers.map(s => (
+                  <div key={s.id} className="flex items-center justify-between p-2 border rounded text-sm gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{s.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{s.phone ?? s.email ?? '—'}</div>
                     </div>
-                  ))
-                }
+                    <div className="text-right flex-shrink-0">
+                      <Badge variant="outline" className="text-xs">{s.currency_code}</Badge>
+                      <div className="text-xs text-muted-foreground">{s.payment_terms_days}d terms</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
@@ -130,14 +157,14 @@ function CustomerForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border rounded p-3 mb-3 space-y-2">
-      <Input placeholder="Name *" value={name} onChange={e => setName(e.target.value)} required />
-      <div className="grid grid-cols-2 gap-2">
-        <Input placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
-        <Input placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+    <form onSubmit={handleSubmit} className="border rounded p-3 mb-3 space-y-3">
+      <Input placeholder="Name *" value={name} onChange={e => setName(e.target.value)} required className="min-h-[40px]" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} className="min-h-[40px]" />
+        <Input placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="min-h-[40px]" />
       </div>
-      <Input placeholder="Credit limit (BDT)" type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} />
-      <Button type="submit" size="sm" disabled={loading}>{loading ? 'Creating...' : 'Create'}</Button>
+      <Input placeholder="Credit limit (BDT)" type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} className="min-h-[40px]" />
+      <Button type="submit" size="sm" disabled={loading} className="min-h-[40px]">{loading ? 'Creating...' : 'Create'}</Button>
     </form>
   );
 }
@@ -167,21 +194,21 @@ function SupplierForm({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border rounded p-3 mb-3 space-y-2">
-      <Input placeholder="Name *" value={name} onChange={e => setName(e.target.value)} required />
-      <div className="grid grid-cols-2 gap-2">
-        <Input placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
-        <Input placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+    <form onSubmit={handleSubmit} className="border rounded p-3 mb-3 space-y-3">
+      <Input placeholder="Name *" value={name} onChange={e => setName(e.target.value)} required className="min-h-[40px]" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input placeholder="Phone" value={phone} onChange={e => setPhone(e.target.value)} className="min-h-[40px]" />
+        <Input placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="min-h-[40px]" />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <select className="border rounded px-2 py-1 text-sm" value={currency} onChange={e => setCurrency(e.target.value)}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <select className="border rounded px-2 py-1.5 text-sm min-h-[40px] bg-background" value={currency} onChange={e => setCurrency(e.target.value)}>
           <option value="BDT">BDT</option>
           <option value="USD">USD</option>
           <option value="EUR">EUR</option>
         </select>
-        <Input placeholder="Payment terms (days)" type="number" value={termsDays} onChange={e => setTermsDays(e.target.value)} />
+        <Input placeholder="Payment terms (days)" type="number" value={termsDays} onChange={e => setTermsDays(e.target.value)} className="min-h-[40px]" />
       </div>
-      <Button type="submit" size="sm" disabled={loading}>{loading ? 'Creating...' : 'Create'}</Button>
+      <Button type="submit" size="sm" disabled={loading} className="min-h-[40px]">{loading ? 'Creating...' : 'Create'}</Button>
     </form>
   );
 }

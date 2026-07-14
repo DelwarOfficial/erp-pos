@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Clock, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Shift {
   id: string;
@@ -31,21 +32,29 @@ interface Shift {
 export default function CashierPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState({ branchId: '', warehouseId: '', cashAccountId: '', openingFloat: '0' });
   const [closeForm, setCloseForm] = useState<Record<string, string>>({});
   const [opening, setOpening] = useState(false);
 
-  useEffect(() => { loadShifts(); }, []);
-
-  async function loadShifts() {
+  const loadShifts = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/v1/cashier-shifts?limit=20');
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load shifts');
       setShifts(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
-  }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadShifts(); }, [loadShifts]);
 
   async function handleOpen(e: React.FormEvent) {
     e.preventDefault();
@@ -100,25 +109,25 @@ export default function CashierPage() {
           <CardDescription>A cashier can have one open shift per cash account.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleOpen} className="grid grid-cols-4 gap-3">
-            <div>
+          <form onSubmit={handleOpen} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-1.5">
               <Label className="text-xs">Branch ID</Label>
-              <Input placeholder="UUID" value={openForm.branchId} onChange={e => setOpenForm({ ...openForm, branchId: e.target.value })} required />
+              <Input placeholder="UUID" value={openForm.branchId} onChange={e => setOpenForm({ ...openForm, branchId: e.target.value })} required className="min-h-[40px]" />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label className="text-xs">Warehouse ID</Label>
-              <Input placeholder="UUID" value={openForm.warehouseId} onChange={e => setOpenForm({ ...openForm, warehouseId: e.target.value })} required />
+              <Input placeholder="UUID" value={openForm.warehouseId} onChange={e => setOpenForm({ ...openForm, warehouseId: e.target.value })} required className="min-h-[40px]" />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label className="text-xs">Cash Account ID</Label>
-              <Input placeholder="UUID" value={openForm.cashAccountId} onChange={e => setOpenForm({ ...openForm, cashAccountId: e.target.value })} required />
+              <Input placeholder="UUID" value={openForm.cashAccountId} onChange={e => setOpenForm({ ...openForm, cashAccountId: e.target.value })} required className="min-h-[40px]" />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label className="text-xs">Opening Float (BDT)</Label>
-              <Input type="number" step="0.01" value={openForm.openingFloat} onChange={e => setOpenForm({ ...openForm, openingFloat: e.target.value })} required />
+              <Input type="number" step="0.01" value={openForm.openingFloat} onChange={e => setOpenForm({ ...openForm, openingFloat: e.target.value })} required className="min-h-[40px]" />
             </div>
-            <div className="col-span-4">
-              <Button type="submit" disabled={opening}>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <Button type="submit" disabled={opening} className="min-h-[44px]">
                 {opening ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                 Open Shift
               </Button>
@@ -128,18 +137,26 @@ export default function CashierPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Recent Shifts ({shifts.length})</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Recent Shifts ({shifts.length})</CardTitle>
+          {!loading && !error && <Button size="sm" variant="ghost" onClick={loadShifts}>Refresh</Button>}
+        </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <LoadingState label="Loading shifts…" />
+          ) : error ? (
+            <ErrorState message={error} onRetry={loadShifts} />
           ) : shifts.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No shifts yet.</div>
+            <EmptyState
+              icon={<Clock className="h-8 w-8 text-muted-foreground/50" />}
+              message="No shifts yet."
+            />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
               {shifts.map(s => (
-                <div key={s.id} className="border rounded p-3 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                <div key={s.id} className="border rounded p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant={s.status === 'open' ? 'default' : 'secondary'}>{s.status}</Badge>
                       <span className="font-medium text-sm">{s.cashier.name}</span>
                       <span className="text-xs text-muted-foreground">{s.branch.name}</span>
@@ -148,7 +165,7 @@ export default function CashierPage() {
                       Opened: {new Date(s.opened_at).toLocaleString()}
                       {s.closed_at && ` • Closed: ${new Date(s.closed_at).toLocaleString()}`}
                     </div>
-                    <div className="flex gap-4 text-xs mt-1">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-1">
                       <span>Float: ৳ {parseFloat(s.opening_float).toFixed(2)}</span>
                       {s.expected_closing_cash && <span>Expected: ৳ {parseFloat(s.expected_closing_cash).toFixed(2)}</span>}
                       {s.variance && (
@@ -161,16 +178,17 @@ export default function CashierPage() {
                     </div>
                   </div>
                   {s.status === 'open' && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="Counted cash"
                         value={closeForm[s.id] ?? ''}
                         onChange={e => setCloseForm({ ...closeForm, [s.id]: e.target.value })}
-                        className="w-32"
+                        className="w-32 min-h-[40px]"
+                        aria-label={`Counted cash for shift ${s.id}`}
                       />
-                      <Button size="sm" onClick={() => handleClose(s.id)}>
+                      <Button size="sm" onClick={() => handleClose(s.id)} className="min-h-[40px]">
                         <DollarSign className="h-3 w-3 mr-1" /> Close
                       </Button>
                     </div>

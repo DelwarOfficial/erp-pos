@@ -35,6 +35,7 @@ export async function reportTrialBalance(companyId: string, asOf?: Date): Promis
   const lines = await db.journalLine.findMany({
     where: { companyId, journalEntry: { status: 'posted', entryDate: { lte: asOf ?? new Date() } } },
     include: { chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true, normalBalance: true } } },
+    take: 10000,
   });
   const accountMap = new Map<string, { code: string; name: string; accountClass: string; normalBalance: string; debit: number; credit: number }>();
   for (const line of lines) {
@@ -59,6 +60,7 @@ export async function reportInventoryValuation(companyId: string, warehouseId?: 
   const stocks = await db.warehouseStock.findMany({
     where: { companyId, ...(warehouseId ? { warehouseId } : {}) },
     include: { product: { select: { code: true, name: true } }, warehouse: { select: { code: true, name: true } } },
+    take: 10000,
   });
   const rows = stocks.map(s => ({
     warehouse: s.warehouse.name, product_code: s.product.code, product_name: s.product.name,
@@ -76,6 +78,7 @@ export async function reportSalesSummary(companyId: string, fromDate: Date, toDa
   const sales = await db.sale.findMany({
     where: { companyId, businessDate: { gte: fromDate, lte: toDate }, saleStatus: { in: ['completed', 'partially_returned'] } },
     select: { id: true, referenceNo: true, grandTotal: true, businessDate: true, saleStatus: true, _count: { select: { items: true } } },
+    take: 10000,
   });
   const rows = sales.map(s => ({
     reference_no: s.referenceNo, date: s.businessDate, status: s.saleStatus,
@@ -91,6 +94,7 @@ export async function reportSalesSummary(companyId: string, fromDate: Date, toDa
 export async function reportStockAlert(companyId: string): Promise<ReportResult> {
   const stocks = await db.warehouseStock.findMany({
     where: { companyId }, include: { product: { select: { code: true, name: true, alertQuantity: true } }, warehouse: { select: { name: true } } },
+    take: 10000,
   });
   const rows = stocks.filter(s => {
     const available = parseFloat(s.qtyOnHand.toString()) - parseFloat(s.qtyReserved.toString());
@@ -110,7 +114,8 @@ export async function reportStockAlert(companyId: string): Promise<ReportResult>
 export async function reportArAging(companyId: string): Promise<ReportResult> {
   const sales = await db.sale.findMany({
     where: { companyId, saleStatus: { in: ['completed', 'partially_returned'] } },
-    include: { customer: { select: { name: true } }, payments: true },
+    include: { customer: { select: { name: true } }, payments: { select: { allocatedAmount: true } } },
+    take: 10000,
   });
   const now = new Date();
   const rows = sales.map(s => {
@@ -131,6 +136,7 @@ export async function reportArAging(companyId: string): Promise<ReportResult> {
 export async function reportApAging(companyId: string): Promise<ReportResult> {
   const purchases = await db.purchase.findMany({
     where: { companyId }, include: { supplier: { select: { name: true } } },
+    take: 10000,
   });
   const now = new Date();
   const rows = purchases.map(p => {
@@ -158,10 +164,10 @@ export async function reportDashboardSummary(companyId: string): Promise<ReportR
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const [salesAgg, arSales, approvals, shifts, stocks] = await Promise.all([
     db.sale.aggregate({ _sum: { grandTotal: true }, where: { companyId, businessDate: { gte: today, lt: tomorrow }, saleStatus: { in: ['completed', 'partially_returned'] } } }),
-    db.sale.findMany({ where: { companyId, saleStatus: { in: ['completed', 'partially_returned'] } }, include: { payments: true }, select: { grandTotal: true, payments: { select: { allocatedAmount: true } } } }),
+    db.sale.findMany({ where: { companyId, saleStatus: { in: ['completed', 'partially_returned'] } }, select: { grandTotal: true, payments: { select: { allocatedAmount: true } } }, take: 10000 }),
     db.approvalRequest.count({ where: { companyId, status: 'pending' } }),
     db.cashierShift.count({ where: { companyId, status: 'open' } }),
-    db.warehouseStock.findMany({ where: { companyId }, include: { product: { select: { alertQuantity: true } } } }),
+    db.warehouseStock.findMany({ where: { companyId }, include: { product: { select: { alertQuantity: true } } }, take: 10000 }),
   ]);
   const lowStockCount = stocks.filter(s => parseFloat(s.qtyOnHand.toString()) - parseFloat(s.qtyReserved.toString()) <= parseFloat(s.product.alertQuantity.toString())).length;
   const arOutstanding = arSales.reduce((sum, s) => {
@@ -189,6 +195,7 @@ export async function reportProfitAndLoss(companyId: string, filters: ReportFilt
   const lines = await db.journalLine.findMany({
     where: { companyId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
     include: { chartOfAccount: { select: { accountClass: true, code: true, name: true } } },
+    take: 10000,
   });
   const byAcct = new Map<string, { accountClass: string; code: string; name: string; debit: number; credit: number }>();
   for (const l of lines) {
@@ -217,6 +224,7 @@ export async function reportBalanceSheet(companyId: string, filters: ReportFilte
   const lines = await db.journalLine.findMany({
     where: { companyId, journalEntry: { status: 'posted', entryDate: { lte: asOf } } },
     include: { chartOfAccount: { select: { accountClass: true, code: true, name: true, normalBalance: true } } },
+    take: 10000,
   });
   const byAcct = new Map<string, { accountClass: string; code: string; name: string; normalBalance: string; debit: number; credit: number }>();
   for (const l of lines) {
@@ -248,8 +256,9 @@ export async function reportCashFlow(companyId: string, filters: ReportFilters =
   if (cashAccountIds.size === 0) return { code: 'cash_flow', title: 'Cash Flow Statement', filters: { from, to }, columns: ['date', 'entry_no', 'category', 'description', 'direction', 'amount'], rows: [], summary: { operating_net: '0.00', investing_net: '0.00', financing_net: '0.00', net_change: '0.00' } };
   const entries = await db.journalEntry.findMany({
     where: { companyId, status: 'posted', entryDate: { gte: from, lte: to } },
-    include: { lines: { include: { chartOfAccount: { select: { accountClass: true, accountSubtype: true } }, financialAccount: { select: { id: true } } } } },
+    include: { lines: { include: { chartOfAccount: { select: { accountClass: true, accountSubtype: true } }, financialAccount: { select: { id: true } } }, take: 1000 } },
     orderBy: { entryDate: 'asc' },
+    take: 5000,
   });
   const cat = { operating: 0, investing: 0, financing: 0 };
   const rows: Record<string, unknown>[] = [];
@@ -281,6 +290,7 @@ export async function reportDailySales(companyId: string, filters: ReportFilters
   const sales = await db.sale.findMany({
     where: { companyId, businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } },
     select: { businessDate: true, grandTotal: true, baseGrandTotal: true },
+    take: 10000,
   });
   const byDay = new Map<string, { count: number; total: number; base_total: number }>();
   for (const s of sales) {
@@ -302,6 +312,7 @@ export async function reportMonthlySales(companyId: string, filters: ReportFilte
   const sales = await db.sale.findMany({
     where: { companyId, businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } },
     select: { businessDate: true, grandTotal: true, baseGrandTotal: true },
+    take: 10000,
   });
   const byMonth = new Map<string, { count: number; total: number; base_total: number }>();
   for (const s of sales) {
@@ -323,6 +334,7 @@ export async function reportDailyPurchases(companyId: string, filters: ReportFil
   const purchases = await db.purchase.findMany({
     where: { companyId, orderDate: { gte: from, lte: to } },
     select: { orderDate: true, grandTotal: true, baseGrandTotal: true },
+    take: 10000,
   });
   const byDay = new Map<string, { count: number; total: number; base_total: number }>();
   for (const p of purchases) {
@@ -344,6 +356,7 @@ export async function reportMonthlyPurchases(companyId: string, filters: ReportF
   const purchases = await db.purchase.findMany({
     where: { companyId, orderDate: { gte: from, lte: to } },
     select: { orderDate: true, grandTotal: true, baseGrandTotal: true },
+    take: 10000,
   });
   const byMonth = new Map<string, { count: number; total: number; base_total: number }>();
   for (const p of purchases) {
@@ -367,6 +380,7 @@ export async function reportCustomerLedger(companyId: string, filters: ReportFil
     where: { companyId, customerId: filters.customerId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
     include: { journalEntry: { select: { entryNo: true, entryDate: true, description: true } } },
     orderBy: { journalEntry: { entryDate: 'asc' } },
+    take: 10000,
   });
   let running = 0;
   const rows = lines.map(l => {
@@ -391,6 +405,7 @@ export async function reportSupplierLedger(companyId: string, filters: ReportFil
     where: { companyId, supplierId: filters.supplierId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
     include: { journalEntry: { select: { entryNo: true, entryDate: true, description: true } } },
     orderBy: { journalEntry: { entryDate: 'asc' } },
+    take: 10000,
   });
   let running = 0;
   const rows = lines.map(l => {
@@ -413,6 +428,7 @@ export async function reportExpenseReport(companyId: string, filters: ReportFilt
   const items = await db.expenseItem.findMany({
     where: { companyId, expense: { expenseDate: { gte: from, lte: to }, status: 'posted' } },
     include: { expenseCategory: { select: { name: true } } },
+    take: 10000,
   });
   const byCat = new Map<string, { name: string; count: number; amount: number; tax: number }>();
   for (const it of items) {
@@ -431,8 +447,8 @@ export async function reportTaxSummary(companyId: string, filters: ReportFilters
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
   const [saleTaxes, purchTaxes] = await Promise.all([
-    db.saleItemTax.findMany({ where: { companyId, saleItem: { sale: { businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } } } }, select: { componentCodeSnapshot: true, taxAmount: true, taxableBase: true } }),
-    db.purchaseItemTax.findMany({ where: { companyId, purchaseItem: { purchase: { orderDate: { gte: from, lte: to } } } }, select: { componentCodeSnapshot: true, taxAmount: true, taxableBase: true, recoverableAmount: true } }),
+    db.saleItemTax.findMany({ where: { companyId, saleItem: { sale: { businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } } } }, select: { componentCodeSnapshot: true, taxAmount: true, taxableBase: true }, take: 10000 }),
+    db.purchaseItemTax.findMany({ where: { companyId, purchaseItem: { purchase: { orderDate: { gte: from, lte: to } } } }, select: { componentCodeSnapshot: true, taxAmount: true, taxableBase: true, recoverableAmount: true }, take: 10000 }),
   ]);
   const byCode = new Map<string, { output_tax: number; input_tax: number; output_base: number; input_base: number; recoverable: number }>();
   const ensure = (code: string) => { if (!byCode.has(code)) byCode.set(code, { output_tax: 0, input_tax: 0, output_base: 0, input_base: 0, recoverable: 0 }); return byCode.get(code)!; };
@@ -452,6 +468,7 @@ export async function reportBestSeller(companyId: string, filters: ReportFilters
   const items = await db.saleItem.findMany({
     where: { companyId, sale: { businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } } },
     select: { productId: true, productCodeSnapshot: true, productNameSnapshot: true, qty: true, lineTotal: true },
+    take: 10000,
   });
   const byProd = new Map<string, { code: string; name: string; qty: number; amount: number }>();
   for (const it of items) {
@@ -475,6 +492,7 @@ export async function reportProductInventory(companyId: string, filters: ReportF
     where: { companyId, ...(filters.warehouseId ? { warehouseId: filters.warehouseId } : {}) },
     orderBy: { effectiveAt: 'desc' },
     select: { productId: true, warehouseId: true, effectiveAt: true, movementType: true },
+    take: 10000,
   });
   const lastMv = new Map<string, { effectiveAt: Date; movementType: string }>();
   for (const m of movements) {
@@ -506,6 +524,7 @@ export async function reportInventoryLedger(companyId: string, filters: ReportFi
     where: { companyId, productId: filters.productId, effectiveAt: { gte: from, lte: to }, ...(filters.warehouseId ? { warehouseId: filters.warehouseId } : {}) },
     orderBy: { effectiveAt: 'asc' },
     include: { warehouse: { select: { name: true } } },
+    take: 10000,
   });
   let running = 0;
   const rows = movements.map(m => {
@@ -535,6 +554,7 @@ export async function reportStockCountVariance(companyId: string, filters: Repor
   const items = await db.stockCountItem.findMany({
     where: { companyId, countedQuantity: { not: null }, ...(filters.warehouseId ? { stockCount: { warehouseId: filters.warehouseId } } : {}) },
     include: { product: { select: { code: true, name: true } }, stockCount: { select: { referenceNo: true, postedAt: true, warehouse: { select: { name: true } } } } },
+    take: 10000,
   });
   const rows = items.map(i => {
     const expected = parseFloat(i.expectedQuantity.toString());
@@ -596,6 +616,7 @@ export async function reportDeliveryStatus(companyId: string, filters: ReportFil
   const orders = await db.deliveryOrder.findMany({
     where: { companyId, createdAt: { gte: from, lte: to }, ...(filters.branchId ? { branchId: filters.branchId } : {}) },
     select: { status: true, codAmount: true, deliveryFee: true },
+    take: 10000,
   });
   const byStatus = new Map<string, { count: number; cod: number; fee: number }>();
   for (const o of orders) {
@@ -614,8 +635,8 @@ export async function reportCourierCodReconciliation(companyId: string, filters:
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
   const [orders, settledItems] = await Promise.all([
-    db.deliveryOrder.findMany({ where: { companyId, deliveryMethod: 'courier', codAmount: { gt: 0 }, createdAt: { gte: from, lte: to } }, select: { id: true, courierCode: true, codAmount: true, status: true } }),
-    db.courierCodSettlementItem.findMany({ where: { settlement: { companyId, settlementDate: { gte: from, lte: to } } }, select: { deliveryOrderId: true, codAmount: true, feeAmount: true, adjustmentAmount: true } }),
+    db.deliveryOrder.findMany({ where: { companyId, deliveryMethod: 'courier', codAmount: { gt: 0 }, createdAt: { gte: from, lte: to } }, select: { id: true, courierCode: true, codAmount: true, status: true }, take: 10000 }),
+    db.courierCodSettlementItem.findMany({ where: { settlement: { companyId, settlementDate: { gte: from, lte: to } } }, select: { deliveryOrderId: true, codAmount: true, feeAmount: true, adjustmentAmount: true }, take: 10000 }),
   ]);
   const byCourier = new Map<string, { cod_receivable: number; settled_count: number; settled_amount: number; fee: number; adjustment: number }>();
   const ensure = (k: string) => { if (!byCourier.has(k)) byCourier.set(k, { cod_receivable: 0, settled_count: 0, settled_amount: 0, fee: 0, adjustment: 0 }); return byCourier.get(k)!; };
@@ -633,8 +654,8 @@ export async function reportSalesObjective(companyId: string, filters: ReportFil
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
   const [targets, sales] = await Promise.all([
-    db.salesTarget.findMany({ where: { companyId, periodStart: { gte: from }, periodEnd: { lte: to } }, include: { branch: { select: { name: true } }, user: { select: { name: true, email: true } } } }),
-    db.sale.findMany({ where: { companyId, businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } }, select: { branchId: true, billerId: true, baseGrandTotal: true } }),
+    db.salesTarget.findMany({ where: { companyId, periodStart: { gte: from }, periodEnd: { lte: to } }, include: { branch: { select: { name: true } }, user: { select: { name: true, email: true } } }, take: 1000 }),
+    db.sale.findMany({ where: { companyId, businessDate: { gte: from, lte: to }, saleStatus: { in: ['completed', 'partially_returned'] } }, select: { branchId: true, billerId: true, baseGrandTotal: true }, take: 10000 }),
   ]);
   const byBranchUser = new Map<string, number>();
   const byBranch = new Map<string, number>();

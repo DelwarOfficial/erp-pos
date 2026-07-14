@@ -41,17 +41,41 @@ export async function GET(req: NextRequest) {
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const supplierId = url.searchParams.get('supplier_id') ?? undefined;
+    // Default to last 30 days unless explicitly bypassed.
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fromParam = url.searchParams.get('from');
+    const toParam = url.searchParams.get('to');
+    const applyDateFilter = url.searchParams.get('all_dates') !== 'true';
+    const from = fromParam ? new Date(fromParam) : (applyDateFilter ? thirtyDaysAgo : undefined);
+    const to = toParam ? new Date(toParam) : undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.orderStatus = status;
     if (supplierId) where.supplierId = supplierId;
+    if (from || to) {
+      where.orderDate = {};
+      if (from) (where.orderDate as Record<string, unknown>).gte = from;
+      if (to) (where.orderDate as Record<string, unknown>).lte = to;
+    }
 
+    // `select` keeps the payload small; `_count` avoids N+1 on items/receivings.
     const purchases = await db.purchase.findMany({
       where,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        referenceNo: true,
+        orderStatus: true,
+        invoiceStatus: true,
+        currencyCode: true,
+        exchangeRate: true,
+        orderDate: true,
+        grandTotal: true,
+        baseGrandTotal: true,
+        createdAt: true,
         supplier: { select: { id: true, name: true } },
         branch: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },

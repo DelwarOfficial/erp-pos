@@ -94,46 +94,46 @@ export default function NewProductPage() {
             <CardDescription>All fields marked with * are required.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
                 <Label htmlFor="name">Name *</Label>
-                <Input id="name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <Input id="name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="min-h-[40px]" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label htmlFor="code">Code *</Label>
-                <Input id="code" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} />
+                <Input id="code" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="min-h-[40px]" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label>Category *</Label>
                 <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label>Brand</Label>
                 <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="No brand" /></SelectTrigger>
+                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="No brand" /></SelectTrigger>
                   <SelectContent>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label>Unit *</Label>
                 <Select value={form.unit_id} onValueChange={v => setForm({ ...form, unit_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select unit" /></SelectTrigger>
                   <SelectContent>
                     {units.map(u => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code}){u.allow_fractional ? ' — fractional' : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label>Type *</Label>
                 <Select value={form.product_type} onValueChange={v => setForm({ ...form, product_type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="standard">Standard</SelectItem>
                     <SelectItem value="combo">Combo</SelectItem>
@@ -142,34 +142,34 @@ export default function NewProductPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label htmlFor="price">Default Price (BDT)</Label>
                 <Input id="price" type="number" step="0.01" min="0" value={form.default_price}
-                  onChange={e => setForm({ ...form, default_price: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setForm({ ...form, default_price: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label htmlFor="cost">Reference Cost (BDT)</Label>
                 <Input id="cost" type="number" step="0.000001" min="0" value={form.reference_cost}
-                  onChange={e => setForm({ ...form, reference_cost: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setForm({ ...form, reference_cost: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label htmlFor="alert">Alert Quantity</Label>
                 <Input id="alert" type="number" step="0.0001" min="0" value={form.alert_quantity}
-                  onChange={e => setForm({ ...form, alert_quantity: parseFloat(e.target.value) || 0 })} />
+                  onChange={e => setForm({ ...form, alert_quantity: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <Label htmlFor="warranty">Warranty (months)</Label>
                 <Input id="warranty" type="number" min="0" max="600" value={form.warranty_period_months}
-                  onChange={e => setForm({ ...form, warranty_period_months: parseInt(e.target.value) || 0 })} />
+                  onChange={e => setForm({ ...form, warranty_period_months: parseInt(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
             </div>
 
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="short">Short Description</Label>
               <Input id="short" maxLength={500} value={form.short_description}
-                onChange={e => setForm({ ...form, short_description: e.target.value })} />
+                onChange={e => setForm({ ...form, short_description: e.target.value })} className="min-h-[40px]" />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <Label htmlFor="desc">Full Description</Label>
               <Textarea id="desc" value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })} />
@@ -195,9 +195,9 @@ export default function NewProductPage() {
               </div>
             </div>
           </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/products')}>Cancel</Button>
-            <Button type="submit" disabled={loading}>
+          <CardFooter className="flex justify-between gap-2">
+            <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/products')} className="min-h-[44px]">Cancel</Button>
+            <Button type="submit" disabled={loading} className="min-h-[44px]">
               {loading ? 'Creating...' : 'Create Product (inactive)'}
             </Button>
           </CardFooter>

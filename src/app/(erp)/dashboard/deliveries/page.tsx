@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, Truck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Delivery {
   id: string;
@@ -42,16 +43,24 @@ const NEXT_STATUS: Record<string, string[]> = {
 export default function DeliveriesPage() {
   const [items, setItems] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/v1/deliveries?limit=50');
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load deliveries');
       setItems(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -69,6 +78,8 @@ export default function DeliveriesPage() {
       if (!res.ok) { toast.error(data?.error?.message ?? 'Failed'); return; }
       toast.success(`Delivery → ${toStatus}`);
       await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Network error');
     } finally { setTransitioning(null); }
   }
 
@@ -76,35 +87,48 @@ export default function DeliveriesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Truck className="h-6 w-6" /> Deliveries</h1>
-        <p className="text-muted-foreground">Delivery orders linked to posted sales. Feature-flagged per §20.D14.</p>
+        <p className="text-muted-foreground">Delivery orders linked to posted sales (last 30 days). Feature-flagged per §20.D14.</p>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Delivery Orders ({items.length})</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Delivery Orders ({items.length})</CardTitle>
+          {!loading && !error && <Button size="sm" variant="ghost" onClick={load}>Refresh</Button>}
+        </CardHeader>
         <CardContent>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : items.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No delivery orders yet.</div>
+          {loading ? (
+            <LoadingState label="Loading deliveries…" />
+          ) : error ? (
+            <ErrorState message={error} onRetry={load} />
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={<Truck className="h-8 w-8 text-muted-foreground/50" />}
+              message="No delivery orders in the last 30 days."
+            />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
               {items.map(d => (
                 <div key={d.id} className="border rounded p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <code className="font-mono text-sm font-medium">{d.reference_no}</code>
-                      <Badge variant={STATUS_COLORS[d.status] as any}>{d.status}</Badge>
+                      <Badge variant={STATUS_COLORS[d.status] as 'outline' | 'secondary' | 'default' | 'destructive'}>{d.status}</Badge>
                       <Badge variant="outline" className="text-xs">{d.delivery_method}</Badge>
                       {d.courier_code && <Badge variant="secondary" className="text-xs">{d.courier_code}</Badge>}
                     </div>
-                    <span className="text-xs text-muted-foreground">{new Date(d.created_at).toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">{new Date(d.created_at).toLocaleString()}</span>
                   </div>
-                  <div className="text-sm mt-1">
-                    Sale: <code className="font-mono">{d.sale.referenceNo}</code> • 
-                    {d.recipient_name} ({d.recipient_phone}) • 
-                    COD: ৳ {parseFloat(d.cod_amount).toFixed(2)} • 
-                    {d.item_count} items
+                  <div className="text-sm mt-1 flex flex-wrap gap-x-2 gap-y-1">
+                    <span>Sale: <code className="font-mono">{d.sale.referenceNo}</code></span>
+                    <span>•</span>
+                    <span>{d.recipient_name} ({d.recipient_phone})</span>
+                    <span>•</span>
+                    <span>COD: ৳ {parseFloat(d.cod_amount).toFixed(2)}</span>
+                    <span>•</span>
+                    <span>{d.item_count} items</span>
                   </div>
                   {NEXT_STATUS[d.status] && (
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       {NEXT_STATUS[d.status].map(s => (
                         <Button
                           key={s}
@@ -112,6 +136,7 @@ export default function DeliveriesPage() {
                           variant={s === 'cancelled' || s === 'failed' || s === 'returned' ? 'destructive' : 'default'}
                           onClick={() => handleTransition(d.id, s)}
                           disabled={transitioning === d.id}
+                          className="min-h-[36px]"
                         >
                           {transitioning === d.id && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                           <ChevronRight className="h-3 w-3 mr-1" />{s}

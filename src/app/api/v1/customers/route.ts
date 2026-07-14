@@ -43,7 +43,14 @@ export async function GET(req: NextRequest) {
       where,
       take: limit,
       orderBy: { name: 'asc' },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        taxIdentifier: true,
+        creditLimit: true,
+        isActive: true,
         customerGroup: { select: { id: true, name: true } },
       },
     });

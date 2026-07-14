@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { BookOpen, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface AuditLog {
   id: string;
@@ -33,10 +34,13 @@ export default function AuditPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const load = useCallback(async (reset: boolean = false) => {
-    setLoading(true);
+    if (reset) { setLoading(true); } else { setLoadingMore(true); }
+    setError(null);
     try {
       const params = new URLSearchParams({ limit: '30' });
       if (filters.action) params.set('action', filters.action);
@@ -45,14 +49,17 @@ export default function AuditPage() {
       if (!reset && cursor) params.set('cursor', cursor);
       const res = await fetch(`/api/v1/audit-logs?${params}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed');
+      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load audit logs');
       setItems(prev => reset ? data.items : [...prev, ...data.items]);
       setCursor(data.next_cursor);
       setHasMore(data.has_more);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      const msg = e instanceof Error ? e.message : 'Network error';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [filters, cursor]);
 
@@ -69,64 +76,78 @@ export default function AuditPage() {
           <BookOpen className="h-6 w-6" /> Audit Log
         </h1>
         <p className="text-muted-foreground">
-          Append-only record of every mutation. Before/after values, actor, IP, correlation ID.
+          Append-only record of every mutation (last 30 days by default). Before/after values, actor, IP, correlation ID.
         </p>
       </div>
 
       <Card>
         <CardHeader><CardTitle>Filters</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-3 gap-3">
-          <div>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1.5">
             <Label htmlFor="action">Action</Label>
             <Input id="action" placeholder="e.g. product.create" value={filters.action}
-              onChange={e => setFilters({ ...filters, action: e.target.value })} />
+              onChange={e => setFilters({ ...filters, action: e.target.value })} className="min-h-[40px]" />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="entity">Entity Type</Label>
             <Input id="entity" placeholder="e.g. product" value={filters.entity_type}
-              onChange={e => setFilters({ ...filters, entity_type: e.target.value })} />
+              onChange={e => setFilters({ ...filters, entity_type: e.target.value })} className="min-h-[40px]" />
           </div>
-          <div>
+          <div className="space-y-1.5">
             <Label htmlFor="user">User ID</Label>
             <Input id="user" placeholder="UUID" value={filters.user_id}
-              onChange={e => setFilters({ ...filters, user_id: e.target.value })} />
+              onChange={e => setFilters({ ...filters, user_id: e.target.value })} className="min-h-[40px]" />
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Entries ({items.length})</CardTitle>
-            <CardDescription>Most recent first. Click to inspect.</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Entries ({items.length})</CardTitle>
+              <CardDescription>Most recent first. Click to inspect.</CardDescription>
+            </div>
+            {!loading && !error && <Button size="sm" variant="ghost" onClick={() => load(true)}>Refresh</Button>}
           </CardHeader>
           <CardContent className="space-y-1">
-            {items.length === 0 && !loading ? (
-              <div className="text-center py-8 text-muted-foreground">No audit entries.</div>
+            {loading ? (
+              <LoadingState label="Loading audit entries…" />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => load(true)} />
+            ) : items.length === 0 ? (
+              <EmptyState
+                icon={<BookOpen className="h-8 w-8 text-muted-foreground/50" />}
+                message="No audit entries in the last 30 days."
+              />
             ) : (
-              items.map(l => (
-                <button
-                  key={l.id}
-                  onClick={() => setSelected(l)}
-                  className={`w-full text-left p-2 border rounded hover:bg-slate-50 transition-colors ${
-                    selected?.id === l.id ? 'bg-slate-100 border-slate-400' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <code className="text-sm font-mono">{l.action}</code>
-                    <Badge variant="outline" className="text-xs">{l.entity_type}</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {l.user?.email ?? 'system'} • {new Date(l.occurred_at).toLocaleString()} • {l.client_ip ?? 'no IP'}
-                  </div>
-                </button>
-              ))
-            )}
-            {hasMore && (
-              <Button variant="outline" className="w-full" onClick={() => load(false)} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Load more
-              </Button>
+              <>
+                <div className="max-h-[60vh] overflow-y-auto space-y-1 pr-1">
+                  {items.map(l => (
+                    <button
+                      key={l.id}
+                      onClick={() => setSelected(l)}
+                      className={`w-full text-left p-2 border rounded hover:bg-slate-50 transition-colors min-h-[44px] ${
+                        selected?.id === l.id ? 'bg-slate-100 border-slate-400' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <code className="text-sm font-mono">{l.action}</code>
+                        <Badge variant="outline" className="text-xs">{l.entity_type}</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {l.user?.email ?? 'system'} • {new Date(l.occurred_at).toLocaleString()} • {l.client_ip ?? 'no IP'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {hasMore && (
+                  <Button variant="outline" className="w-full min-h-[44px] mt-2" onClick={() => load(false)} disabled={loadingMore}>
+                    {loadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Load more
+                  </Button>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -134,11 +155,11 @@ export default function AuditPage() {
         <Card>
           <CardHeader>
             <CardTitle>Detail</CardTitle>
-            <CardDescription>Selected entry's before/after values.</CardDescription>
+            <CardDescription>Selected entry&rsquo;s before/after values.</CardDescription>
           </CardHeader>
           <CardContent>
             {!selected ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">Select an entry to view details.</div>
+              <EmptyState message="Select an entry to view details." />
             ) : (
               <div className="space-y-3 text-sm">
                 <Row label="Action" value={selected.action} />
@@ -149,17 +170,17 @@ export default function AuditPage() {
                 <Row label="IP" value={selected.client_ip ?? '—'} />
                 <Row label="Time" value={new Date(selected.occurred_at).toLocaleString()} />
                 {selected.before_value !== null && (
-                  <div>
+                  <div className="space-y-1.5">
                     <Label className="text-xs">Before</Label>
-                    <pre className="text-xs mt-1 p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
+                    <pre className="text-xs p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(selected.before_value, null, 2)}
                     </pre>
                   </div>
                 )}
                 {selected.after_value !== null && (
-                  <div>
+                  <div className="space-y-1.5">
                     <Label className="text-xs">After</Label>
-                    <pre className="text-xs mt-1 p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
+                    <pre className="text-xs p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(selected.after_value, null, 2)}
                     </pre>
                   </div>
