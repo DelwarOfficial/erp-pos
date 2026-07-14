@@ -9,7 +9,7 @@ global.fetch = fetchMock as unknown as typeof fetch;
 describe('SlackWebhookProvider', () => {
   beforeEach(() => {
     fetchMock.mockReset();
-    process.env.SLACK_WEBHOOK_URL = 'https://hooks.example.com/services/TEST/TEST/TESTTEST';
+    process.env.SLACK_WEBHOOK_URL = 'https://example.com/webhook/test';
   });
 
   it('sends notification to Slack webhook with correct payload', async () => {
