@@ -6985,3 +6985,385 @@ The 13 mandatory architecture controls (§20.0) are non-disableable: tenant data
   6. and documented stakeholder sign-off (Appendix E).
 
 No team may replace an authoritative ledger with a cached balance, omit a required workflow while leaving its navigation enabled, bypass the transaction/RLS/idempotency controls defined here, or weaken any mandatory architecture control listed in §20.0. Any deviation requires an approved architecture decision record.
+
+---
+
+# §21 — EXTENDED MODULES (Post-Blueprint Additions)
+
+> The following modules extend the original blueprint (§1–§20) with capabilities required for production deployment. All modules follow the same architecture controls (§20.0), security model (§6), transaction rules (§5), and coding standards (§7). These additions are binding once approved.
+
+## §21.1 — Fixed Asset Management
+
+### Decision
+`RESOLVED §21.1`: Fixed Asset Management supports acquisition, depreciation (straight-line + declining-balance), and disposal with gain/loss accounting. Feature-flagged (`asset_management_enabled`, default false). All asset journals post through `post_journal_entry()` with balanced Dr/Cr. Asset records are tenant-scoped with RLS.
+
+### Database Tables (§5 addition)
+
+| Table | Purpose |
+|------|---------|
+| `fixed_assets` | Asset register: code, name, cost, salvage, life, method, NBV, status, GL account mappings |
+| `fixed_asset_categories` | Category defaults: life, method, GL accounts |
+| `fixed_asset_depreciation` | Depreciation run log: period, amount, accumulated after, NBV after, journal entry link |
+
+### Domain Commands
+
+| Command | Description |
+|---------|-------------|
+| `postAssetAcquisition` | Dr Fixed Asset, Cr Cash/Bank — creates asset record + acquisition JE |
+| `postDepreciation` | Dr Depreciation Expense, Cr Accumulated Depreciation — supports straight_line + declining_balance |
+| `postAssetDisposal` | Dr Cash (sale) + Dr Accumulated Dep, Cr Fixed Asset (cost), Cr/Dr Gain/Loss on Disposal |
+
+### GL Accounts (CoA extension)
+
+| Code | Name | Class |
+|------|------|-------|
+| 1800 | Fixed Assets (Control) | Asset |
+| 1810 | Office Equipment | Asset |
+| 1820 | Vehicles | Asset |
+| 1830 | Furniture & Fixtures | Asset |
+| 1840 | Computers & Software | Asset |
+| 1850 | Accumulated Depreciation (Contra) | Asset |
+| 1860 | Depreciation Expense | Expense |
+| 1870 | Gain/Loss on Asset Disposal | Revenue/Expense |
+
+### Reconciliation Check
+- `FIXED_ASSET_NBV`: Verifies NBV = purchase_cost - accumulated_depreciation for all active assets
+
+### Permissions
+- `asset.view.branch` / `asset.view.global`
+- `asset.manage.branch` (acquire/dispose)
+- `asset.depreciate.company` (run depreciation)
+
+---
+
+## §21.2 — Banking Reconciliation
+
+### Decision
+`RESOLVED §21.2`: Banking Reconciliation supports matching system payment lines to bank statement lines with auto-match (amount + ±3 day tolerance) and manual match. Variance posting creates adjustment JE. Feature-flagged (`bank_reconciliation_enabled`, default false). All reconciliation lines are tenant-scoped with RLS.
+
+### Database Tables (§5 addition)
+
+| Table | Purpose |
+|------|---------|
+| `bank_reconciliations` | Reconciliation header: account, statement dates, opening/closing balances, status, variance |
+| `bank_reconciliation_lines` | Individual lines: system/statement, amount, date, match status, matched counterpart |
+
+### Domain Commands
+
+| Command | Description |
+|---------|-------------|
+| `createBankReconciliation` | Creates header + auto-imports payment lines as "system" lines |
+| `addStatementLines` | Adds bank statement lines (manual entry or import) |
+| `autoMatchTransactions` | Auto-matches by amount + ±3 day date tolerance |
+| `manualMatch` | Manually links a system line to a statement line |
+| `postReconciliationVariance` | Posts variance JE if system ≠ statement balance (Dr/Cr adjustment) |
+
+### Reconciliation Check
+- `BANK_RECONCILIATION_VARIANCE`: Flags reconciliations with status='has_variance' (unresolved variance)
+
+### Permissions
+- `bank.reconciliation.view.company`
+- `bank.reconciliation.manage.company` (create/match/finalize)
+
+---
+
+## §21.3 — Risk Assessment & Alerting
+
+### Decision
+`RESOLVED §21.3`: Internal risk provider with 8 env-configurable rules (AR exposure, velocity, return ratio, failed payments, inactive customer, credit limit, COD amount, sale amount). FP/FN report with precision/recall. Tuning history with threshold change audit. Alerting via email (Resend/SendGrid) + notification (Slack/Telegram) when precision < 40% or recall < 85%.
+
+### Database Tables (§5 addition)
+
+| Table | Purpose |
+|------|---------|
+| `risk_assessments` | Assessment log: provider, subject, score, decision, reason codes, expiry |
+| `risk_assessment_outcomes` | Outcome recording: completed/returned/charged_back/fraud_confirmed for FP/FN analysis |
+| `risk_threshold_changes` | Tuning audit: threshold key, old → new value, reason, changed by/at |
+
+### Key Files
+- `src/adapters/riskProvider.ts` — InternalRiskProvider (8 rules, 22 env-configurable thresholds)
+- `src/lib/risk/alerting.ts` — FP/FN analysis + multi-channel alert delivery
+- `src/lib/approval/thresholds.ts` — 9 tenant-configurable approval thresholds (§20.D04)
+
+---
+
+## §21.4 — Provider Adapters (Extended)
+
+### Decision
+`RESOLVED §21.4`: Concrete provider implementations for Bangladesh market. Provider registry with 5 interfaces (SMS, Email, Courier, Risk, Payment) + NotificationProvider (Slack, Telegram). Mock mode for development.
+
+### Providers Implemented
+
+| Type | Provider | Code |
+|------|----------|------|
+| SMS | SSL Wireless | `ssl_wireless` |
+| SMS | Mim SMS | `mim` |
+| Email | SendGrid | `sendgrid` |
+| Email | AWS SES | `aws_ses` |
+| Email | Resend | `resend` |
+| Courier | Pathao | `pathao` |
+| Courier | RedX | `redx` |
+| Payment | bKash | `bkash` |
+| Payment | Nagad | `nagad` |
+| Risk | Internal (8 rules) | `internal_v2` |
+| Notification | Slack | `slack` |
+| Notification | Telegram | `telegram` |
+
+### Webhook Receivers
+- `POST /api/v1/webhooks/payment/[provider]` — bKash/Nagad payment callbacks (HMAC verification)
+- `POST /api/v1/webhooks/courier/[provider]` — Pathao/RedX status callbacks (X-Courier-Token auth)
+
+---
+
+## §21.5 — Import/Export Jobs
+
+### Decision
+`RESOLVED §21.5`: Versioned import templates (7 types), staged validation with dry-run, row error download, duplicate strategy (skip/update/fail), control totals. Exports with CSV formula-cell escaping (=, +, -, @) and sensitive-field permissions (cost/margin/PII omitted unless authorized). 7-day export expiry.
+
+### Import Templates
+
+| Type | Required Columns | Duplicate Key |
+|------|-----------------|---------------|
+| product | code, name, category, unit, product_type | code |
+| customer | name | phone |
+| supplier | name | name |
+| sale_draft | reference_no, branch_code, product_code, qty, unit_price | reference_no |
+| transfer_draft | from_warehouse_code, to_warehouse_code, product_code, qty | reference_no |
+| purchase | supplier_name, branch_code, product_code, qty, unit_cost | reference_no |
+| opening_stock | warehouse_code, product_code, qty, unit_cost | — |
+
+---
+
+## §21.6 — Statutory Document Generation
+
+### Decision
+`RESOLVED §21.6`: Generates Bangladesh statutory documents per §20.D08. All documents are immutable once issued, snapshot-based, and replaceable (replacement creates new doc with `replacement_of_id` link).
+
+### Document Types
+
+| Type | Source | Description |
+|------|--------|-------------|
+| VAT_6_1 | Sale | Mushak 6.1 Tax Invoice (seller BIN, buyer BIN, items with VAT+SD) |
+| VAT_6_3 | Sale Return | Mushak 6.3 Tax Credit Note (reversed VAT) |
+| VAT_9_1 | Period | Mushak 9.1 Monthly VAT Return (output-input = net payable) |
+| withholding_certificate | Payment | Withholding tax certificate (deductor/deductee, rate, amount) |
+
+---
+
+## §21.7 — BEFTN Bank File
+
+### Decision
+`RESOLVED §21.7`: Payroll bank file in BEFTN format per §20.D18. Pipe-delimited with header (H), detail (D), trailer (T) records. 15-digit amount format (no decimal point). Structural validator included.
+
+---
+
+## §21.8 — Multi-Currency Revaluation
+
+### Decision
+`RESOLVED §21.8`: Period-end revaluation of open foreign-currency AR/AP/advance balances per §20.D12. Unrealized gain/loss posted to `exchange_gain_loss_account_id`. Reversal at next period start prevents double-counting.
+
+### Database Table
+
+| Table | Purpose |
+|------|---------|
+| `currency_revaluations` | Revaluation log: date, journal entry, gain/loss, period-end rate, reversal link |
+
+---
+
+## §21.9 — Period-End Close Workflow
+
+### Decision
+`RESOLVED §21.9`: 6-step period-end close per §11.4. Status transitions: open → soft_locked → locked. Unlocking a locked period requires platform operations approval.
+
+### Close Steps
+
+1. Control backdating — check for entries dated after period end
+2. Run reconciliation — all checks must pass (no critical/high findings)
+3. Review drafts — no unposted draft journal entries
+4. Generate reports — trial balance, P&L, balance sheet, tax workpapers
+5. Soft-lock — new entries blocked, corrections (reversals) allowed
+6. Final lock — period immutable, corrections require new-period reversal
+
+---
+
+## §21.10 — PWA + Print
+
+### Decision
+`RESOLVED §21.10`: PWA offline POS with Service Worker (Background Sync API), IndexedDB mutation queue, OfflineSyncProvider. ESC/POS thermal printer bridge (raw byte generation + network printer delivery). PDF rendering with Noto Sans Bengali font. Print routes: `/print/receipt/[id]`, `/print/invoice/[id]`.
+
+---
+
+## §21.11 — Backup & DR
+
+### Decision
+`RESOLVED §21.11`: Nightly pg_dump + continuous WAL archiving per §20.D10. RPO ≤ 15 min (WAL), RTO ≤ 4h. Encrypted, immutable (S3 object-lock), checksum-verified. Post-restore reconciliation (8 checks). A backup is not valid until restore test succeeds.
+
+### Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/backup/nightly-backup.sh` | pg_dump + SHA-256 + metadata + S3 upload + checksum verify |
+| `scripts/backup/restore-from-backup.sh` | Download + verify + restore to isolated DB |
+| `scripts/backup/post-restore-reconciliation.sh` | 8 reconciliation checks after restore |
+| `scripts/backup/first-restore-test.sh` | M0 exit gate: backup → restore → reconcile |
+| `scripts/backup/wal-archive.sh` | Continuous WAL segment archiving to S3 |
+
+---
+
+## §21.12 — Approval Workflow (Maker-Checker)
+
+### Decision
+`RESOLVED §21.12`: Application-layer approval workflow per §20.0 Control #7. `createApprovalRequest()` creates pending requests for threshold-exceeding operations. `resolveApprovalRequest()` enforces SELF_APPROVAL_PROHIBITED (maker ≠ checker). 9 tenant-configurable thresholds loaded from `configuration_values`.
+
+### Thresholds (§20.D04)
+
+| Threshold | Default | Config Key |
+|-----------|---------|------------|
+| Sale void hours | 24 | sale.void_hours |
+| Sale discount | ৳1,000 | sale.discount_threshold |
+| Cashier variance amount | ৳500 | cashier.variance_amount |
+| Cashier variance percent | 5% | cashier.variance_percent |
+| Journal adjustment | ৳50,000 | journal.adjustment_threshold |
+| Expense approval | ৳10,000 | expense.approval_threshold |
+| Refund approval | ৳5,000 | refund.approval_threshold |
+| Supplier return | ৳20,000 | supplier_return.approval_threshold |
+| Stock backdate days | 7 | stock.backdate_days |
+
+---
+
+## §21.13 — Credit Sales (D05 Extended)
+
+### Decision
+`RESOLVED §21.13`: Credit sales implementation per §20.D05. Disabled by default (feature flag `credit_sales`). When enabled: walk-in customers prohibited, credit limit > 0 required, overdue check (30-day default), real-time AR exposure calculation, `CREDIT_LIMIT_EXCEEDED` + `CUSTOMER_OVERDUE` error codes.
+
+### Validation Checks (in PostSale)
+
+1. Feature flag `credit_sales` must be enabled
+2. Walk-in customers cannot make credit sales (customerId required)
+3. Customer must have `creditLimit > 0`
+4. Customer must not have overdue sales (> 30 days unpaid)
+5. Current AR + unpaid amount must not exceed credit limit
+
+---
+
+## §21.14 — Action-Time MFA
+
+### Decision
+`RESOLVED §21.14`: MFA re-verification for high-risk operations per §6 rule 2. `requireMfaForAction()` checks `mfa_verified` claim in JWT for: backup_download, journal_adjustment_approval, sensitive_export, fiscal_period_lock/unlock, supervisor_cashier_variance_approval, tax_rule_change, large_refund_approval, account_transfer_approval.
+
+---
+
+## §21.15 — CSP Hardening
+
+### Decision
+`RESOLVED §21.15`: Content-Security-Policy: `script-src 'self'` (no `unsafe-inline` or `unsafe-eval`). `style-src 'self' 'unsafe-inline'` (required by Next.js/Tailwind). `frame-ancestors 'self' https://*.space-z.ai` (preview gateway). HSTS: `max-age=63072000; includeSubDomains; preload`.
+
+---
+
+## §21.16 — SQL Views (§11.2)
+
+13 required SQL views created in migration `0019_required_views.sql`:
+
+1. `warehouse_stock_available_v` — qty_on_hand - qty_reserved
+2. `sale_balance_v` — outstanding AR per sale
+3. `purchase_balance_v` — outstanding AP per purchase
+4. `customer_ar_v` — total AR per customer
+5. `supplier_ap_v` — total AP per supplier
+6. `customer_advance_balance_v` — advance balance per customer
+7. `supplier_advance_balance_v` — advance balance per supplier
+8. `gift_card_balance_v` — current balance per gift card
+9. `reward_point_balance_v` — current points per customer
+10. `cashier_shift_expected_v` — expected cash per shift
+11. `trial_balance_v` — account balances from posted journal lines
+12. `inventory_valuation_v` — qty × MAC per warehouse/product
+13. `overdue_installments_v` — installments past due date
+
+---
+
+## §21.17 — Supplemental SQL Functions
+
+9 additional SECURITY DEFINER functions created in `prisma/functions/supplemental_functions.sql`:
+
+1. `post_service_part_consumption` — validates + posts parts consumption from repair warehouse
+2. `post_expense` — links expense to journal entry + marks posted
+3. `validate_translation_override` — validates locale + non-empty value
+4. `validate_return_quantities` — validates return qty ≤ original - already returned
+5. `validate_stock_count_posting` — validates all count items have counted qty
+6. `post_stock_adjustment` — posts adjustment via post_stock_movement
+7. `create_or_update_stock_reservation` — reserves stock with availability check
+8. `consume_stock_reservation` — marks reservation consumed + releases qty_reserved
+9. `reverse_stock_movement` — creates opposite movement for reversal
+
+---
+
+## §21.18 — Immutable Ledger Triggers (Extended)
+
+Migration `0018_journal_payment_immutable_triggers.sql` applies `prevent_posted_record_mutation()` to:
+
+- `journal_entries` (BEFORE UPDATE OR DELETE WHERE status = 'posted')
+- `journal_lines` (BEFORE UPDATE OR DELETE — always)
+- `payment_allocations` (BEFORE UPDATE OR DELETE — always)
+
+Additional CHECK constraints added:
+- `journal_lines_debit_xor_credit_chk` — exactly one of debit/credit > 0
+- `supplier_advance_exactly_one_source_chk` — payment_id XOR purchase_return_id
+- `transfer_items_qty_dispatched_chk` — qty_dispatched ≤ qty_requested
+- `transfer_items_qty_received_chk` — qty_received ≤ qty_dispatched
+- `stock_budget_qty_consumed_chk` — qty_consumed ≤ qty_granted
+- `risk_assessments_expires_after_assessed_chk` — expires_at > assessed_at
+
+---
+
+## §21.19 — Localization Assets
+
+bn-BD + en-BD translation JSON files at `public/locales/{locale}/common.json` with 150+ keys each covering: navigation (24), actions (20), labels (40+), POS (12), accounting (12), delivery (15), service (9), CRM (9), HR (14), import (12), risk (13), errors (25), success (8), currency (5), date (4), common (12), receipt/invoice (10).
+
+i18n loader (`src/lib/i18n/index.ts`) with 4-tier fallback: company overrides → external JSON → inline translations → fallback locale.
+
+---
+
+## §21.20 — Cron Job Infrastructure
+
+### External Cron (cron-job.org)
+- `POST /api/v1/cron/risk-alerts` — daily risk alert evaluation (token-authed)
+- Schedule: 00:00 Asia/Dhaka daily
+
+### BullMQ Repeatable Job
+- Daily reconciliation + risk alert evaluation at 3am UTC (9am Asia/Dhaka)
+- 5 workers: outbox, communication, reconciliation, reservation-expiry, retention
+
+### Scripts
+- `scripts/cron-evaluate-risk-alerts.sh` — shell script for system cron
+- `scripts/cron/risk-alerts` — API endpoint for external cron services
+
+---
+
+## Updated Project Statistics (§21 complete)
+
+| Metric | Count |
+|--------|-------|
+| Prisma models | 181 |
+| PostgreSQL tables | 189 |
+| RLS-enabled tables | 175+ |
+| SQL functions | 361+ |
+| SQL triggers | 39+ |
+| SQL views | 13 |
+| CHECK constraints | 1,700+ |
+| EXCLUDE constraints | 2 |
+| Domain commands | 54 |
+| API routes | 129 |
+| UI pages | 34 |
+| Reports | 28 |
+| Reconciliation checks | 22 |
+| Permission codes | 136 |
+| Feature flags | 12 |
+| Test files | 45 |
+| Tests passing | 395 |
+| Translation keys per locale | 150+ |
+| Migrations | 20 |
+| ADRs | 6 |
+| Runbooks | 4 |
+
+---
+
+*End of §21 — Extended Modules. All additions follow the binding rules (§0), architecture controls (§20.0), security model (§6), and transaction rules (§5) of the original blueprint. No existing rule, constraint, or control has been weakened.*
