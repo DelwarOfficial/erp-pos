@@ -39,3 +39,6 @@ agent-ctx/
 test-results/
 playwright-report/
 .env
+.env.staging
+.env.sqlite-backup
+.env.uat

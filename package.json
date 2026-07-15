@@ -19,7 +19,10 @@
     "seed": "bun run scripts/seed.ts",
     "worker": "bun run src/workers/index.ts",
     "migrate:postgres": "bun run scripts/run-postgres-migrations.ts",
-    "switch:postgres": "bun run scripts/switch-to-postgres.ts"
+    "switch:postgres": "bun run scripts/switch-to-postgres.ts",
+    "staging:generate": "DATABASE_URL=$(grep '^DATABASE_URL=' .env.staging | cut -d'\"' -f2) bunx prisma generate --schema=prisma/schema.postgres.prisma",
+    "staging:dev": "cp .env.staging .env && bunx prisma generate --schema=prisma/schema.postgres.prisma && next dev -p 3000",
+    "staging:seed": "DATABASE_URL=$(grep '^DATABASE_URL=' .env.staging | cut -d'\"' -f2) bun run scripts/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1084.0",
