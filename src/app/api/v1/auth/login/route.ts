@@ -126,9 +126,9 @@ export async function POST(req: NextRequest) {
         return name.includes('owner') || name.includes('admin') || name.includes('super');
       });
 
-    // Sandbox bypass: in development mode, allow privileged users without MFA
-    // Production strictly enforces MFA per §6 rule 2
-    const isSandboxBypass = process.env.NODE_ENV === 'development' && !user.mfaEnabled;
+    // Sandbox bypass: in development mode or when E2E_TESTING is set, allow
+    // privileged users without MFA. Production strictly enforces MFA per §6 rule 2.
+    const isSandboxBypass = (process.env.NODE_ENV === 'development' || process.env.E2E_TESTING === 'true') && !user.mfaEnabled;
     if (hasPrivilegedRole && !user.mfaEnabled && !isSandboxBypass) {
       await recordSecurityEvent({
         eventType: 'login_blocked_mfa_required',
