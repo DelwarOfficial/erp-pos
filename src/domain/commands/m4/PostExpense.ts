@@ -90,7 +90,7 @@ export async function postExpense(
       data: {
         companyId: input.companyId, expenseId: expense.id, lineNo,
         expenseCategoryId: item.expenseCategoryId,
-        description: item.description,
+        description: item.description ?? '',
         amount: item.amount, taxAmount: item.taxAmount,
         baseAmount,
       },

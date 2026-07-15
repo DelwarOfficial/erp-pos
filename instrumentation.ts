@@ -20,7 +20,7 @@ export async function register() {
 
     const sdk = new NodeSDK({
       serviceName: process.env.OTEL_SERVICE_NAME ?? 'erp-pos',
-      resourceAttributes: getResourceAttributes(),
+      ...(getResourceAttributes() as Record<string, string>),
       spanProcessor: new BatchSpanProcessor(traceExporter),
       metricReader: new PeriodicExportingMetricReader({
         exporter: metricExporter,

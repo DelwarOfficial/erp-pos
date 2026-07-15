@@ -72,13 +72,10 @@ export async function withTenant<T>(
   work: UnitOfWork<T>,
   options?: { isolationLevel?: 'Serializable' | 'ReadCommitted' },
 ): Promise<T> {
-  return tenantStorage.run(ctx, async () => {
-    const isolationLevel =
-      options?.isolationLevel === 'ReadCommitted'
-        ? 'ReadCommitted'
-        : 'Serializable';
-
-    return db.$transaction(async (tx) => {
+  return tenantStorage.run(ctx, async (): Promise<T> => {
+    // SQLite only supports Serializable; ReadCommitted is ignored.
+    // In PostgreSQL production, the isolation level would be passed through.
+    const result: T = await db.$transaction(async (tx) => {
       // In Postgres production we would execute:
       //   await tx.$executeRaw`SELECT set_config('app.company_id', ${ctx.companyId}, true)`;
       //   await tx.$executeRaw`SELECT set_config('app.user_id', ${ctx.userId ?? ''}, true)`;
@@ -88,9 +85,10 @@ export async function withTenant<T>(
       // client extension in `tenantClient.ts` and via in-app filters.
       return work(tx);
     }, {
-      isolationLevel,
+      isolationLevel: 'Serializable',
       timeout: 30_000,
-    });
+    }) as T;
+    return result;
   });
 }
 

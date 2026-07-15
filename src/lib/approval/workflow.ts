@@ -14,6 +14,7 @@ export interface CreateApprovalRequestParams {
   referenceId: string;
   payload: Record<string, unknown>;
   requestedBy: string;
+  reason?: string;
   thresholdValue?: number; // the value that exceeded the threshold
   thresholdName?: string; // which threshold was exceeded
 }
@@ -41,6 +42,7 @@ export async function createApprovalRequest(params: CreateApprovalRequestParams)
       referenceId: params.referenceId,
       requestedBy: params.requestedBy,
       status: 'pending',
+      reason: params.reason ?? 'Approval required',
       payload: JSON.stringify(params.payload),
       requestedAt: new Date(),
     },
@@ -71,7 +73,7 @@ export async function resolveApprovalRequest(params: {
       status: params.decision,
       approvedBy: params.resolvedBy,
       resolvedAt: new Date(),
-      reason: params.reason ?? null,
+      reason: params.reason ?? (request.reason ?? 'Resolved'),
     },
   });
 }

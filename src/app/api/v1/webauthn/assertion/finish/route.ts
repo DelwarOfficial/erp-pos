@@ -10,7 +10,7 @@ import { getCorrelationId } from '@/lib/http';
 import { recordSecurityEvent } from '@/lib/audit';
 
 const FinishSchema = z.object({
-  response: z.record(z.unknown()),
+  response: z.record(z.string(), z.unknown()),
 });
 
 export async function POST(req: NextRequest) {

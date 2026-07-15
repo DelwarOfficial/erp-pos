@@ -37,7 +37,8 @@ export function register() {
     integrations: [
       Sentry.httpIntegration(),
       Sentry.prismaIntegration(),
-      Sentry.bunIntegration(),
+      // Sentry.bunIntegration() — not available in @sentry/nextjs; Bun runtime
+      // is detected automatically by the Node SDK when running under Bun.
     ],
   });
 }

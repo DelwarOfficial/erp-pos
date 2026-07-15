@@ -38,9 +38,11 @@ export function DataTable<T extends { id?: string }>({
   const sorted = useMemo(() => {
     if (!sortKey) return data;
     const sorted = [...data].sort((a, b) => {
-      const av = (a as Record<string, unknown>)[sortKey];
-      const bv = (b as Record<string, unknown>)[sortKey];
+      const av = (a as Record<string, unknown>)[sortKey] as number | string | undefined;
+      const bv = (b as Record<string, unknown>)[sortKey] as number | string | undefined;
       if (av === bv) return 0;
+      if (av === undefined) return 1;
+      if (bv === undefined) return -1;
       const cmp = av < bv ? -1 : 1;
       return sortDir === 'asc' ? cmp : -cmp;
     });

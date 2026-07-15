@@ -26,7 +26,7 @@ const queues = new Map<string, Queue>();
 export function getQueue(name: string): Queue {
   if (!queues.has(name)) {
     queues.set(name, new Queue(name, {
-      connection: getRedisConnection(),
+      connection: getRedisConnection() as any,
       defaultJobOptions: { attempts: 3, backoff: { type: 'exponential', delay: 1000 }, removeOnComplete: 100, removeOnFail: 500 },
     }));
   }

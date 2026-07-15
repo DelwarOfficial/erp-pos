@@ -20,7 +20,7 @@ function log(level: 'info' | 'warn' | 'error', msg: string, meta?: unknown) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), level, source: 'worker', msg, meta }));
 }
 
-export function startWorkers(): void {
+export async function startWorkers(): Promise<void> {
   log('info', 'Starting BullMQ workers', { queues: Object.values(QUEUE_NAMES), concurrency: CONCURRENCY });
 
   // ── Outbox worker — drains outbox_events table and delivers webhooks ──
@@ -30,7 +30,7 @@ export function startWorkers(): void {
       const count = await processOutboxBatch();
       return { delivered: count };
     },
-    { connection: getRedisConnection(), concurrency: CONCURRENCY },
+    { connection: getRedisConnection() as any, concurrency: CONCURRENCY },
   );
   outboxWorker.on('completed', (job) => log('info', 'outbox batch completed', { jobId: job.id }));
   outboxWorker.on('failed', (job, err) => log('error', 'outbox batch failed', { jobId: job?.id, err: err.message }));
@@ -39,15 +39,15 @@ export function startWorkers(): void {
   const communicationWorker = new Worker(
     QUEUE_NAMES.COMMUNICATION,
     async (job: Job) => processCommunicationCampaign(job.data.campaignId),
-    { connection: getRedisConnection(), concurrency: CONCURRENCY },
+    { connection: getRedisConnection() as any, concurrency: CONCURRENCY },
   );
   communicationWorker.on('failed', (job, err) => log('error', 'communication campaign failed', { jobId: job?.id, err: err.message }));
 
   // ── Reconciliation worker — periodic reconciliation runs ──
   const reconciliationWorker = new Worker(
     QUEUE_NAMES.RECONCILIATION,
-    async (job: Job) => runScheduledReconciliation(job.data.checks ?? 'all'),
-    { connection: getRedisConnection(), concurrency: 1 },
+    async (_job: Job) => runScheduledReconciliation(),
+    { connection: getRedisConnection() as any, concurrency: 1 },
   );
   reconciliationWorker.on('failed', (job, err) => log('error', 'reconciliation failed', { jobId: job?.id, err: err.message }));
 
@@ -55,7 +55,7 @@ export function startWorkers(): void {
   const reservationWorker = new Worker(
     QUEUE_NAMES.EXPIRE_RESERVATIONS,
     async (_job: Job) => expireStaleReservations(),
-    { connection: getRedisConnection(), concurrency: 1 },
+    { connection: getRedisConnection() as any, concurrency: 1 },
   );
   reservationWorker.on('failed', (_job, err) => log('error', 'reservation expiry failed', { err: err.message }));
 
@@ -63,7 +63,7 @@ export function startWorkers(): void {
   const retentionWorker = new Worker(
     QUEUE_NAMES.RETENTION,
     async (job: Job) => runRetentionJob(job.data.policy ?? 'default'),
-    { connection: getRedisConnection(), concurrency: 1 },
+    { connection: getRedisConnection() as any, concurrency: 1 },
   );
   retentionWorker.on('failed', (job, err) => log('error', 'retention job failed', { jobId: job?.id, err: err.message }));
 

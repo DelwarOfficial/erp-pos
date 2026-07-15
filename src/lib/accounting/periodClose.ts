@@ -225,7 +225,7 @@ async function runReconciliationForClose(companyId: string, period: { periodStar
         stepName: 'Reconciliation',
         status: 'failed',
         details: `${criticalFindings.length} critical, ${highFindings.length} high findings`,
-        findings: result.findings.map(f => ({ checkCode: f.check_code, severity: f.severity, message: f.details })),
+        findings: result.findings.map(f => ({ checkCode: f.check_code, severity: f.severity, message: JSON.stringify(f.details) })),
       };
     }
 

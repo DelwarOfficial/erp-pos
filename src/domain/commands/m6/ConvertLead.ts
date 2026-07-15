@@ -27,12 +27,16 @@ export async function convertLead(
   }
 
   // Find or create a 'won' status
-  let wonStatus = lead.status;
-  if (!wonStatus.isWon) {
-    wonStatus = await tx.leadStatus.findFirst({
+  let wonStatus: { id: string; name: string; isActive: boolean; companyId: string; position: number; isWon: boolean; isLost: boolean };
+  if (lead.status?.isWon) {
+    wonStatus = lead.status;
+  } else {
+    const found = await tx.leadStatus.findFirst({
       where: { companyId: input.companyId, isWon: true, isActive: true },
     });
-    if (!wonStatus) {
+    if (found) {
+      wonStatus = found;
+    } else {
       // Create a won status
       wonStatus = await tx.leadStatus.create({
         data: { companyId: input.companyId, name: 'Won', position: 99, isWon: true, isActive: true },
@@ -41,7 +45,7 @@ export async function convertLead(
   }
 
   // Create or link customer
-  let customer = null;
+  let customer: Awaited<ReturnType<typeof tx.customer.findFirst>> = null;
   if (lead.phone) {
     customer = await tx.customer.findFirst({
       where: { companyId: input.companyId, phone: lead.phone, deletedAt: null },

@@ -57,16 +57,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     items: sale.items.map((item: any) => ({
       name: `${item.product.code} — ${item.product.name}`,
       description: item.product.description ?? undefined,
-      qty: parseFloat(item.qty),
-      unitPrice: parseFloat(item.unitPriceSnapshot),
-      lineTotal: parseFloat(item.lineTotal),
-      taxRate: parseFloat(item.taxRateSnapshot || '0'),
+      qty: parseFloat(String(item.qty)),
+      unitPrice: parseFloat(String(item.unitPriceSnapshot)),
+      lineTotal: parseFloat(String(item.lineTotal)),
+      taxRate: parseFloat(String(item.taxRateSnapshot || '0')),
     })),
-    subtotal: parseFloat(sale.subtotal),
-    taxTotal: parseFloat(sale.taxTotal),
+    subtotal: parseFloat(String(sale.subtotal)),
+    taxTotal: parseFloat(String(sale.taxTotal)),
     sdTotal,
-    discountTotal: parseFloat(sale.discountTotal),
-    grandTotal: parseFloat(sale.grandTotal),
+    discountTotal: parseFloat(String(sale.discountTotal)),
+    grandTotal: parseFloat(String(sale.grandTotal)),
   };
 
   // ── PDF format ──
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       format: 'a4',
       margins: { top: 15, bottom: 15, left: 15, right: 15 },
     });
-    return new NextResponse(bytes, {
+    return new NextResponse(new Uint8Array(bytes) as BodyInit, {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': `inline; filename="invoice-${sale.referenceNo}.pdf"`,

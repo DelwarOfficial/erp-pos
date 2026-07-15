@@ -35,13 +35,16 @@ export default function CataloguePage() {
                 { name: 'name', label: 'Name', type: 'text', placeholder: 'Electronics', required: true },
                 { name: 'code', label: 'Code', type: 'text', placeholder: 'ELEC', required: true },
               ]}
-              renderItem={(item) => (
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{String(item.name)}</span>
-                  <Badge variant="outline" className="text-xs font-mono">{String(item.code)}</Badge>
-                  {item.parent && <Badge variant="secondary" className="text-xs">↳ {String(item.parent.name ?? '')}</Badge>}
-                </div>
-              )}
+              renderItem={(item) => {
+                const parent = item.parent as { name?: string } | null | undefined;
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{String(item.name)}</span>
+                    <Badge variant="outline" className="text-xs font-mono">{String(item.code)}</Badge>
+                    {parent ? <Badge variant="secondary" className="text-xs">↳ {String(parent.name ?? '')}</Badge> : null}
+                  </div>
+                );
+              }}
             />
           </CardContent>
         </Card>
@@ -86,7 +89,7 @@ export default function CataloguePage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{String(item.name)}</span>
                   <Badge variant="outline" className="text-xs font-mono">{String(item.code)}</Badge>
-                  {item.allow_fractional && <Badge variant="secondary" className="text-xs">fractional</Badge>}
+                  {item.allow_fractional ? <Badge variant="secondary" className="text-xs">fractional</Badge> : null}
                 </div>
               )}
             />

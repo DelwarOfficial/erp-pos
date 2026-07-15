@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const auth = await authenticateRequest();
     const idempotencyKey = requireIdempotencyKey(req);
-    if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+    
     await requirePermission(auth, 'audit_logs:write');
 
     const { id } = await params;

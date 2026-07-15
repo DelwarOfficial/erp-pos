@@ -52,7 +52,7 @@ export async function beginRegistration(params: {
   const options = await generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: getRpId(),
-    userID: params.userId,
+    userID: new TextEncoder().encode(params.userId),
     userName: params.userEmail,
     userDisplayName: params.userName,
     attestationType: 'none',
@@ -78,7 +78,7 @@ export async function beginRegistration(params: {
     },
   });
 
-  return { options };
+  return { options: options as unknown as Record<string, unknown> };
 }
 
 /**
@@ -135,8 +135,8 @@ export async function finishRegistration(params: {
       credentialId: credentialIdB64,
       publicKey: Buffer.from(credential.publicKey),
       counter: credential.counter,
-      deviceType: credential.deviceType,
-      backedUp: credential.backedUp,
+      deviceType: (credential as any).deviceType ?? null,
+      backedUp: (credential as any).backedUp ?? false,
       transports: JSON.stringify(credential.transports ?? []),
       name: params.name ?? null,
     },
@@ -187,7 +187,7 @@ export async function beginAuthentication(params: {
     },
   });
 
-  return { options };
+  return { options: options as unknown as Record<string, unknown> };
 }
 
 /**
@@ -228,7 +228,7 @@ export async function finishAuthentication(params: {
     expectedOrigin: getOrigin(),
     expectedRPID: getRpId(),
     credential: {
-      id: Buffer.from(credential.credentialId, 'base64url'),
+      id: credential.credentialId,
       publicKey: credential.publicKey,
       counter: credential.counter,
       transports: JSON.parse(credential.transports) as AuthenticatorTransport[],

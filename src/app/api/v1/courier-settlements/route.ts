@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   await requirePermission(auth, 'inventory.read');
     const settlements = await db.courierCodSettlement.findMany({
       where: { companyId: auth.companyId },
-      take: 50, orderBy: { createdAt: 'desc' },
+      take: 50, orderBy: { settlementDate: 'desc' },
       include: { _count: { select: { items: true } } },
     });
     return NextResponse.json({

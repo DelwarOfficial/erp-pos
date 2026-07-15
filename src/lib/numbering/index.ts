@@ -54,13 +54,13 @@ export async function nextDocumentNumber(
         documentType: params.documentType,
         fiscalYear: params.fiscalYear,
         prefix: params.prefix,
-        nextNumber: 2n, // we are about to issue #1
+        nextNumber: BigInt(2), // we are about to issue #1
         padding,
         version: 1,
       },
     });
     sequenceId = created.id;
-    nextNumber = 1n;
+    nextNumber = BigInt(1);
   } else {
     // Atomically increment — equivalent to FOR UPDATE on the row.
     const updated = await tx.documentSequence.update({
@@ -68,7 +68,7 @@ export async function nextDocumentNumber(
       data: { nextNumber: { increment: 1 }, version: { increment: 1 } },
     });
     sequenceId = existing.id;
-    nextNumber = updated.nextNumber - 1n; // value before increment is the issued number
+    nextNumber = updated.nextNumber - BigInt(1); // value before increment is the issued number
   }
 
   const formatted = String(nextNumber).padStart(padding, '0');
@@ -101,12 +101,12 @@ export async function leaseDocumentNumbers(
       prefix: params.prefix,
     },
   });
-  let maxEnd = 0n;
+  let maxEnd = BigInt(0);
   for (const l of leases) {
     if (l.rangeEnd > maxEnd) maxEnd = l.rangeEnd;
   }
 
-  const rangeStart = maxEnd + 1n;
+  const rangeStart = maxEnd + BigInt(1);
   const rangeEnd = maxEnd + BigInt(params.count);
   const lease = await tx.documentNumberLease.create({
     data: {

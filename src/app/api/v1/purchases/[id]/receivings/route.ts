@@ -39,7 +39,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       orderBy: { receivedAt: 'desc' },
       include: {
         _count: { select: { items: true } },
-        receivedByUser: { select: { id: true, name: true, email: true } },
       },
     });
     return NextResponse.json({
@@ -52,7 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         posted_at: r.postedAt,
         supplier_document_no: r.supplierDocumentNo,
         item_count: r._count.items,
-        received_by: r.receivedByUser,
+        received_by: r.receivedBy,
       })),
     });
   } catch (e) {

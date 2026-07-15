@@ -123,7 +123,7 @@ export async function reversePayment(
   await tx.auditLog.create({
     data: { companyId: params.companyId, userId: params.reversedBy, correlationId,
       action: 'payment.reverse', entityType: 'payment', entityId: payment.id,
-      afterValue: JSON.stringify({ reversed_by: params.reversedPaymentId || reversedPayment.id, reason: params.reason }) },
+      afterValue: JSON.stringify({ reversed_by: reversedPayment.id, reason: params.reason }) },
   });
 
   return { reversedPaymentId: reversedPayment.id };

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });
   }
-  if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+  
 
   const url = new URL(req.url);
   const status = url.searchParams.get('status');
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });
   }
-  if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+  
 
   try {
     await requirePermission(auth, 'export.data.branch');
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       job: {
         id: job.id,
-        reportCode,
+        reportCode: report_code,
         format,
         status: 'completed',
         rowCount: exportData.rows.length,

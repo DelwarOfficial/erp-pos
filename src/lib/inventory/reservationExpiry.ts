@@ -28,7 +28,7 @@ export async function expireStaleReservations(): Promise<{ expired: number }> {
       async (tx) => {
         await tx.stockReservation.update({
           where: { id: r.id },
-          data: { status: 'expired', expiredAt: new Date() },
+          data: { status: 'expired', expiresAt: new Date() },
         });
 
         // Reverse the original reservation movement (qty_delta = +qty to restore available stock)
@@ -39,7 +39,7 @@ export async function expireStaleReservations(): Promise<{ expired: number }> {
           warehouseId: r.warehouseId,
           productId: r.productId,
           movementType: 'adjustment_in',
-          qtyDelta: r.qty,
+          qtyDelta: Number(r.qty),
           unitCost: 0,
           referenceType: 'reservation',
           referenceId: r.id,

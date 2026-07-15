@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Authentication failed' } }, { status: 500 });
   }
-  if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+  
 
   const { saleId } = await params;
   const sale = await db.sale.findFirst({
@@ -39,20 +39,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
     cashierName: sale.biller?.name ?? '—',
     items: sale.items.map((item: any) => ({
       name: item.product.name,
-      qty: parseFloat(item.qty),
-      unitPrice: parseFloat(item.unitPriceSnapshot),
-      lineTotal: parseFloat(item.lineTotal),
+      qty: parseFloat(String(item.qty)),
+      unitPrice: parseFloat(String(item.unitPriceSnapshot)),
+      lineTotal: parseFloat(String(item.lineTotal)),
     })),
-    subtotal: parseFloat(sale.subtotal),
-    discountTotal: parseFloat(sale.discountTotal),
-    taxTotal: parseFloat(sale.taxTotal),
-    grandTotal: parseFloat(sale.grandTotal),
-    paidAmount: sale.payments.reduce((s: number, p: any) => s + parseFloat(p.amount), 0),
+    subtotal: parseFloat(String(sale.subtotal)),
+    discountTotal: parseFloat(String(sale.discountTotal)),
+    taxTotal: parseFloat(String(sale.taxTotal)),
+    grandTotal: parseFloat(String(sale.grandTotal)),
+    paidAmount: sale.payments.reduce((s: number, p: any) => s + parseFloat(String(p.amount)), 0),
     changeAmount: 0,
     paymentMethod: sale.payments.map((p: any) => p.method).join(', ') || 'cash',
     customerName: sale.customer?.name,
     customerPhone: sale.customer?.phone ?? undefined,
-    isReturn: sale.saleType === 'return',
+    isReturn: (sale as any).saleType === 'return',
   });
 
   const printerParam = new URL(req.url).searchParams.get('printer');
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
     return NextResponse.json(result);
   }
 
-  return new NextResponse(bytes, {
+  return new NextResponse(new Uint8Array(bytes) as BodyInit, {
     headers: {
       'Content-Type': 'application/octet-stream',
       'Content-Disposition': `inline; filename="receipt-${sale.referenceNo}.bin"`,

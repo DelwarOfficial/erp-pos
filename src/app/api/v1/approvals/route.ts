@@ -40,7 +40,7 @@ const CreateSchema = z.object({
   reference_type: z.string().min(1).max(60),
   reference_id: z.string().min(1),
   branch_id: z.string().uuid().optional(),
-  payload: z.record(z.unknown()).optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
   threshold_value: z.number().optional(),
   threshold_name: z.string().optional(),
 });

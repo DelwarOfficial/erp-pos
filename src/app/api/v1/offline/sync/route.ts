@@ -14,7 +14,7 @@ import { getCorrelationId } from '@/lib/http';
 const OfflineCommandSchema = z.object({
   command_type: z.enum(['cash_sale', 'held_sale_draft', 'shift_open', 'shift_close', 'customer_create', 'receipt_reprint']),
   sequence_number: z.number().int().positive(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   payload_hash: z.string().length(64),
   idempotency_key: z.string().min(8).max(160),
 });

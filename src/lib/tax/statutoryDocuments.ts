@@ -122,7 +122,7 @@ export async function generateMushak61(
     where: { id: saleId, companyId },
     include: {
       items: { include: { product: { select: { name: true } } } },
-      company: { select: { legalName: true, bin: true, addressLine1: true } },
+      company: { select: { legalName: true, bin: true, displayName: true } },
       branch: { select: { name: true, address: true } },
       customer: { select: { name: true, address: true, taxIdentifier: true } },
     },
@@ -130,8 +130,11 @@ export async function generateMushak61(
   if (!sale) throw new Error('Sale not found');
 
   const items = sale.items.map(item => {
-    const taxableAmount = parseFloat(String(item.lineTotal)) - parseFloat(String(item.discountAmountSnapshot || '0'));
-    const vatRate = parseFloat(String(item.taxRateSnapshot || '0'));
+    const taxableAmount = parseFloat(String(item.lineTotal)) - parseFloat(String(item.discountAmount || '0'));
+    const taxableAmt = parseFloat(String(item.taxableAmount || '0'));
+    const vatRate = taxableAmt > 0
+      ? (parseFloat(String(item.taxAmount || '0')) / taxableAmt) * 100
+      : 0;
     const vatAmount = parseFloat(String(item.taxAmount || '0'));
     return {
       description: item.product.name,
@@ -148,7 +151,7 @@ export async function generateMushak61(
 
   const payload: Mushak61Data = {
     sellerName: sale.company.legalName,
-    sellerAddress: sale.branch.address ?? sale.company.addressLine1 ?? '',
+    sellerAddress: sale.branch.address ?? sale.company.displayName ?? '',
     sellerBin: sale.company.bin ?? '',
     buyerName: sale.customer?.name ?? 'Walk-in Customer',
     buyerAddress: sale.customer?.address ?? '',
@@ -199,19 +202,20 @@ export async function generateMushak63(
           customer: { select: { name: true, taxIdentifier: true } },
         },
       },
-      items: { include: { product: { select: { name: true } } } },
+      items: { include: { saleItem: { include: { product: { select: { name: true } } } } } },
     },
   });
   if (!saleReturn) throw new Error('Sale return not found');
 
   const items = saleReturn.items.map(item => {
-    const taxableAmount = parseFloat(String(item.lineTotal));
-    const vatRate = parseFloat(String(item.taxRateSnapshot || '0'));
-    const vatAmount = taxableAmount * vatRate / 100;
+    const taxableAmount = parseFloat(String(item.lineCredit));
+    const taxCredit = parseFloat(String(item.taxCredit || '0'));
+    const vatRate = taxableAmount > 0 ? (taxCredit / taxableAmount) * 100 : 0;
+    const vatAmount = taxCredit;
     return {
-      description: item.product.name,
-      qty: parseFloat(String(item.qty)),
-      unitPrice: parseFloat(String(item.unitPriceSnapshot)),
+      description: item.saleItem?.product?.name ?? 'Item',
+      qty: parseFloat(String(item.qtyReturned)),
+      unitPrice: parseFloat(String(item.unitPriceCredit)),
       taxableAmount,
       vatRate,
       vatAmountReversed: vatAmount,
@@ -228,11 +232,11 @@ export async function generateMushak63(
     sellerBin: saleReturn.sale.company.bin ?? '',
     buyerName: saleReturn.sale.customer?.name ?? 'Walk-in Customer',
     buyerBin: saleReturn.sale.customer?.taxIdentifier ?? '',
-    reason: saleReturn.returnReason ?? 'return',
+    reason: saleReturn.reason ?? 'return',
     items,
-    totalTaxableAmountReversed: parseFloat(String(saleReturn.subtotal)),
-    totalVatReversed: parseFloat(String(saleReturn.taxTotal)),
-    grandTotalReversed: parseFloat(String(saleReturn.grandTotal)),
+    totalTaxableAmountReversed: parseFloat(String(saleReturn.subtotalCredit)),
+    totalVatReversed: parseFloat(String(saleReturn.taxCredit)),
+    grandTotalReversed: parseFloat(String(saleReturn.totalCredit)),
   };
 
   const docNo = `MUSHAK-6.3-${saleReturn.referenceNo}`;
@@ -305,7 +309,7 @@ export async function generateMushak91(
   const doc = await db.statutoryDocument.create({
     data: {
       companyId,
-      branchId: sale_branch_placeholder(companyId),
+      branchId: await sale_branch_placeholder(companyId),
       documentType: 'VAT_9_1',
       documentNo: docNo,
       sourceType: 'vat_return',

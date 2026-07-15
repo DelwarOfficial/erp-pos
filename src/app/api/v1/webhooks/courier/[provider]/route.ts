@@ -43,32 +43,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     return NextResponse.json({ error: { code: 'NO_SHIPMENT_ID' } }, { status: 400 });
   }
 
-  const delivery = await db.deliveryOrder.findFirst({
-    where: { providerShipmentId },
-    include: { company: { select: { id: true } } },
+  const shipment = await db.courierShipment.findFirst({
+    where: {
+      OR: [
+        { providerShipmentId },
+        { trackingCode: providerShipmentId },
+      ],
+    },
+    include: { deliveryOrder: { include: { company: { select: { id: true } } } } },
   });
-  if (!delivery) {
+  if (!shipment) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: `No delivery for ${providerShipmentId}` } }, { status: 404 });
   }
 
+  const delivery = shipment.deliveryOrder;
   const newStatus = mapCourierStatus(payload.status as string, providerCode);
   if (newStatus && newStatus !== delivery.status) {
     await db.deliveryOrder.update({
       where: { id: delivery.id },
-      data: { status: newStatus, lastStatusAt: new Date() },
+      data: { status: newStatus },
     });
 
-    // Append to delivery tracking history
-    await db.deliveryTracking.create({
+    // Update courier shipment with latest provider status
+    await db.courierShipment.update({
+      where: { id: shipment.id },
       data: {
-        companyId: delivery.company.id,
-        deliveryOrderId: delivery.id,
-        status: newStatus,
-        location: (payload.location as string) ?? null,
-        note: (payload.note as string) ?? null,
-        occurredAt: (payload.timestamp as string) ? new Date(payload.timestamp as string) : new Date(),
+        lastProviderStatus: payload.status as string,
+        lastSyncedAt: new Date(),
       },
-    }).catch(() => {/* deliveryTracking may not exist in sandbox schema */});
+    }).catch(() => {/* best-effort update */});
   }
 
   return NextResponse.json({ received: true, status: newStatus });

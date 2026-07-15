@@ -67,7 +67,7 @@ html, body { margin: 0; padding: 0; font-family: 'Noto Sans Bengali', 'Hind Sili
 
   // Try Puppeteer
   try {
-    const puppeteer = await import('puppeteer').catch(() => null);
+    const puppeteer = await import('puppeteer' as string).catch(() => null) as any;
     if (puppeteer) {
       const browser = await puppeteer.default.launch({ headless: 'new', args: ['--no-sandbox'] });
       try {

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });
   }
-  if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+  
 
   const { id } = await params;
   const job = await db.importJob.findFirst({

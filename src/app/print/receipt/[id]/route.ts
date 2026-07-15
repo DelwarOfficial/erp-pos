@@ -40,21 +40,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     cashierName: sale.biller?.name ?? '—',
     items: sale.items.map((item: any) => ({
       name: item.product.name,
-      qty: parseFloat(item.qty),
-      unitPrice: parseFloat(item.unitPriceSnapshot),
-      lineTotal: parseFloat(item.lineTotal),
-      discount: parseFloat(item.discountAmountSnapshot || '0'),
+      qty: parseFloat(String(item.qty)),
+      unitPrice: parseFloat(String(item.unitPriceSnapshot)),
+      lineTotal: parseFloat(String(item.lineTotal)),
+      discount: parseFloat(String(item.discountAmountSnapshot || '0')),
     })),
-    subtotal: parseFloat(sale.subtotal),
-    discountTotal: parseFloat(sale.discountTotal),
-    taxTotal: parseFloat(sale.taxTotal),
-    grandTotal: parseFloat(sale.grandTotal),
-    paidAmount: sale.payments.reduce((sum: number, p: any) => sum + parseFloat(p.amount), 0),
+    subtotal: parseFloat(String(sale.subtotal)),
+    discountTotal: parseFloat(String(sale.discountTotal)),
+    taxTotal: parseFloat(String(sale.taxTotal)),
+    grandTotal: parseFloat(String(sale.grandTotal)),
+    paidAmount: sale.payments.reduce((sum: number, p: any) => sum + parseFloat(String(p.amount)), 0),
     changeAmount: 0, // computed below
     paymentMethod: sale.payments.map((p: any) => p.method).join(', ') || 'cash',
     customerName: sale.customer?.name,
     customerPhone: sale.customer?.phone ?? undefined,
-    isReturn: sale.saleType === 'return',
+    isReturn: (sale as any).saleType === 'return',
   };
   data.changeAmount = Math.max(0, data.paidAmount - data.grandTotal);
 
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const result = await sendToNetworkPrinter(bytes, printerHost);
       return NextResponse.json(result);
     }
-    return new NextResponse(bytes, {
+    return new NextResponse(new Uint8Array(bytes) as BodyInit, {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': `inline; filename="receipt-${sale.referenceNo}.bin"`,
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (format === 'pdf') {
     const htmlBody = renderReceiptHtml(data);
     const { bytes, contentType } = await renderPdf(htmlBody, { format: '80mm' });
-    return new NextResponse(bytes, {
+    return new NextResponse(new Uint8Array(bytes) as BodyInit, {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': `inline; filename="receipt-${sale.referenceNo}.pdf"`,

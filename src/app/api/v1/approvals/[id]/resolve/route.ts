@@ -21,7 +21,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const auth = await authenticateRequest();
     await requireMfaForAction(req, 'journal_adjustment_approval');
-    if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
     await requirePermission(auth, 'approval.resolve');
 
     const { id } = await params;

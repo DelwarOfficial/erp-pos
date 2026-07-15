@@ -62,8 +62,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   }
 
   const localPayment = await db.payment.findFirst({
-    where: { providerReference },
-    include: { sale: { select: { companyId: true, id: true, grandTotal: true } } },
+    where: { methodReference: providerReference },
+    include: { company: { select: { id: true } } },
   });
 
   if (!localPayment) {
@@ -71,31 +71,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   }
 
   // Update payment status — idempotent
-  const newStatus = status === 'success' ? 'completed' : status === 'failed' ? 'failed' : localPayment.status;
-  if (newStatus !== localPayment.status) {
+  const newStatus = status === 'success' ? 'completed' : status === 'failed' ? 'failed' : localPayment.paymentStatus;
+  if (newStatus !== localPayment.paymentStatus) {
     await db.payment.update({
       where: { id: localPayment.id },
       data: {
-        status: newStatus,
-        providerTxnId: paymentId ?? localPayment.providerTxnId,
-        paidAt: newStatus === 'completed' ? new Date() : localPayment.paidAt,
-        metadata: { ...(localPayment.metadata as object ?? {}), webhookReceivedAt: new Date().toISOString() },
+        paymentStatus: newStatus,
+        receivedOrPaidAt: newStatus === 'completed' ? new Date() : localPayment.receivedOrPaidAt,
       },
     });
-
-    // If payment completed and sale was partially_paid, mark as paid
-    if (newStatus === 'completed' && localPayment.sale) {
-      const allPayments = await db.payment.findMany({
-        where: { saleId: localPayment.sale.id, status: 'completed' },
-        select: { amount: true },
-      });
-      const totalPaid = allPayments.reduce((s, p) => s + parseFloat(String(p.amount)), 0);
-      const grandTotal = parseFloat(String(localPayment.sale.grandTotal));
-      await db.sale.update({
-        where: { id: localPayment.sale.id },
-        data: { status: totalPaid >= grandTotal ? 'paid' : 'partially_paid' },
-      });
-    }
   }
 
   return NextResponse.json({ received: true, status: newStatus });

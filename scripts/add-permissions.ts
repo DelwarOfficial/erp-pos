@@ -7,7 +7,7 @@ import * as path from 'path';
 
 interface RoutePermission {
   routePath: string;
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   permission: string;
   skipAuth?: boolean; // for auth/health routes
 }

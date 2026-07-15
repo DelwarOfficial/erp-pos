@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+    
     await requirePermission(auth, 'audit_logs:read');
 
     const url = new URL(req.url);
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
+    
     await requirePermission(auth, 'audit_logs:write');
 
     const idempotencyKey = requireIdempotencyKey(req);

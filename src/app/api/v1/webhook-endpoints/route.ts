@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
               data: {
                 companyId: auth.companyId,
                 url: body.url,
-                secretCiphertext: enc.ciphertext,
+                secretCiphertext: new Uint8Array(enc.ciphertext),
                 subscribedEvents: JSON.stringify(body.subscribed_events),
                 status: 'active',
                 createdBy: auth.userId,

@@ -31,38 +31,34 @@ export async function processCommunicationCampaign(campaignId: string): Promise<
   for (const recipient of campaign.recipients) {
     try {
       if (campaign.channel === 'sms') {
-        const provider = providerRegistry.getSms(campaign.providerCode);
-        if (!provider) throw new Error(`SMS provider ${campaign.providerCode} not registered`);
-        const result = await provider.sendSms({ to: recipient.recipientContact, message: campaign.content });
+        const provider = providerRegistry.getSms((campaign as any).providerCode ?? 'ssl_wireless');
+        if (!provider) throw new Error(`SMS provider ${(campaign as any).providerCode ?? 'ssl_wireless'} not registered`);
+        const result = await provider.sendSms({ to: recipient.destination, message: (campaign as any).content ?? '' });
         await withTenant(ctx, async (tx) => {
-          await tx.communicationRecipient.update({
+          await tx.communicationCampaignRecipient.update({
             where: { id: recipient.id },
             data: {
               status: result.status === 'sent' ? 'sent' : 'failed',
-              providerMessageId: result.providerMessageId || null,
-              sentAt: result.status === 'sent' ? new Date() : null,
-              errorMessage: result.status === 'failed' ? 'Provider returned failed' : null,
+              skipReason: result.status === 'failed' ? 'Provider returned failed' : null,
             },
           });
         });
         if (result.status === 'sent') sent++;
         else failed++;
       } else if (campaign.channel === 'email') {
-        const provider = providerRegistry.getEmail(campaign.providerCode);
-        if (!provider) throw new Error(`Email provider ${campaign.providerCode} not registered`);
+        const provider = providerRegistry.getEmail((campaign as any).providerCode ?? 'resend');
+        if (!provider) throw new Error(`Email provider ${(campaign as any).providerCode ?? 'resend'} not registered`);
         const result = await provider.sendEmail({
-          to: recipient.recipientContact,
-          subject: campaign.subject ?? campaign.name,
-          htmlBody: campaign.content,
+          to: recipient.destination,
+          subject: (campaign as any).subject ?? campaign.name,
+          htmlBody: (campaign as any).content ?? '',
         });
         await withTenant(ctx, async (tx) => {
-          await tx.communicationRecipient.update({
+          await tx.communicationCampaignRecipient.update({
             where: { id: recipient.id },
             data: {
               status: result.status === 'sent' ? 'sent' : 'failed',
-              providerMessageId: result.providerMessageId || null,
-              sentAt: result.status === 'sent' ? new Date() : null,
-              errorMessage: result.status === 'failed' ? 'Provider returned failed' : null,
+              skipReason: result.status === 'failed' ? 'Provider returned failed' : null,
             },
           });
         });
@@ -72,9 +68,9 @@ export async function processCommunicationCampaign(campaignId: string): Promise<
     } catch (e) {
       failed++;
       await withTenant(ctx, async (tx) => {
-        await tx.communicationRecipient.update({
+        await tx.communicationCampaignRecipient.update({
           where: { id: recipient.id },
-          data: { status: 'failed', errorMessage: e instanceof Error ? e.message : 'Unknown error' },
+          data: { status: 'failed', skipReason: e instanceof Error ? e.message : 'Unknown error' },
         });
       }).catch(() => {/* swallow — already counted as failed */});
     }

@@ -88,7 +88,7 @@ const GLOBAL_MODELS = new Set([
 // public auth endpoints), no filter is applied — matching the behavior of
  * a migration_role that bypasses RLS.
  */
-export function applyTenantIsolation(prisma: PrismaClient): PrismaClient {
+export function applyTenantIsolation(prisma: PrismaClient) {
   return prisma.$extends({
     query: {
       $allModels: {

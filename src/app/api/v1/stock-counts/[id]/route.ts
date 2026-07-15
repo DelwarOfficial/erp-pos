@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             batch: { select: { id: true, batchNo: true } },
             reasonCode: { select: { id: true, code: true, name: true } },
           },
-          orderBy: { lineNo: 'asc' },
+          orderBy: { productId: 'asc' },
         },
       },
     });
@@ -41,8 +41,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         snapshot_at: sc.snapshotAt, notes: sc.notes,
         created_by: sc.createdBy, reviewed_by: sc.reviewedBy, posted_by: sc.postedBy,
         created_at: sc.createdAt, posted_at: sc.postedAt,
-        items: sc.items.map(it => ({
-          id: it.id, line_no: it.lineNo,
+        items: sc.items.map((it, idx) => ({
+          id: it.id, line_no: idx + 1,
           product: it.product, batch: it.batch,
           expected_quantity: it.expectedQuantity.toString(),
           counted_quantity: it.countedQuantity?.toString() ?? null,

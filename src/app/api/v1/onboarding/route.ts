@@ -154,9 +154,9 @@ export async function POST(req: NextRequest) {
             });
             roleMap.set(spec.name, role.id);
 
-            const perms = spec.permissions.includes('*')
+            const perms = (spec.permissions as readonly string[]).includes('*')
               ? PERMISSIONS
-              : spec.permissions.flatMap(p =>
+              : (spec.permissions as readonly string[]).flatMap(p =>
                   p.endsWith('.*')
                     ? PERMISSIONS.filter(x => x.code.startsWith(p.slice(0, -1)))
                     : PERMISSIONS.filter(x => x.code === p),

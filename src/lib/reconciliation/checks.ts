@@ -187,9 +187,9 @@ export const checkAdvanceLiability: ReconciliationCheck = async (tx, companyId) 
   // Subledger: sum of customer_advance_ledger balances
   const ledgerEntries = await tx.customerAdvanceLedger.aggregate({
     where: { companyId },
-    _sum: { amount: true },
+    _sum: { amountDelta: true },
   });
-  const subledgerBalance = parseFloat(ledgerEntries._sum.amount?.toString() ?? '0');
+  const subledgerBalance = parseFloat(ledgerEntries._sum.amountDelta?.toString() ?? '0');
   if (Math.abs(glLiability - subledgerBalance) > 1) {
     findings.push({
       check_code: 'ADVANCE_LIABILITY',
@@ -238,7 +238,7 @@ export const checkGrniReconciliation: ReconciliationCheck = async (tx, companyId
   const glGrni = parseFloat(glBalance._sum.creditBase?.toString() ?? '0') - parseFloat(glBalance._sum.debitBase?.toString() ?? '0');
   // Subledger: purchases received but not yet invoiced
   const uninvoicedPurchases = await tx.purchase.aggregate({
-    where: { companyId, purchaseStatus: 'received' },
+    where: { companyId, orderStatus: 'received' },
     _sum: { grandTotal: true },
   });
   const subledgerGrni = parseFloat(uninvoicedPurchases._sum.grandTotal?.toString() ?? '0');

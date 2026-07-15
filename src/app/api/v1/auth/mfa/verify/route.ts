@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       throw new DomainError('INVALID_MFA', 'MFA not enabled for this user', {}, 400);
     }
 
-    const ok = verifyMfaCode(user.mfaSecretCiphertext, 1, code);
+    const ok = verifyMfaCode(Buffer.from(user.mfaSecretCiphertext), 1, code);
     if (!ok) {
       await recordSecurityEvent({
         eventType: 'mfa_failed',

@@ -108,11 +108,10 @@ export async function POST(req: NextRequest) {
               },
             });
 
-            let lineNo = 1;
             for (const item of body.items) {
               await tx.stockCountItem.create({
                 data: {
-                  companyId: auth.companyId, stockCountId: sc.id, lineNo,
+                  companyId: auth.companyId, stockCountId: sc.id,
                   productId: item.product_id, batchId: item.batch_id ?? null,
                   expectedQuantity: item.expected_quantity,
                   countedQuantity: item.counted_quantity ?? null,
@@ -122,7 +121,6 @@ export async function POST(req: NextRequest) {
                   countNote: item.count_note ?? null,
                 },
               });
-              lineNo++;
             }
 
             let posted: { status: string; adjustmentsPosted: number } | null = null;

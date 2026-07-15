@@ -172,14 +172,15 @@ export async function POST(req: NextRequest) {
           console.warn('[risk] InternalRiskProvider not registered — skipping assessment');
           return;
         }
+        const saleResult = result.body as { saleId: string; grandTotal: string; eventId: string; referenceNo: string };
         await riskProvider.assessRisk({
           subjectType: 'sale',
-          subjectId: result.body.saleId,
-          amount: parseFloat(result.body.grandTotal),
+          subjectId: saleResult.saleId,
+          amount: parseFloat(saleResult.grandTotal),
           companyId: auth.companyId,
-          requestEventId: result.body.eventId,
+          requestEventId: saleResult.eventId,
         });
-        console.log(`[risk] Assessment recorded for sale ${result.body.referenceNo}`);
+        console.log(`[risk] Assessment recorded for sale ${saleResult.referenceNo}`);
       } catch (e) {
         console.error('[risk] Assessment failed (sale still succeeded):', e instanceof Error ? `${e.message}\n${e.stack}` : JSON.stringify(e));
       }

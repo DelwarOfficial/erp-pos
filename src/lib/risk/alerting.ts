@@ -142,7 +142,7 @@ export async function evaluateRiskAlerts(): Promise<RiskAlert[]> {
         await recordSecurityEvent({
           eventType: `risk_alert_${alert.type.toLowerCase()}`,
           severity: alert.severity,
-          metadata: alert,
+          metadata: alert as unknown as Record<string, unknown>,
           companyId: alertCompanyId,
         });
       } catch (e) {

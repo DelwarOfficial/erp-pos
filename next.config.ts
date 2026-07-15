@@ -4,7 +4,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   output: "standalone",
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   reactStrictMode: false,
   // Per §16 monitoring — source maps uploaded to Sentry on build
@@ -48,10 +48,6 @@ export default withSentryConfig(nextConfig, {
   silent: true,
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  // Disable telemetry collection during build
-  disableClientDirectionPipelining: true,
-  // Bundle analyzer disabled
-  hideSourceMaps: true,
   // Auto-instrument router-level spans
   autoInstrumentServerFunctions: true,
 });
