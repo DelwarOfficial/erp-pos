@@ -86,7 +86,7 @@ export async function GET(
           include: {
             branch: { select: { id: true, name: true, code: true } },
             customerGroup: { select: { id: true, name: true } },
-            currency: { select: { code: true, symbol: true } },
+            currency: { select: { code: true, name: true } },
           },
           orderBy: { priority: 'desc' },
         },

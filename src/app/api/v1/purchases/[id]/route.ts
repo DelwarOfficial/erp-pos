@@ -40,7 +40,7 @@ export async function GET(
         },
         branch: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
-        currency: { select: { code: true, name: true, symbol: true } },
+        currency: { select: { code: true, name: true, decimalPlaces: true } },
         items: {
           orderBy: { lineNo: 'asc' },
           include: {

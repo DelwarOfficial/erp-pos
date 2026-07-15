@@ -31,7 +31,7 @@ export async function GET(
         biller: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
-        currency: { select: { code: true, name: true, symbol: true } },
+        currency: { select: { code: true, name: true, decimalPlaces: true } },
         cashierShift: { select: { id: true, status: true, openedAt: true, closedAt: true } },
         voidedByUser: { select: { id: true, name: true, email: true } },
         items: {

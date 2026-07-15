@@ -45,7 +45,7 @@ export async function GET(
             product: { select: { id: true, name: true, code: true } },
           },
         },
-        currency: { select: { code: true, name: true, symbol: true } },
+        currency: { select: { code: true, name: true, decimalPlaces: true } },
         reversalOf: { select: { id: true, entryNo: true } },
         creator: { select: { id: true, name: true, email: true } },
         poster: { select: { id: true, name: true, email: true } },

@@ -56,7 +56,7 @@ export async function GET(
       include: {
         branch: { select: { id: true, name: true, code: true } },
         supplier: { select: { id: true, name: true, phone: true } },
-        currency: { select: { code: true, name: true, symbol: true } },
+        currency: { select: { code: true, name: true, decimalPlaces: true } },
         requester: { select: { id: true, name: true, email: true } },
         approver: { select: { id: true, name: true, email: true } },
         journalEntry: { select: { id: true, entryNo: true } },
