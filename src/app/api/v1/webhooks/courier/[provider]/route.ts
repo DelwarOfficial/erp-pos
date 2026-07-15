@@ -12,11 +12,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   const token = req.headers.get('x-courier-token');
   const expectedToken = process.env.COURIER_WEBHOOK_TOKEN;
   if (!expectedToken || token !== expectedToken) {
-    await recordSecurityEvent({
-      eventType: 'courier_webhook_unauthorized',
-      severity: 'high',
-      metadata: { provider: providerCode },
-    });
+    // Webhooks are unauthenticated (no tenant context), so wrap in try/catch
+    // — recordSecurityEvent requires a companyId which we don't have here.
+    try {
+      await recordSecurityEvent({
+        eventType: 'courier_webhook_unauthorized',
+        severity: 'high',
+        metadata: { provider: providerCode },
+        companyId: undefined as unknown as string, // platform-level event
+      });
+    } catch (e) {
+      console.warn('[webhook/courier] Failed to record security event:', e instanceof Error ? e.message : e);
+    }
     return NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 });
   }
 

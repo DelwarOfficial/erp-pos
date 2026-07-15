@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { providerRegistry } from '@/adapters';
 import { recordSecurityEvent } from '@/lib/audit';
+import { registerProviders } from '@/adapters/providers';
 
 // POST /api/v1/webhooks/payment/[provider]
 // Receives payment provider webhooks (bKash, Nagad) and records the payment event.
 // Per §5.14 payments + §9.3 payment provider interface.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider: providerCode } = await params;
+  // Ensure providers are registered (webhooks may be the first request after restart)
+  registerProviders();
   const provider = providerRegistry.getPayment(providerCode);
   if (!provider) {
     return NextResponse.json({ error: { code: 'UNKNOWN_PROVIDER', message: `Provider '${providerCode}' not registered` } }, { status: 404 });

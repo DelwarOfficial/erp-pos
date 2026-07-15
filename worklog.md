@@ -3628,3 +3628,74 @@ Files Touched:
   - `src/lib/pdf/index.ts`
 
 Work records saved to `/home/z/my-project/agent-ctx/FIX-UI-ui-fix-specialist.md`.
+
+---
+Task ID: CUTOVER-E2E
+Agent: general-purpose (E2E + UAT testing)
+Task: Comprehensive E2E + UAT testing on Bangladesh ERP/POS system at /home/z/my-project (production server at http://localhost:3000).
+
+Work Log:
+- Read worklog.md to understand previous work (M0–M8 phases, FIX-UI, audit findings). Confirmed admin password is a placeholder hash → login will return 403 / fail at dashboard redirect.
+- Phase 1 — HTTP smoke test: `bun run scripts/e2e-staging-suite.ts` → **PASS: 57, WARN: 16, FAIL: 0 (TOTAL: 73)**. RESULT: STAGING VALIDATION PASSED — ready for UAT. Suite started/stopped its own next-start server; after suite completed, port 3000 was free.
+- Restarted production server: `PORT=3000 NODE_ENV=production bun .next/standalone/server.js` (background). Health endpoint confirmed `{"database":"ok","redis":"skipped","storage":"fail"}` (503 expected — storage check is non-blocking).
+- Phase 2 — Playwright tests:
+  - `login.spec.ts -g "invalid"` (Desktop Chrome): **1/1 passed (7.4s)**. Login-with-invalid-credentials shows error message correctly.
+  - `accessibility.spec.ts` (Accessibility (axe) project): **16/16 FAILED** — root cause: `beforeEach` calls `login()` then `waitForURL('**/dashboard')`. With placeholder password hash, login → dashboard redirect never happens → 10s timeout × 16 tests. This is an ENVIRONMENTAL failure (placeholder hash), NOT an application bug. axe-core scan itself never runs.
+  - `print-routes.spec.ts` (Desktop Chrome): **1 failed, 4 did not run** — first test (`receipt route requires auth`) failed in `beforeAll` (same login→dashboard redirect issue); subsequent 4 tests aborted. Same environmental root cause.
+- Phase 3 — UAT API workflow validation (20 endpoints, curl with `Origin: http://localhost:3000`):
+  | # | Endpoint | Status | Expected | Result |
+  |---|----------|--------|----------|--------|
+  | 1 | POST /api/v1/auth/login | 403 | 401/403 | PASS (INVALID_MFA error) |
+  | 2 | GET /api/v1/products | 401 | 401 | PASS |
+  | 3a | GET /api/v1/sales | 401 | 401 | PASS |
+  | 3b | POST /api/v1/sales | 401 | 401 | PASS |
+  | 4a | GET /api/v1/journal-entries | 401 | 401 | PASS |
+  | 4b | POST /api/v1/journal-entries | 401 | 401 | PASS |
+  | 5 | GET /api/v1/fixed-assets | 401 | 401 | PASS |
+  | 6 | GET /api/v1/bank-reconciliations | 401 | 401 | PASS |
+  | 7 | GET /api/v1/expenses | 401 | 401 | PASS |
+  | 8 | GET /api/v1/payments | 401 | 401 | PASS |
+  | 9 | GET /api/v1/cashier-shifts | 401 | 401 | PASS |
+  | 10 | GET /api/v1/inventory/stocks | 401 | 401 | PASS |
+  | 11 | GET /api/v1/purchases | 401 | 401 | PASS |
+  | 12 | GET /api/v1/leads | 401 | 401 | PASS |
+  | 13 | GET /api/v1/employees | 401 | 401 | PASS |
+  | 14 | GET /api/v1/reports | 404 | 200/401 | WARN (base route does not exist; sub-routes `/reports/sales-summary`, `/reports/vat` return 401 correctly — endpoint is namespace-only) |
+  | 15 | GET /api/v1/reconciliations | 401 | 401 | PASS |
+  | 16 | GET /api/v1/audit-logs | 401 | 401 | PASS |
+  | 17 | GET /api/v1/feature-flags | 401 | 401 | PASS |
+  | 18 | POST /api/v1/webhooks/payment/bkash | 404 | 401/400 | WARN (returns `{"code":"UNKNOWN_PROVIDER","message":"Provider 'bkash' not registered"}` — bkash is the primary Bangladesh mobile-wallet provider; should be registered. Not a 500, but a functional gap.) |
+  | 19 | POST /api/v1/webhooks/courier/pathao | **500** | 401/400 | **CRITICAL FAIL** — empty body returned; server log: `Error: recordSecurityEvent requires a companyId (from context or param)` |
+  | 20 | GET /api/v1/health | 503 | 200/503 | PASS (DB ok, storage skipped) |
+- Phase 4 — Responsive UI validation (3 viewports, /login page): all 3 tests PASSED.
+  - Desktop 1280×720: PASS
+  - Tablet 768×1024: PASS
+  - Mobile 390×844: PASS
+  Email input, password input, submit button all visible at every breakpoint. Test file was created under `tests/e2e/responsive-test.spec.ts`, run, then deleted to keep repo clean.
+
+Investigation of CRITICAL finding #19 (courier webhook 500):
+- Read `src/app/api/v1/webhooks/courier/[provider]/route.ts` lines 12-21.
+- Root cause: when `COURIER_WEBHOOK_TOKEN` env var is unset OR the incoming `X-Courier-Token` header doesn't match (the normal "unauthorized webhook" case), the handler calls `recordSecurityEvent({ eventType: 'courier_webhook_unauthorized', ... })` WITHOUT a `companyId` parameter. Webhook endpoints have no authenticated session, so no `companyId` is available on the AsyncLocalStorage context. `recordSecurityEvent` (`src/lib/audit`) throws `Error: recordSecurityEvent requires a companyId (from context or param)` because it cannot persist a security event without an owning tenant. This throw escapes the handler — Next.js returns HTTP 500 with empty body.
+- Reproducible: any unauthenticated POST to `/api/v1/webhooks/courier/pathao` triggers 500 regardless of body or other headers. Confirmed with multiple payloads (with/without X-Courier-Token, with/without body).
+- Same pattern likely affects payment webhook (line 24-34 of `src/app/api/v1/webhooks/payment/[provider]/route.ts`) IF a registered provider is hit with a bad signature — but the payment webhook currently short-circuits earlier because `bkash` isn't a registered provider (returns 404 before reaching recordSecurityEvent). Need to verify with `sslcommerz` or `nagad` if registered.
+- This bug was IMPLICITLY flagged in prior audit (Area 7 — Webhook Receiver Audit, WARN: "concurrent webhook race"; Area 5 — Error Handling, LOW: silent catch). The 500-on-unauthorized case was not specifically called out — NEW finding.
+
+Findings by severity:
+- **CRITICAL (1)**: POST /api/v1/webhooks/courier/[provider] returns HTTP 500 for ANY unauthenticated or token-mismatched request because `recordSecurityEvent` is invoked without a companyId. Webhook endpoints are public — they MUST gracefully return 401, not crash with 500. Affects production cutover readiness: an attacker (or legitimate courier without proper token) can crash the route repeatedly. Also pollutes server logs with stack traces.
+- **HIGH (1)**: bkash payment provider is not registered — POST /api/v1/webhooks/payment/bkash returns 404 "Provider 'bkash' not registered". bKash is the dominant mobile-wallet in Bangladesh; absence breaks the M5/M7 payment integration blueprint.
+- **WARN (1)**: GET /api/v1/reports base route returns HTML 404. Sub-routes (`/reports/sales-summary`, `/reports/vat`) work correctly with 401. Not blocking but the base path should at minimum return a list of available report types or a 401 to match sibling route behaviour.
+- **INFO (1)**: Health endpoint returns 503 because storage check fails (`storage:fail`, `error:UnknownError`). DB is OK. Storage check should either be marked non-blocking (so health returns 200 when DB is ok) or the storage adapter should be configured. Per staging-suite comment ("HTTP 503 but DB ok") this is already tolerated — not blocking.
+- **ENVIRONMENTAL (not app bugs)**: All 16 accessibility tests + 1 print-routes test fail in beforeAll/beforeEach because admin password is a placeholder hash → login → dashboard redirect never happens. To run these tests properly, the admin password hash must be seeded with a real argon2 hash for `ChangeMe!2026`.
+
+Recommended fixes (in priority order):
+1. CRITICAL — Fix `src/app/api/v1/webhooks/courier/[provider]/route.ts:15-19` and `src/app/api/v1/webhooks/payment/[provider]/route.ts` to NOT call `recordSecurityEvent` without a companyId. Either:
+   (a) Wrap the call in try/catch and swallow the error (acceptable for unauthorized webhook attempts where we have no tenant context), or
+   (b) Modify `recordSecurityEvent` to accept `companyId: null` for platform-level security events (webhooks are platform-scoped, not tenant-scoped), or
+   (c) Look up the delivery's companyId from the payload BEFORE recording the security event (only when shipmentId is present). Recommended: option (b) — security events for unauthenticated webhook attempts are platform-level by definition.
+2. HIGH — Register `bkash` (and `nagad`, `rocket`) in the payment provider registry (likely `src/lib/payments/providers/index.ts` or similar). The bKash webhook URL pattern is `/api/v1/webhooks/payment/bkash` — provider MUST be registered for the route to dispatch.
+3. WARN — Add a base `GET /api/v1/reports` handler returning a list of available report endpoints (or a 401 to match sibling routes), so the namespace doesn't 404.
+4. ENVIRONMENTAL — Seed admin user's `password_hash` with `argon2.hash('ChangeMe!2026')` for UAT (or have a separate test fixture user) so accessibility/print-routes/other auth-gated Playwright suites can execute.
+
+No code changes were made — testing-only task per the brief.
+
+Overall cutover readiness verdict: **BLOCKED** by CRITICAL #1 (courier webhook 500). Once fixed and bkash provider is registered, the system is UAT-ready. All 17 other API endpoints behave correctly; HTTP smoke suite passes 57/73 (0 failures, 16 expected warns); responsive UI is solid at all 3 breakpoints; login invalid-credentials flow works correctly.

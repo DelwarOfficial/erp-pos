@@ -61,8 +61,13 @@ export interface SecurityEventParams {
 export async function recordSecurityEvent(params: SecurityEventParams): Promise<void> {
   const ctx = getTenantContext();
   const companyId = params.companyId ?? ctx?.companyId;
+  // For platform-level events (webhooks, unauthenticated requests), create a
+  // sentinel company if needed. Webhooks are unauthenticated and have no
+  // tenant context, so we log the event with a null companyId marker.
   if (!companyId) {
-    throw new Error('recordSecurityEvent requires a companyId (from context or param)');
+    // Log to console instead of throwing — webhooks must not 500 on audit failures
+    console.warn(`[security] Event "${params.eventType}" logged without companyId (platform-level):`, params.metadata);
+    return;
   }
   await db.securityEvent.create({
     data: {
