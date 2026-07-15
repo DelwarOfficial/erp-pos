@@ -35,8 +35,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'journal.post');
-  await requirePermission(auth, 'journal.read');
+    await requirePermission(auth, 'journal.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const from = url.searchParams.get('from');
@@ -106,6 +105,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, 'journal.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostJournalSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/journal-entries', body });

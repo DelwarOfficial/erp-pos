@@ -19,6 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     include: {
       items: { include: { product: { select: { name: true, code: true } } } },
       branch: { select: { name: true, phone: true, address: true } },
+      company: { select: { displayName: true, bin: true, tin: true } },
       payments: true,
       biller: { select: { name: true } },
       customer: { select: { name: true, phone: true } },
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     branchName: sale.branch.name,
     branchAddress: sale.branch.address ?? undefined,
     branchPhone: sale.branch.phone ?? undefined,
+    vatRegistrationNo: sale.company.bin ?? sale.company.tin ?? undefined,
     referenceNo: sale.referenceNo,
     businessDate: new Date(sale.businessDate),
     cashierName: sale.biller?.name ?? '—',

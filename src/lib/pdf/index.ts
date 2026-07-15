@@ -142,7 +142,7 @@ export function renderReceiptHtml(data: ReceiptTemplateData): string {
         <h2 style="margin:0;font-size:14px;">${escapeHtml(data.branchName)}</h2>
         ${data.branchAddress ? `<p style="margin:2px 0;">${escapeHtml(data.branchAddress)}</p>` : ''}
         ${data.branchPhone ? `<p style="margin:2px 0;">Phone: ${escapeHtml(data.branchPhone)}</p>` : ''}
-        ${data.vatRegistrationNo ? `<p style="margin:2px 0;">VAT: ${escapeHtml(data.vatRegistrationNo)}</p>` : ''}
+        ${data.vatRegistrationNo ? `<p style="margin:2px 0;">BIN: ${escapeHtml(data.vatRegistrationNo)}</p>` : ''}
       </div>
       <div style="margin-bottom:4px;">
         <strong>${data.isReturn ? 'RETURN' : 'INVOICE'}:</strong> ${escapeHtml(data.referenceNo)}<br>
@@ -199,6 +199,7 @@ export interface InvoiceTemplateData {
   items: Array<{ name: string; description?: string; qty: number; unitPrice: number; lineTotal: number; taxRate?: number }>;
   subtotal: number;
   taxTotal: number;
+  sdTotal?: number;
   discountTotal: number;
   grandTotal: number;
   notes?: string;
@@ -268,6 +269,7 @@ export function renderInvoiceHtml(data: InvoiceTemplateData): string {
           <div style="display:flex;justify-content:space-between;padding:4px 0;">
             <span>VAT:</span><span>৳ ${data.taxTotal.toFixed(2)}</span>
           </div>
+          ${data.sdTotal && data.sdTotal > 0 ? `<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>SD:</span><span>৳ ${data.sdTotal.toFixed(2)}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;padding:8px 0;font-weight:bold;font-size:16px;border-top:2px solid #0f172a;margin-top:4px;">
             <span>Grand Total:</span><span>৳ ${data.grandTotal.toFixed(2)}</span>
           </div>

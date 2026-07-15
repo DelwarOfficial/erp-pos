@@ -9,7 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy } from 'lucide-react';
+import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/pos', icon: CreditCard, label: 'POS — New Sale' },
   { href: '/dashboard/sales', icon: Receipt, label: 'Sales' },
   { href: '/dashboard/cashier', icon: Clock, label: 'Cashier Shifts' },
+  { href: '/dashboard/payments', icon: Banknote, label: 'Payments' },
   { href: '/dashboard/products', icon: Package, label: 'Products' },
   { href: '/dashboard/catalogue', icon: FolderTree, label: 'Catalogue' },
   { href: '/dashboard/inventory', icon: Boxes, label: 'Inventory' },

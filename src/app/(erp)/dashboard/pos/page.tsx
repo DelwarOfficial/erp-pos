@@ -4,6 +4,9 @@
 // - Cart is full-width on mobile (sticky total at bottom), side panel on desktop.
 // - Loading / error / empty states for product search.
 // - Keyboard shortcuts: Enter = checkout, Escape = clear search.
+// - Warehouse / financial-account / cashier-shift are <Select> dropdowns
+//   populated on mount from /api/v1/warehouses, /api/v1/financial-accounts,
+//   /api/v1/cashier-shifts?status=open.
 
 'use client';
 
@@ -37,6 +40,30 @@ interface CartItem {
   lineTotal: number;
 }
 
+interface WarehouseOption {
+  id: string;
+  name: string;
+  code: string;
+  warehouse_type?: string;
+  branch?: { id: string; name: string; code: string } | null;
+}
+
+interface FinancialAccountOption {
+  id: string;
+  name: string;
+  account_type: string;
+  is_active: boolean;
+}
+
+interface CashierShiftOption {
+  id: string;
+  status: string;
+  cashier: { id: string; name: string; email: string };
+  branch: { id: string; name: string; code: string } | null;
+  warehouse: { id: string; name: string; code: string } | null;
+  opened_at: string;
+}
+
 export default function POSPage() {
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -51,12 +78,70 @@ export default function POSPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Dropdown option lists
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccountOption[]>([]);
+  const [cashierShifts, setCashierShifts] = useState<CashierShiftOption[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const subtotal = cart.reduce((s, i) => s + i.lineTotal, 0);
   const taxTotal = cart.reduce((s, i) => s + i.lineTotal * 0.15, 0); // simplified 15% VAT
   const grandTotal = subtotal + taxTotal;
+
+  // Fetch dropdown options on mount.
+  useEffect(() => {
+    let cancelled = false;
+    setOptionsLoading(true);
+    setOptionsError(null);
+    Promise.all([
+      fetch('/api/v1/warehouses').then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d?.error?.message ?? `Failed to load warehouses (HTTP ${r.status})`);
+        }
+        return r.json();
+      }),
+      fetch('/api/v1/financial-accounts').then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d?.error?.message ?? `Failed to load financial accounts (HTTP ${r.status})`);
+        }
+        return r.json();
+      }),
+      fetch('/api/v1/cashier-shifts?status=open').then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d?.error?.message ?? `Failed to load cashier shifts (HTTP ${r.status})`);
+        }
+        return r.json();
+      }),
+    ])
+      .then(([wh, fa, cs]) => {
+        if (cancelled) return;
+        setWarehouses(wh.items ?? []);
+        setFinancialAccounts((fa.items ?? []).filter((a: FinancialAccountOption) => a.is_active));
+        setCashierShifts(cs.items ?? []);
+        // Auto-pick first open shift if only one is available
+        if ((cs.items ?? []).length === 1) {
+          const s = cs.items[0];
+          setCashierShiftId(s.id);
+          if (s.branch?.id) setBranchId(s.branch.id);
+          if (s.warehouse?.id) setWarehouseId(prev => prev || s.warehouse.id);
+        }
+      })
+      .catch(e => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'Failed to load POS options';
+        setOptionsError(msg);
+        toast.error(msg);
+      })
+      .finally(() => { if (!cancelled) setOptionsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Debounced product search — no N+1 (single fetch per query).
   useEffect(() => {
@@ -123,8 +208,8 @@ export default function POSPage() {
 
   const handleCheckout = useCallback(async () => {
     if (cart.length === 0) { toast.error('Cart is empty'); return; }
-    if (!warehouseId) { toast.error('Warehouse ID required'); return; }
-    if (!financialAccountId) { toast.error('Financial account ID required'); return; }
+    if (!warehouseId) { toast.error('Warehouse is required'); return; }
+    if (!financialAccountId) { toast.error('Financial account is required'); return; }
     for (const item of cart) {
       if (item.isSerialized && item.serials.length !== item.qty) {
         toast.error(`${item.name} requires ${item.qty} serial(s)`);
@@ -170,6 +255,14 @@ export default function POSPage() {
       setPosting(false);
     }
   }, [cart, warehouseId, branchId, cashierShiftId, paymentMethod, financialAccountId, grandTotal]);
+
+  // When the warehouse selection changes, derive the branch_id from the
+  // warehouse's branch relation (if available).
+  function handleWarehouseChange(id: string) {
+    setWarehouseId(id);
+    const wh = warehouses.find(w => w.id === id);
+    if (wh?.branch?.id) setBranchId(wh.branch.id);
+  }
 
   // ── Keyboard shortcuts ──
   // Enter (when not typing in a field other than search) → checkout
@@ -367,13 +460,61 @@ export default function POSPage() {
               </div>
 
               <div className="space-y-3 pt-2 border-t">
+                {optionsError && (
+                  <div className="text-xs text-destructive bg-destructive/5 border border-destructive/20 rounded p-2">
+                    {optionsError}
+                  </div>
+                )}
                 <div className="space-y-1.5">
-                  <Label htmlFor="warehouse-id" className="text-xs">Warehouse ID *</Label>
-                  <Input id="warehouse-id" placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className="text-xs" />
+                  <Label htmlFor="warehouse-id" className="text-xs">Warehouse *</Label>
+                  <Select
+                    value={warehouseId}
+                    onValueChange={handleWarehouseChange}
+                    disabled={optionsLoading || !!optionsError || warehouses.length === 0}
+                  >
+                    <SelectTrigger id="warehouse-id" className="text-xs">
+                      <SelectValue
+                        placeholder={
+                          optionsLoading ? 'Loading...' :
+                          warehouses.length === 0 ? 'No warehouses' :
+                          'Select warehouse'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses.map(w => (
+                        <SelectItem key={w.id} value={w.id}>
+                          {w.code} - {w.name}
+                          {w.branch ? ` (${w.branch.code})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="shift-id" className="text-xs">Cashier Shift ID (optional)</Label>
-                  <Input id="shift-id" placeholder="Shift UUID" value={cashierShiftId} onChange={e => setCashierShiftId(e.target.value)} className="text-xs" />
+                  <Label htmlFor="shift-id" className="text-xs">Cashier Shift (optional)</Label>
+                  <Select
+                    value={cashierShiftId}
+                    onValueChange={setCashierShiftId}
+                    disabled={optionsLoading || cashierShifts.length === 0}
+                  >
+                    <SelectTrigger id="shift-id" className="text-xs">
+                      <SelectValue
+                        placeholder={
+                          optionsLoading ? 'Loading...' :
+                          cashierShifts.length === 0 ? 'No open shifts' :
+                          'Select open shift'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashierShifts.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.cashier?.name ?? 'Unknown'} - {new Date(s.opened_at).toLocaleString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="payment-method" className="text-xs">Payment Method</Label>
@@ -390,8 +531,29 @@ export default function POSPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="fin-account-id" className="text-xs">Financial Account ID *</Label>
-                  <Input id="fin-account-id" placeholder="Account UUID" value={financialAccountId} onChange={e => setFinancialAccountId(e.target.value)} className="text-xs" />
+                  <Label htmlFor="fin-account-id" className="text-xs">Financial Account *</Label>
+                  <Select
+                    value={financialAccountId}
+                    onValueChange={setFinancialAccountId}
+                    disabled={optionsLoading || !!optionsError || financialAccounts.length === 0}
+                  >
+                    <SelectTrigger id="fin-account-id" className="text-xs">
+                      <SelectValue
+                        placeholder={
+                          optionsLoading ? 'Loading...' :
+                          financialAccounts.length === 0 ? 'No accounts' :
+                          'Select account'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {financialAccounts.map(a => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name} ({a.account_type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

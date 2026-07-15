@@ -151,6 +151,8 @@ export default function FixedAssetsPage() {
       setShowForm(false);
       setAssetCode(''); setName('');
       await load();
+    } catch (e) {
+      toast.error('Failed to acquire asset: ' + (e instanceof Error ? e.message : 'Unknown error'));
     } finally { setPosting(false); }
   }
 

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const auth = await authenticateRequest();
     await requireMfaForAction(req, 'journal_adjustment_approval');
     if ('error' in auth) return NextResponse.json(auth, { status: auth.status });
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'approval.resolve');
 
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);

@@ -10,6 +10,7 @@ import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie } from '@/li
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
+import { checkRateLimit, buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
 
 const MfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
@@ -24,6 +25,23 @@ export async function POST(req: NextRequest) {
     const pending = await getMfaPendingCookie();
     if (!pending) {
       throw new DomainError('UNAUTHORIZED', 'No MFA challenge in progress', {}, 401);
+    }
+
+    // Rate limit: 5 attempts per 5 min, then 15-min lock with progressive backoff
+    const rlKey = buildRateLimitKey('mfa_verify', ip, pending.userId);
+    const rl = checkRateLimit(rlKey, DEFAULT_MFA_LIMIT);
+    if (!rl.allowed) {
+      const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000);
+      return NextResponse.json(
+        {
+          error: { code: 'RATE_LIMITED', message: 'Too many MFA attempts. Please try again later.', retry_after_seconds: retryAfterSec },
+          correlation_id: correlationId,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(retryAfterSec), 'X-RateLimit-Remaining': '0' },
+        },
+      );
     }
 
     const { code } = MfaSchema.parse(await req.json());
@@ -41,14 +59,17 @@ export async function POST(req: NextRequest) {
       await recordSecurityEvent({
         eventType: 'mfa_failed',
         severity: 'warning',
-        metadata: { user_id: user.id },
+        metadata: { user_id: user.id, remaining_attempts: rl.remaining - 1 },
         companyId: user.companyId,
         userId: user.id,
         ip,
         userAgent: ua,
       });
-      throw new DomainError('INVALID_MFA', 'Invalid MFA code', {}, 401);
+      throw new DomainError('INVALID_MFA', `Invalid MFA code. ${rl.remaining - 1} attempts remaining.`, { remaining: rl.remaining - 1 }, 401);
     }
+
+    // Success — reset the rate limiter for this user
+    resetRateLimit(rlKey);
 
     const branchIds = user.branchAccess.map(b => b.branchId);
     const sessionId = randomUUID();

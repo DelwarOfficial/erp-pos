@@ -43,8 +43,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'sale.post');
-  await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, 'sale.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
@@ -112,6 +111,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, 'sale.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostSaleSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/sales', body });

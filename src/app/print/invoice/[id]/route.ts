@@ -16,7 +16,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const sale = await db.sale.findFirst({
     where: { id, companyId },
     include: {
-      items: { include: { product: { select: { name: true, code: true, description: true } } } },
+      items: {
+        include: {
+          product: { select: { name: true, code: true, description: true } },
+          taxes: { include: { taxComponent: { select: { componentType: true, componentCode: true } } } },
+        },
+      },
       branch: { select: { name: true, address: true, phone: true } },
       company: { select: { displayName: true, legalName: true, bin: true, tin: true } },
       customer: { select: { name: true, phone: true, address: true, taxIdentifier: true } },
@@ -25,6 +30,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!sale) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const format = new URL(req.url).searchParams.get('format') ?? 'html';
+
+  // Compute supplementary duty (SD) total — sum of sale_item_taxes where the
+  // underlying tax_component.componentType === 'SD'.
+  let sdTotal = 0;
+  for (const item of sale.items) {
+    for (const sit of item.taxes ?? []) {
+      if (sit.taxComponent?.componentType === 'SD') {
+        sdTotal += parseFloat(sit.taxAmount.toString());
+      }
+    }
+  }
 
   const data: InvoiceTemplateData = {
     companyName: sale.company.displayName,
@@ -48,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })),
     subtotal: parseFloat(sale.subtotal),
     taxTotal: parseFloat(sale.taxTotal),
+    sdTotal,
     discountTotal: parseFloat(sale.discountTotal),
     grandTotal: parseFloat(sale.grandTotal),
   };

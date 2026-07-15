@@ -2993,3 +2993,638 @@ Stage Summary:
 - 395/395 unit tests still pass; lint clean.
 - All changes pushed to GitHub (5 commits ahead of original origin/main).
 - Final verdict: STAGING READY FOR UAT — replace placeholder secrets in .env.staging with real sandbox keys, then run `bun run staging:dev`.
+
+---
+Task ID: AUDIT-FINANCE
+Agent: audit-finance (Explore sub-agent)
+Task: Production bug hunt — financial integrity & RLS audit on Bangladesh ERP/POS system (PostgreSQL @ localhost:5433, db=erp_pos_audit).
+
+Work Log:
+
+Connected to erp_pos_audit via psql at /tmp/my-project/.local/deps/usr/lib/postgresql/17/bin/psql (no system psql installed). Used `postgres` superuser for setup, `SET ROLE app_role` for privilege-accurate tests.
+
+=== Audit Area 1: Journal Entry Integrity — Status: WARN ===
+
+Evidence:
+- prisma/functions/post_journal_entry.sql lines 45-48: enforces Dr == Cr via `IF v_total_debit <> v_total_credit THEN RAISE EXCEPTION`.
+- prisma/functions/post_journal_entry.sql line 50-52: rejects zero entries.
+- prisma/functions/post_journal_entry.sql line 60-62: header INSERT sets `status='posted'` and `posted_at=now()` atomically inside the SECURITY DEFINER function.
+- prisma/migrations/0018_journal_payment_immutable_triggers.sql lines 9-14: creates `trg_journal_entries_immutable` with `WHEN (OLD.status = 'posted')` — blocks UPDATE/DELETE on posted journal_entries.
+- prisma/triggers/0002_prevent_posted_record_mutation.sql lines 19-30: the original `trg_journal_entries_immutable` definition is COMMENTED OUT here ("forward reference"). It is correctly re-created in migration 0018, but readers of trigger 0002 alone would wrongly conclude the trigger is missing.
+- prisma/triggers/0004_immutable_financial_records.sql lines 7-14: creates `trg_journal_lines_immutable` (no WHEN clause — all journal_lines are immutable, including drafts).
+- src/domain/commands/m4/PostJournalEntry.ts: postJournalEntry() does NOT call the SQL function post_journal_entry() — it reimplements the logic in TypeScript using Prisma. Validates: ≥2 lines (line 56), each line has exactly one of Dr/Cr >0 (lines 65-73), Dr==Cr within 0.01 (line 79), fiscal-period open/closed status (lines 94-118), tenant consistency on chart_of_accounts (lines 122-132). Posts status='posted' (line 170), postedBy, postedAt (lines 172-173). Writes audit log (lines 200-216).
+
+Findings:
+- WARN (Medium): The SQL function `post_journal_entry()` exists as defence-in-depth but is NEVER invoked by application code. The TypeScript `postJournalEntry()` is the actual implementation. Any future drift between the two (e.g., SQL function later enforces stricter rules) would silently bypass app-side logic.
+- WARN (Low): Balance tolerance of 0.01 (line 79) could allow sub-cent imbalance. Use exact integer cents for money comparisons.
+- WARN (Low): Fiscal-period check (lines 101-118) only blocks `status='locked'` and `status='soft_locked'`. The schema's CHECK constraint only allows `open | soft_locked | locked` (no `closed`), so this is OK — but the `if (period)` guard means "no period found → allowed to post" (line 119 comment: "sandbox — in production this would be an error"). Production should require a matching period.
+- FAIL (High): `reverseJournalEntry()` at lines 287-294 issues `tx.journalEntry.update({ where: { id: result.journalEntryId }, data: { reversalOfEntryId: params.journalEntryId } })` on the just-created posted reversal entry, AND `tx.journalEntry.update({ where: { id: params.journalEntryId }, data: { status: 'reversed' } })` on the original posted entry. Both UPDATEs target rows with status='posted' and will be blocked by `trg_journal_entries_immutable` in PostgreSQL. The unit test (tests/unit/journalEntry.test.ts) passes only because it runs against SQLite which does not have the trigger. In production PostgreSQL, every journal reversal will throw "Cannot modify posted record (journal_entries) — use reversal/return/refund". Confirmed by live DB test (see Audit Area 4).
+
+Recommended Fix:
+- Replace the two UPDATEs in `reverseJournalEntry()` with one of:
+  (a) Set `reversal_of_id` and `status='reversed'` in the initial INSERT of the reversal entry, and update the original via a SECURITY DEFINER function that runs as the table owner (bypasses the trigger) — but only allows the specific posted→reversed transition; OR
+  (b) Relax the trigger to `WHEN (OLD.status = 'posted' AND NEW.status NOT IN ('reversed'))` so the reversal transition is permitted but content edits are still blocked.
+- Tighten the JS balance check to require exact equality (multiply by 100 and round to integer cents first).
+- In production mode, require a matching fiscal period (throw if `!period`).
+
+=== Audit Area 2: RLS Coverage — Status: FAIL (CRITICAL) ===
+
+Evidence (SQL output against erp_pos_audit):
+- Query 1 (tables WITHOUT RLS): 13 tables — 4 are legitimately global (currencies, configuration_definitions, permissions, supported_languages) — but 9 are tenant tables: `journal_entries`, `journal_entries_2026_07`, `journal_entries_2026_08`, `payments`, `payments_2026_07`, `stock_movements_2026_07/08/09/10`.
+- Query 2 (tables with <2 policies): 0 rows — every table that HAS RLS has ≥2 policies.
+- Query 3 (tables with company_id column but NO RLS — CRITICAL): 9 tables — `journal_entries` (parent + 2 partitions), `payments` (parent + 1 partition), `stock_movements` (4 partitions).
+- Stock_movements parent (`relrowsecurity=t, relforcerowsecurity=t`) DOES have RLS, and partitions inherit RLS policies in PostgreSQL 11+. So stock_movements partitions are still protected despite `rowsecurity=false` on the partition rows. — OK.
+- However, `journal_entries` and `payments` parents both show `relrowsecurity=f, relforcerowsecurity=f` — RLS is completely OFF. Queries against these tables as `app_role` return rows from ALL tenants.
+- Live cross-tenant test (SET ROLE app_role; SET app.company_id='11111111-...'; SET app.is_global='false'):
+  - `SELECT count(*) FROM journal_entries` → permission denied for table journal_entries (because app_role lacks grants — see below).
+  - `SELECT count(*) FROM companies` (RLS-enabled, forced) → 0 rows. RLS works for companies. ✓
+  - `SELECT count(*) FROM journal_lines` (RLS-enabled, forced) → 0 rows. RLS works for journal_lines. ✓
+  - `SELECT count(*) FROM chart_of_accounts` (RLS-enabled, forced) → 0 rows. RLS works. ✓
+
+Additional CRITICAL finding — GRANT gap:
+- prisma/migrations/0009_grants.sql lines 14-37: grants DML on a hard-coded array of ~50 tables to app_role, but the list does NOT include `journal_entries`, `payments`, or `stock_movements` (parents).
+- prisma/migrations/0013_m4_accounting_tables.sql lines 435-635: grants DML on journal_lines, chart_of_accounts, financial_accounts, fiscal_periods, expenses, etc. — but NOT on `journal_entries` itself.
+- prisma/migrations/0012_m3_pos_payments_tables.sql: similarly grants on payment_allocations and other M3 tables but NOT on `payments` parent.
+- Live test: `SELECT count(*) FROM journal_entries` as app_role → `ERROR: permission denied for table journal_entries`. Same for `payments`.
+- Result: application user `erp_app` (member of app_role) CANNOT read or write journal_entries or payments in PostgreSQL staging/production. ALL endpoints that post journal entries (POST /sales, /journal-entries, /expenses, /fixed-assets, /bank-reconciliations/[id]/finalize, etc.) will fail at runtime with `permission denied`.
+
+Findings:
+- FAIL (Critical): `journal_entries` parent has NO RLS, NO FORCE RLS, NO GRANT to app_role. Any direct DB access (e.g., by a reporting tool, psql, or future code path that bypasses the Prisma tenantClient extension) leaks ALL tenants' ledger data. Additionally, the application cannot INSERT/SELECT/UPDATE journal_entries as erp_app.
+- FAIL (Critical): `payments` parent has the same three-way failure (no RLS, no FORCE RLS, no GRANT).
+- FAIL (Critical): The migration GRANT pattern (0009 + per-module files) systematically OMITS partitioned parents (journal_entries, payments) because each module-level GRANT file only grants on the new tables it creates, and the partitioned parents were created in 0008 (before any module GRANT).
+- WARN (Medium): `stock_movements` partitions show `rowsecurity=false` in pg_tables, which is technically true (RLS is enabled on the parent and inherited), but the visibility is misleading. Consider running `ALTER TABLE stock_movements_2026_xx ENABLE ROW LEVEL SECURITY;` on each partition for explicitness.
+
+Recommended Fix:
+- Add a new migration (e.g., 0021_partition_parent_grants_and_rls.sql) that:
+  1. `GRANT SELECT, INSERT, UPDATE, DELETE ON journal_entries, payments TO app_role;`
+  2. `GRANT SELECT ON journal_entries, payments TO backup_role, reporting_role;`
+  3. `ALTER TABLE journal_entries ENABLE ROW LEVEL SECURITY; ALTER TABLE journal_entries FORCE ROW LEVEL SECURITY;`
+  4. `ALTER TABLE payments ENABLE ROW LEVEL SECURITY; ALTER TABLE payments FORCE ROW LEVEL SECURITY;`
+  5. Create the standard tenant_read + tenant_write policies on both (mirroring journal_lines):
+     ```sql
+     CREATE POLICY journal_entries_tenant_read ON journal_entries FOR SELECT TO app_role USING (app_is_global() OR company_id = app_company_id());
+     CREATE POLICY journal_entries_tenant_write ON journal_entries FOR ALL TO app_role USING (app_is_global() OR company_id = app_company_id()) WITH CHECK (app_is_global() OR company_id = app_company_id());
+     -- (repeat for payments)
+     ```
+  6. Audit all partitioned parents (search `pg_partitioned_table`) and ensure every one with a `company_id` column has matching GRANTs + RLS + policies.
+
+=== Audit Area 3: Permission Enforcement — Status: FAIL ===
+
+Evidence (5 routes audited):
+
+1. src/app/api/v1/sales/route.ts:
+   - GET (lines 45-47): calls authenticateRequest + requirePermission('sale.post') + requirePermission('sale.read'). Requiring BOTH sale.post AND sale.read for a GET is wrong — read-only users (e.g., auditor) cannot list sales. Should require ONLY 'sale.read'.
+   - GET (line 69): uses unrestricted `db.sale.findMany` — NOT wrapped in `withTenant`. The Prisma tenantClient extension may auto-filter by companyId (set at line 60), but the standard pattern in this codebase is `withTenant`.
+   - POST (lines 111-195): calls authenticateRequest + requireIdempotencyKey + runInTenantContext + withIdempotency + withTenant. Does NOT call requirePermission('sale.post') — any authenticated user can POST a sale. Uses postSale domain command. Returns 201 + proper error handling.
+   - Status: FAIL (Critical — missing sale.post permission on POST; over-restrictive permission on GET).
+
+2. src/app/api/v1/journal-entries/route.ts:
+   - GET (lines 37-39): authenticateRequest + requirePermission('journal.post') + requirePermission('journal.read'). Same dual-permission anti-pattern as sales — should require ONLY 'journal.read'.
+   - GET (line 54): uses unrestricted `db.journalEntry.findMany`.
+   - POST (lines 105-150): authenticateRequest + requireIdempotencyKey + runInTenantContext + withIdempotency + withTenant + postJournalEntry. Does NOT call requirePermission('journal.post') — any authenticated user can post manual journal entries.
+   - Status: FAIL (Critical — missing journal.post permission on POST; over-restrictive GET).
+
+3. src/app/api/v1/fixed-assets/route.ts:
+   - GET (line 41): authenticateRequest + requirePermission('asset.view.branch'). ✓
+   - POST (line 102): authenticateRequest + requirePermission('asset.manage.branch') + withIdempotency + withTenant. ✓
+   - GET (line 58): uses unrestricted db.fixedAsset.findMany (minor warn — pattern violation).
+   - Status: PASS (with minor pattern warning).
+
+4. src/app/api/v1/expenses/[id]/approve/route.ts:
+   - POST: authenticateRequest + requireMfaForAction('journal_adjustment_approval') + requirePermission('expense.approve') + requireIdempotencyKey + runInTenantContext + withIdempotency + withTenant.
+   - Validates expense exists in caller's company (line 77-87, 404).
+   - Branch access check (lines 91-98, 403 FORBIDDEN_SCOPE).
+   - State guard (lines 102-109, 409 — only draft/pending_approval allowed).
+   - Maker ≠ checker enforced twice (lines 113-120 + 150-157, 403 SELF_APPROVAL_PROHIBITED).
+   - Resolves linked approval_request INLINE using tx (NOT the shared resolveApprovalRequest helper, which uses unrestricted db — see Audit 5). Audit log written (lines 174-191).
+   - Status: PASS (exemplary implementation).
+
+5. src/app/api/v1/bank-reconciliations/route.ts:
+   - GET (line 35): authenticateRequest + requirePermission('bank.reconciliation.view.company'). ✓
+   - POST (line 83): authenticateRequest + requirePermission('bank.reconciliation.manage.company') + withIdempotency + withTenant. ✓
+   - GET (line 46): uses unrestricted db.bankReconciliation.findMany (minor warn).
+   - Status: PASS (with minor pattern warning).
+
+Findings:
+- FAIL (Critical): POST /api/v1/sales and POST /api/v1/journal-entries do NOT call requirePermission(). Any authenticated user can post sales or manual journal entries. This violates §20.0 Control #2 (RBAC enforced at every mutation endpoint).
+- FAIL (High): GET /api/v1/sales and GET /api/v1/journal-entries require BOTH read and write permissions — read-only roles (e.g., auditor_viewer) cannot list sales or journal entries. Permission catalogue defines sale.read and journal.read specifically for read-only access.
+- WARN (Medium): All GET handlers use the unrestricted `db` client (Prisma extension) instead of `withTenant(auth.ctx, async (tx) => ...)`. The Prisma tenantClient extension auto-injects companyId filters, so data isolation still works, but the codebase's standard pattern (per /expenses/[id]/approve and /bank-reconciliations) is to wrap mutations AND reads in withTenant for serializable consistency. GETs reading critical financial data should also be inside a transaction to avoid read skew.
+- WARN (Low): requirePermission() in src/lib/auth/middleware.ts line 81 bypasses ALL permission checks if `auth.isGlobal === true`. Platform operations users (is_global) can do anything without per-permission checks. This is a defence-in-depth weakness — global users should still be subject to permission checks for high-risk actions like journal.post.
+
+Recommended Fix:
+- Add `await requirePermission(auth, 'sale.post')` to POST /api/v1/sales after line 114.
+- Add `await requirePermission(auth, 'journal.post')` to POST /api/v1/journal-entries after line 108.
+- Remove `requirePermission(auth, 'sale.post')` from GET /api/v1/sales (line 46) — keep only `requirePermission(auth, 'sale.read')`.
+- Remove `requirePermission(auth, 'journal.post')` from GET /api/v1/journal-entries (line 38) — keep only `requirePermission(auth, 'journal.read')`.
+- Wrap GET handlers in `runInTenantContext(auth.ctx, () => withTenant(auth.ctx, async (tx) => { ... }))` for serializable reads.
+- Modify requirePermission() to NOT bypass for is_global users when the permission code is on a high-risk list (e.g., journal.post, sale.void, expense.approve, payment.refund).
+
+=== Audit Area 4: Immutable Ledger Verification — Status: PASS (with reversal caveat) ===
+
+Evidence (live DB tests on erp_pos_audit):
+- TEST 1: Insert posted JE, then `UPDATE journal_entries SET description='modified'` → BLOCKED with `ERROR: Cannot modify posted record (journal_entries_2026_07) — use reversal/return/refund`. ✓ Trigger works.
+- TEST 2: Insert posted JE, then `DELETE` → BLOCKED with the same error. ✓
+- TEST 3: Insert posted JE, then `UPDATE journal_entries SET status='reversed', reversal_of_id='...'` → BLOCKED. This is the operation that `reverseJournalEntry()` performs at lines 287-294 of PostJournalEntry.ts. Confirms the reversal workflow is BROKEN in PostgreSQL production.
+- TEST 4: Insert draft JE, then UPDATE → SUCCESS (UPDATE 1). ✓ Drafts remain editable (correct behaviour).
+- Cross-tenant test: as `app_role` with `app.company_id='11111111-...'` and `app.is_global='false'`, querying `journal_entries` returned "permission denied for table journal_entries" (because of the GRANT gap — see Audit 2). For `companies` (RLS-enabled), the count returned 0 — RLS correctly blocked cross-tenant reads. For `journal_lines` and `chart_of_accounts` (RLS-enabled), counts returned 0 — RLS works.
+
+Findings:
+- PASS: The `prevent_posted_record_mutation()` trigger correctly blocks UPDATE and DELETE on posted journal_entries (and via 0004, on journal_lines, payment_allocations, statutory_documents, audit_logs, serial_events, delivery_events, service_events).
+- PASS: Draft journal entries can still be edited — the `WHEN (OLD.status = 'posted')` clause correctly scopes immutability to posted records only.
+- FAIL (Critical): The reversal workflow in `reverseJournalEntry()` cannot work in PostgreSQL because both `tx.journalEntry.update` calls target posted rows. The unit tests pass only because they run against SQLite (no triggers). See Audit 1 for fix.
+
+Recommended Fix:
+- See Audit 1 fix: either use a SECURITY DEFINER function for the status='reversed' transition, OR relax the trigger WHEN clause to `WHEN (OLD.status = 'posted' AND NEW.status NOT IN ('reversed'))`.
+
+=== Audit Area 5: Approval Workflow (Maker-Checker) — Status: WARN ===
+
+Evidence:
+- src/lib/approval/workflow.ts:
+  - `createApprovalRequest()` (lines 21-48): deduplicates against existing pending request (lines 22-32), creates with status='pending', payload JSON-stringified. ✓
+  - `resolveApprovalRequest()` (lines 50-77): state guard (line 61 — only pending can be resolved, 409 otherwise). Maker ≠ checker enforced (lines 64-66, 403 SELF_APPROVAL_PROHIBITED). ✓
+  - WARN: All functions use the unrestricted `db` import (line 5: `import { db } from '@/lib/db'`) — NOT the caller's `tx` transaction. The /expenses/[id]/approve route works around this by reimplementing the resolution inline using tx (lines 144-170). The /api/v1/approvals/[id]/resolve route does NOT work around this — it calls `resolveApprovalRequest` inside `withTenant` (line 36), but the function uses `db` not `tx`, so the resolution executes outside the transaction and will not roll back if the outer tx fails.
+  - BUG (Medium): line 74 sets `reason: params.reason ?? null`. ApprovalRequest.reason is non-nullable (per REDTEAM-FIX-3 worklog). Passing null will throw a Prisma validation error when reason is not supplied.
+- src/lib/approval/thresholds.ts:
+  - `ApprovalThresholds` interface (lines 8-18) defines 9 thresholds: sale_void_hours, sale_discount_threshold, cashier_variance_amount, cashier_variance_percent, journal_adjustment_threshold, expense_approval_threshold, refund_approval_threshold, supplier_return_approval_threshold, stock_backdate_days. ✓ Matches §20.D04 count.
+  - `getApprovalThresholds()` (lines 35-61): loads from `db.configurationValue.findMany` joined to `configuration_definitions`. Falls back to DEFAULTS (lines 20-30). 5-minute in-memory cache (lines 32-33, 59). ✓
+  - WARN: line 57 `catch { /* fall back to defaults */ }` silently swallows ALL errors (including connection failures, schema mismatches). A misconfigured `configuration_values` table would silently fall back to defaults, masking a real production issue. Should at least log the error.
+  - WARN: Uses unrestricted `db` (line 6) instead of tx — same atomicity concern.
+- src/app/api/v1/approvals/[id]/resolve/route.ts (reviewed as bonus):
+  - FAIL (Critical): line 25 calls `requirePermission(auth, 'audit_logs:write')` — this permission code DOES NOT EXIST in the catalogue (src/lib/permissions/catalogue.ts — grep for `audit_logs` returns 0 hits; only `audit.view` exists). The correct code is `approval.resolve` (catalogue line 111). Because requirePermission (middleware.ts line 81) bypasses for is_global users, global admins can resolve approvals, but every non-global user (branch_manager, accountant — who both have `approval.resolve` granted) will get `FORBIDDEN_SCOPE` even though they should be allowed. Maker-checker workflow is broken for the actual maker-checker roles.
+  - Dead code: line 24 `if ('error' in auth) return ...` — authenticateRequest() either returns AuthResult or throws; it never returns an error object. The branch is unreachable.
+
+Findings:
+- WARN (High): `resolveApprovalRequest` and `createApprovalRequest` use the unrestricted `db` client, not the caller's tx. Atomicity broken for the /api/v1/approvals/[id]/resolve route (and any future caller that doesn't reimplement inline).
+- WARN (Medium): `reason: params.reason ?? null` will throw on missing reason (non-nullable column).
+- WARN (Medium): Thresholds loader silently swallows errors — could mask production misconfigurations.
+- FAIL (Critical): `/api/v1/approvals/[id]/resolve` requires non-existent `audit_logs:write` permission. Non-global users cannot resolve approvals.
+
+Recommended Fix:
+- Refactor `createApprovalRequest` and `resolveApprovalRequest` to accept an optional `tx?: Prisma.TransactionClient` parameter and use it when provided: `const client = tx ?? db;`. Update callers to pass `tx`.
+- Change line 74: `reason: params.reason ?? request.reason` (preserve original reason) — matches the pattern used in /expenses/[id]/approve/route.ts line 166.
+- Replace `catch {}` at line 57 with `catch (e) { console.warn('[thresholds] Failed to load configuration_values — using defaults:', e); }`.
+- In `/api/v1/approvals/[id]/resolve/route.ts` line 25: change `'audit_logs:write'` to `'approval.resolve'`. Remove the dead `if ('error' in auth)` check on line 24.
+
+=== Summary Verdicts ===
+- Audit 1 (Journal Entry Integrity): WARN — logic is sound but SQL function unused; reversal flow broken in PostgreSQL.
+- Audit 2 (RLS Coverage): FAIL (CRITICAL) — journal_entries & payments have NO RLS, NO grants. Application cannot access these tables as erp_app. Cross-tenant data isolation at DB layer is missing for the two most critical financial tables.
+- Audit 3 (Permission Enforcement): FAIL — 2 of 5 routes (sales POST, journal-entries POST) missing requirePermission; 2 of 5 routes have over-restrictive GET permission requirements.
+- Audit 4 (Immutable Ledger): PASS — trigger correctly blocks posted-record mutation; reversal caveat noted in Audit 1.
+- Audit 5 (Approval Workflow): WARN — maker≠checker enforced; thresholds defined; but resolveApprovalRequest uses unrestricted db (atomicity bug) and /approvals/[id]/resolve uses non-existent permission code.
+
+=== Recommended Next Actions (priority order) ===
+1. CRITICAL: Create migration 0021 adding GRANT + ENABLE/FORCE ROW LEVEL SECURITY + tenant_read/tenant_write policies on `journal_entries` and `payments` (and audit all other partitioned parents with company_id).
+2. CRITICAL: Fix `reverseJournalEntry()` in src/domain/commands/m4/PostJournalEntry.ts — either relax the trigger WHEN clause or use a SECURITY DEFINER transition function. Without this, no journal reversal can succeed in PostgreSQL.
+3. CRITICAL: Add `requirePermission(auth, 'sale.post')` to POST /api/v1/sales and `requirePermission(auth, 'journal.post')` to POST /api/v1/journal-entries.
+4. CRITICAL: Change `/api/v1/approvals/[id]/resolve` permission from `'audit_logs:write'` to `'approval.resolve'`.
+5. HIGH: Remove redundant `requirePermission(auth, 'sale.post')` from GET /api/v1/sales and `requirePermission(auth, 'journal.post')` from GET /api/v1/journal-entries.
+6. HIGH: Refactor `createApprovalRequest`/`resolveApprovalRequest` to accept optional tx; fix `reason: params.reason ?? null` bug.
+7. MEDIUM: Tighten balance check in postJournalEntry to exact integer cents; require matching fiscal period in production.
+8. MEDIUM: Replace silent `catch {}` in thresholds.ts with a logged warning.
+9. LOW: Wrap GET handlers in withTenant for serializable reads; stop bypassing permission checks for is_global users on high-risk permissions.
+
+Work records saved inline above (no separate agent-ctx file needed for read-only audit). No code changes were made — this is an audit-only task.
+
+---
+Task ID: AUDIT-UI
+Agent: explore (UI/UX auditor)
+Task: Final production bug hunt — audit UI pages, forms, responsive layout, navigation, accessibility, data tables, and print routes for the Bangladesh ERP/POS system at /home/z/my-project.
+
+Scope: 33 page.tsx files under src/app/(erp)/dashboard/, the dashboard layout, the print/receipt + print/invoice routes, and shared StateList/DataTable components.
+
+Work Log:
+- Read worklog.md to confirm prior phases (M0–M8) are complete; previous tasks built out the data model, REST APIs, domain commands, and dashboard pages. This audit focuses on UI-layer defects only.
+- Enumerated all 33 page.tsx files under dashboard/ (including nested accounting/journal, accounting/trial-balance, inventory/opening-stock, products/[id], products/new).
+- Verified `'use client'` directive on every interactive page; the dashboard overview (`page.tsx`) is intentionally a server component.
+- Read full source for: layout.tsx, pos/page.tsx, products/page.tsx, products/new/page.tsx, accounting/journal/page.tsx, expenses/page.tsx, assets/page.tsx, sales/page.tsx, settings/page.tsx, support/page.tsx, dashboard/page.tsx, inventory/page.tsx (head), reports/page.tsx (head), hr/page.tsx (head), communications/page.tsx (head), purchases/page.tsx.
+- Read shared components: StateList.tsx, DataTable.tsx, FilterBar.tsx (file exists but unused).
+- Read print routes: print/receipt/[id]/route.ts, print/invoice/[id]/route.ts, and src/lib/pdf/index.ts (HTML templates + font CSS).
+- Cross-checked NAV_ITEMS in layout.tsx against blueprint §3.2 required pages.
+- Audited accessibility: aria-labels, touch-target sizes, keyboard shortcuts, focus management on POS page.
+- Audited form validation on POS checkout, new product, journal entry, expense create, asset acquisition.
+- Verified table features (sorting, pagination, filtering, empty/loading states, per-row actions) on sales, products, expenses, plus the unused DataTable component.
+- No code changes made — this is an audit-only task. Findings are listed below with severity, file:line evidence, and recommended fixes.
+
+---
+
+### Area 1: UI Page Inventory — Status: WARN
+
+Evidence: 33 page.tsx files under src/app/(erp)/dashboard/. Most use the shared `Card`/`Button`/`Badge` from shadcn plus `LoadingState`/`ErrorState`/`EmptyState` from `@/components/shared/StateList`.
+
+Findings:
+- HIGH — `src/app/(erp)/dashboard/page.tsx`: Overview page is a static server component rendering a phase-tracker card. No live KPIs (today's sales, low-stock count, pending approvals, cashier shift status) despite the dashboard being the landing page after login. Production users see "Phase M0 — In Progress" instead of business metrics.
+- MEDIUM — 6 pages silently swallow background-fetch errors via `.catch(console.error)` instead of surfacing a toast: `purchases/page.tsx:45`, `products/new/page.tsx:44`, `accounting/journal/page.tsx:46`, `inventory/opening-stock/page.tsx`, `products/[id]/page.tsx`, `system/page.tsx`. If `/api/v1/categories` or `/api/v1/brands` fails, Selects render empty with no explanation.
+- MEDIUM — `settings/page.tsx`: Only contains a WebAuthn passkey panel. No locale, currency, theme, notification preferences, or default-branch selectors. Blueprint §10 expects tenant/user preferences here.
+- LOW — `support/page.tsx`: Uses `localStorage` only (no backend wired). Submissions are lost on browser reset and never reach a support queue.
+
+Recommended Fix:
+- Replace the static overview with a real KPI grid (today's sales, low-stock count, pending approvals, open cashier shifts) — backed by a new `/api/v1/dashboard/summary` aggregate endpoint.
+- Replace every `.catch(console.error)` with `.catch(e => toast.error('Failed to load …'))`.
+- Expand settings page to include locale/currency/default-branch/theme tabs.
+
+### Area 2: Form Validation Audit — Status: FAIL
+
+Evidence:
+- POS: `src/app/(erp)/dashboard/pos/page.tsx:124-172` (handleCheckout), `:372-395` (Warehouse/Financial Account UUID text inputs), `:242` (broken Retry button).
+- New Product: `src/app/(erp)/dashboard/products/new/page.tsx:27-33` (form state), `:35-45` (categories/units fetch with no loading guard), `:107-132` (Category/Unit Selects lack required validation).
+- Journal: `src/app/(erp)/dashboard/accounting/journal/page.tsx:71-95` (handleSubmit), `:36-42` (default lines).
+- Expense: `src/app/(erp)/dashboard/expenses/page.tsx:112-154` (handleCreate), `:218-256` (Branch/Account UUID text inputs).
+- Asset: `src/app/(erp)/dashboard/assets/page.tsx:120-155` (handleAcquire), `:183-213` (handleDispose with window.prompt).
+
+Findings:
+- CRITICAL — Journal `handleSubmit` (line 71-95): NO `catch` block — only `try/finally`. A network failure will reset the `posting` flag but never surface a toast, leaving the user staring at a disabled button. Same defect in Asset `handleAcquire` (line 120-155).
+- CRITICAL — Journal form: NO client-side check that `Total Debit == Total Credit`. The totals are displayed (line 147-150) but never validated before POST. Server should reject, but UX gap.
+- HIGH — POS checkout: `Warehouse ID`, `Financial Account ID`, `Cashier Shift ID` are free-text UUID inputs (lines 371-395). Cashiers cannot memorise UUIDs. Same issue in Expense form (Branch ID, Financial Account ID, Category ID at lines 218-256) and Asset form (financial account is a Select — that page is OK). Should be Select dropdowns populated from `/api/v1/warehouses`, `/api/v1/financial-accounts`, `/api/v1/cashier-shifts?status=open`.
+- HIGH — New Product form: `Category` and `Unit` Selects (lines 107-132) are required by the API but have no client-side validation. Selecting nothing submits `""` and the server returns 400 with a cryptic error.
+- HIGH — POS search "Retry" button (line 242): `onClick={() => setSearch(s => s)}` is a no-op — React sees the same value and skips re-render, so the failed search never re-runs.
+- MEDIUM — Journal form: No validation that each line has an account selected, or that debit XOR credit per line is non-zero. Lines default to `{ debit: '0', credit: '0' }`.
+- MEDIUM — Journal form: Not reset after successful submit (only `setShowForm(false)`). Reopening shows previous data.
+- MEDIUM — Asset form: Partial reset — only `assetCode` and `name` cleared (line 152). `purchaseCost`, `salvageValue`, `usefulLifeMonths` retain previous values.
+- MEDIUM — Asset `handleDispose` (line 184): Uses `window.prompt` twice — not mobile-friendly, not styled, blocks the main thread. Should be a Dialog with a Select for method and a NumberInput for amount.
+- MEDIUM — Expense form: No validation that `amount > 0` or `tax_amount >= 0` (line 290-300). Negative amounts accepted.
+- MEDIUM — Expense form: No future-date guard on `expense_date`. Posting a future expense date can break period-close logic.
+- LOW — Asset form: No client check that `salvage_value <= purchase_cost` (logical invariant). HTML `min="0"` only.
+- LOW — Idempotency keys in Journal and Asset (`je-${Date.now()}`, `fa-${Date.now()}`) are not unique enough if two posts happen in the same millisecond.
+
+Recommended Fix:
+- Add `catch (e) { toast.error(...) }` to Journal `handleSubmit` and Asset `handleAcquire`.
+- Add `if (totalDebit !== totalCredit) { toast.error('Debits must equal credits'); return; }` before the journal POST.
+- Replace all UUID text inputs with Select dropdowns fetched from the appropriate API; show a spinner while options load.
+- Validate Category/Unit selection in New Product form before POST.
+- Fix POS Retry button: `onClick={() => { const q = search; setSearch(''); setSearch(q); }}` or trigger the fetch directly.
+- Reset the full Journal form after success; reset the full Asset form after success.
+- Replace `window.prompt` in dispose flow with a proper Dialog.
+
+### Area 3: Responsive Layout — Status: PASS
+
+Evidence: `src/app/(erp)/dashboard/layout.tsx`.
+
+Findings:
+- PASS — Mobile sidebar: hamburger (line 173-181) opens a `Sheet` slide-over (line 216-228). Drawer closes on route change (line 103).
+- PASS — Active nav highlight via `usePathname` (line 148): `pathname === item.href || pathname.startsWith(item.href + '/')`.
+- PASS — `requiresPermission` gating (line 147): items filtered when user lacks permission. Only `Onboard Tenant` is currently gated (`platform.onboarding.execute`).
+- PASS — Main content padding: `p-4 md:p-6` (line 230).
+- PASS — POS mobile layout: sticky bottom cart bar on `md:hidden` (line 408-423); checkout panel becomes full-width on mobile (grid stacks).
+- LOW — Sidebar nav link min-height is `40px` (line 155) — slightly below WCAG 2.5.5's 44×44 minimum for touch targets on tablets.
+
+Recommended Fix:
+- Bump sidebar link `min-h-[40px]` to `min-h-[44px]`.
+
+### Area 4: Navigation Completeness — Status: FAIL
+
+Evidence: `NAV_ITEMS` array at `src/app/(erp)/dashboard/layout.tsx:33-64`. Blueprint §3.2 required pages: Dashboard, Products, Inventory, Purchase, Sale, Payments, Service, Expense, Accounting, CRM, Communications, HRM, Reports, Settings, Support.
+
+Findings:
+- HIGH — **Missing "Payments" nav item and page.** There is no `/dashboard/payments/page.tsx` (confirmed via glob). The blueprint requires a Payments page (separate from POS checkout) for managing standalone payments, installments, gateway refunds, and payment links. API routes exist (`/api/v1/payments`, `/api/v1/payments/[id]/refund`, `/api/v1/payments/[id]/reverse`, `/api/v1/installments`) but no UI consumes them. Customers/accountants have no way to view or reverse payments outside a sale context.
+- PASS — All other §3.2 required pages are present: Dashboard (overview), Products, Inventory, Purchase (purchases), Sale (sales + pos), Service, Expense (expenses), Accounting (accounting + journal + trial-balance), CRM (crm), Communications, HRM (hr), Reports, Settings, Support.
+- INFO — Extra nav items beyond §3.2 (acceptable for production ERP): Cashier Shifts, Catalogue, Fixed Assets, Bank Reconciliation, Deliveries, Gift Cards, Integrations, Import/Export, Feature Flags, Security Events, Risk Tuning, Audit Log, Onboard Tenant, System Health, Parties (Customers & Suppliers).
+
+Recommended Fix:
+- Add a `/dashboard/payments/page.tsx` listing all payments with filters (status, method, date range), action buttons (View, Refund, Reverse), and a "New Payment" form supporting standalone payments + installment allocations. Add nav item `{ href: '/dashboard/payments', icon: CreditCard, label: 'Payments' }` after "Sales".
+
+### Area 5: Accessibility Audit (POS page) — Status: WARN
+
+Evidence: `src/app/(erp)/dashboard/pos/page.tsx`. aria-label inventory at lines 230, 272, 316, 320, 327, 338.
+
+Findings:
+- PASS — All icon-only buttons have `aria-label` (Decrease quantity, Increase quantity, Remove item, Serial numbers for X).
+- PASS — Search input has `aria-label="Search products"` (line 230).
+- PASS — Search results container has `role="listbox"` + `aria-label="Product search results"` (line 272); each result is a `<button role="option">`.
+- PASS — Color is not the only state indicator: search uses icons (Loader2 spinner, AlertCircle error, PackageX empty).
+- PASS — Keyboard shortcuts documented and wired (Enter=checkout, Escape=clear search; lines 174-197).
+- PASS — Labels associated via `<Label htmlFor>` for warehouse/shift/payment-method/financial-account inputs.
+- HIGH — Touch targets on cart qty +/- buttons and remove button are `h-8 w-8` (32×32 CSS px) at lines 316, 320, 327. WCAG 2.5.5 (Level AAA) and Apple HIG require 44×44 minimum. Same issue on the icon buttons in the mobile sticky cart bar (no min-height set).
+- MEDIUM — "Clear" link in mobile sticky cart bar (line 413) is a `<button>` with no `aria-label`; relies on visible text "Clear".
+- MEDIUM — Focus ring not explicitly visible on the product result buttons (`<button>` elements at line 274). They have `hover:bg-slate-50` but no `focus-visible:ring-2 focus-visible:ring-ring` class. Keyboard users cannot tell which result is focused.
+- LOW — `aria-selected="false"` is hardcoded on every result option (line 277) — should toggle to `true` when focused/active.
+- LOW — Mobile sticky cart bar (line 409) covers content at the bottom of the page; no `scroll-padding-bottom` set on `<main>`. Last cart item can be obscured.
+
+Recommended Fix:
+- Bump all cart icon buttons to `h-11 w-11` (44px) — or at minimum `h-10 w-10` (40px) with `min-h-[44px]`.
+- Add `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1` classes to product result buttons.
+- Add `aria-label="Clear cart"` to the Clear button.
+- Add `scroll-padding-bottom: 80px` to main element so sticky bar doesn't cover content.
+
+### Area 6: Data Table Audit — Status: FAIL
+
+Evidence:
+- Shared `DataTable` component: `src/components/shared/DataTable.tsx` (124 lines, supports sorting + pagination + empty message).
+- Sales: `src/app/(erp)/dashboard/sales/page.tsx:99-137` (raw HTML table).
+- Products: `src/app/(erp)/dashboard/products/page.tsx:138-159` (list of `<Link>` rows, not a table).
+- Expenses: `src/app/(erp)/dashboard/expenses/page.tsx:369-429` (shadcn `<Table>` with headers but no sort/paginate).
+- Grep confirms `DataTable` and `FilterBar` components are NOT imported by any page.
+
+Findings:
+- HIGH — **Shared `DataTable` and `FilterBar` components exist but are unused.** Every list page rolls its own raw `<table>` markup, violating §7 rule 14 (single-source shared component, no page-specific copies). This means no list page gets sorting, and only some get pagination.
+- HIGH — Sales page (`sales/page.tsx`): No pagination (limit=50, no "load more"), no sorting (headers not clickable), no filtering (no search input at all), no skeleton rows (uses spinner `LoadingState`). Only action button per row is "Void" — no View/Edit/Delete.
+- HIGH — Products page (`products/page.tsx`): Not a table — renders `<Link>` rows. Has search + type filter + "Load more" cursor pagination, but no sorting and no per-row action buttons (clicking a row navigates to detail page only).
+- MEDIUM — Expenses page (`expenses/page.tsx`): Uses shadcn `<Table>` with proper headers. Has status filter pills (line 344-356). But: no pagination (limit=100), no sorting, no search input. Only "Approve" + "View" link per row — no Edit/Delete.
+- MEDIUM — Assets page (`assets/page.tsx`): Raw HTML table with headers but no sorting, no pagination (limit=200), no search/filter. Per-row actions present (Depreciate, Dispose) — good.
+- LOW — Loading states use spinner (`LoadingState`) rather than skeleton rows that preserve table layout. Causes layout shift when data arrives.
+
+Recommended Fix:
+- Migrate sales, products, expenses, assets, hr, purchases, audit, communications-inbox tables to the shared `DataTable` component with sortable columns and pagination.
+- Add a `FilterBar` (search + status filter) above each table.
+- Add skeleton-row loading state (e.g., 8 rows of `<Skeleton className="h-4 w-full" />`).
+- Add View/Edit/Delete action buttons per row (with permission gating via `PermissionGate`).
+
+### Area 7: Print/PDF Routes — Status: WARN
+
+Evidence:
+- Receipt: `src/app/print/receipt/[id]/route.ts` (100 lines) — Next.js route handler, NOT a `page.tsx`.
+- Invoice: `src/app/print/invoice/[id]/route.ts` (91 lines) — same pattern.
+- HTML templates: `src/lib/pdf/index.ts:124-184` (receipt), `:207-284` (invoice).
+- Font CSS: `src/lib/pdf/index.ts:23-38` (`@font-face` for Noto Sans Bengali woff2 from Google Fonts).
+
+Note: The audit area referenced `page.tsx` files but they are actually `route.ts` files (Next.js API routes serving HTML/PDF/ESC-POS via `?format=` query). This is a deliberate design choice — functional but worth flagging.
+
+Findings:
+- PASS — Both routes are server-side (Next.js route handlers in `route.ts`). Auth check via cookies + `verifyAccessToken` (lines 10-15 of each).
+- PASS — Missing sale record returns 404 (line 27 of each).
+- PASS — Noto Sans Bengali font loaded via `@font-face` with both regular (400) and bold (700) weights; falls back to 'Hind Siliguri', Arial, sans-serif.
+- PASS — Receipt required fields per §3.3: items, subtotal, discountTotal, taxTotal (VAT), grandTotal, paidAmount, changeAmount, paymentMethod, cashier, customer. All present.
+- HIGH — Receipt route does NOT pass `vatRegistrationNo` to the template even though `ReceiptTemplateData` supports it (`src/lib/pdf/index.ts:106`). Line 32-56 of `print/receipt/[id]/route.ts` constructs `data` without `vatRegistrationNo`. The BIN/VAT reg number is missing from printed receipts — violates NBR requirement for tax invoices. Fix: add `vatRegistrationNo: sale.branch.bin ?? sale.company?.bin ?? undefined` (requires joining company BIN in the Prisma query — currently only `branch` is selected, not `company`).
+- HIGH — Invoice template (`renderInvoiceHtml` at `src/lib/pdf/index.ts:207-284`) does NOT include SD (Supplementary Duty) — only VAT. §3.3 explicitly requires "VAT + SD" on invoices. Template has no `sdTotal` field in `InvoiceTemplateData` interface. Need to add `sdTotal: number` to interface and render an `SD:` row in the totals block.
+- MEDIUM — Receipt ESC/POS branch (line 60-73): `sendToNetworkPrinter(bytes, printerHost)` has no try/catch. Invalid host or network failure throws an unhandled 500.
+- MEDIUM — Invoice route line 33: `companyEmail: undefined` is hardcoded — never populated from `sale.company`.
+- LOW — Invoice route line 41-48: `item: any` casts throughout — type-unsafe. Should use Prisma's generated types.
+- LOW — Neither route validates the `id` param format (UUID). An invalid ID just returns 404, which is acceptable but a 400 would be more correct.
+
+Recommended Fix:
+- In `print/receipt/[id]/route.ts`: add `company: { select: { bin: true; tin: true; displayName: true } }` to the Prisma include, then pass `vatRegistrationNo: sale.company.bin ?? sale.company.tin ?? undefined` to `ReceiptTemplateData`.
+- In `src/lib/pdf/index.ts`: extend `InvoiceTemplateData` with `sdTotal?: number`; render an `SD:` row in `renderInvoiceHtml` when `sdTotal > 0`. Update the invoice route to compute SD from line-item tax components (or fall back to 0 until SD tax codes are configured).
+- Wrap `sendToNetworkPrinter` in try/catch and return a 502 with error JSON on failure.
+- Populate `companyEmail` from `sale.company.email` if the column exists.
+- Replace `item: any` with proper Prisma-generated types.
+
+---
+
+Summary by severity:
+- CRITICAL: 2 (Journal missing catch block; Journal missing balance check before POST)
+- HIGH: 9 (Dashboard static; UUID text inputs on POS/Expense; POS Retry no-op; New Product Category/Unit validation; Payments page missing; Touch targets <44px; DataTable/FilterBar unused; Receipt missing BIN; Invoice missing SD)
+- MEDIUM: 10 (silent console.error catches; Asset missing catch; Asset partial reset; window.prompt dispose; Expense amount validation; Expense future-date; Journal line validation; Settings too narrow; Tables missing sort/paginate/filter; ESC/POS no try/catch)
+- LOW: 8 (idempotency key collisions; sidebar 40px touch target; aria-selected hardcoded; scroll-padding-bottom missing; companyEmail undefined; item:any casts; invalid UUID 404 vs 400; localStorage-only support)
+
+No code changes were made — audit-only. Findings handed off to engineering for prioritised fix sprints. Recommended order: (1) Journal catch + balance check (data integrity), (2) Receipt BIN + Invoice SD (statutory compliance), (3) UUID text inputs → Selects (UX blocker for cashiers), (4) Payments page (blueprint gap), (5) shared DataTable adoption (consistency), (6) accessibility touch-up.
+
+Work records saved inline above. No separate agent-ctx file needed for read-only audit.
+
+---
+Task ID: AUDIT-API
+Agent: explore (API/domain auditor)
+Task: Final production bug hunt — audit REST API routes, idempotency, N+1 queries, input validation, error handling, domain commands, webhooks, and rate limiting for the Bangladesh ERP/POS system at /home/z/my-project.
+
+Scope: 131 route.ts files under src/app/api/v1/, 26 domain command files under src/domain/commands/, plus src/lib/auth/, src/middleware.ts, src/lib/errors/codes.ts, src/lib/integrations/webhook.ts, src/workers/outboxWorker.ts.
+
+Work Log:
+- Read worklog.md to confirm prior phases (M0–M8, plus AUDIT-PERM/AUDIT-SECURITY/AUDIT-UI) are complete. This audit focuses on API/domain defects only.
+- Enumerated all 131 route.ts files under src/app/api/v1/ via glob.
+- Counted 101 files exporting at least one POST/PUT/PATCH handler, and 87 files calling `requireIdempotencyKey` (10 of the 14 missing-idempotency files fall under exempted categories per §9.1).
+- Read full source for the 6 list routes specified (sales, products, purchases, expenses, journal-entries, fixed-assets).
+- Read full source for the 5 POST routes specified (sales, journal-entries, fixed-assets, expenses, bank-reconciliations).
+- Read sample routes for error handling: quotations/route.ts, transfers/[id]/dispatch/route.ts, approvals/[id]/resolve/route.ts, payments/initiate/route.ts, payments/[id]/refund/route.ts, payments/[id]/reverse/route.ts, expenses/[id]/approve/route.ts, cashier-shifts/open/route.ts, onboarding/[id]/activate/route.ts, webhook-endpoints/route.ts, payments/[id]/route.ts, fixed-assets/[id]/route.ts.
+- Read full source for both webhook receivers (payment + courier).
+- Read full source for these domain commands: PostJournalEntry, PostSale, PostExpense, AssetManagement (3 commands), BankReconciliation (5 commands), ReceivePurchase, PostPayrollRun, PostCommunicationCampaign, Delivery (2 commands).
+- Cross-checked each domain command against the audit criteria (tx: Prisma.TransactionClient, correlationId, DomainError, typed result, no external I/O in tx).
+- Searched for rate limiting infrastructure (Redis, Upstash, in-memory throttles) — none found.
+- Searched for password reset endpoints — none found.
+- No code changes made — audit-only. Findings below with severity, file:line evidence, and recommended fixes.
+
+---
+
+### Area 1: API Route Coverage — Status: WARN
+
+Evidence: 131 route.ts files under src/app/api/v1/. Counted by module:
+- Modules with full collection + `[id]/route.ts` GET-by-id: bank-reconciliations, fixed-assets, payments, quotations, reconciliations, stock-counts, tax-periods, exchange-rates, import-jobs, legal-holds, data-subject-requests (11 modules).
+- Modules with `[id]/route.ts` + extra action routes: payments (refund, reverse), quotations (convert), bank-reconciliations (auto-match, finalize, manual-match, statement-lines), import-jobs (commit, errors), fixed-assets (depreciate, dispose) — good.
+- Modules with action-only `[id]/*` subroutes but NO `[id]/route.ts`: sales (only /void), expenses (only /approve), products (only /activate + /barcodes), purchases (only /receivings), transfers (cancel/dispatch/receive), cashier-shifts (only /close), approvals (only /resolve), export-jobs (only /download) — 8 modules.
+- Modules with NO `[id]` directory at all: journal-entries, customers, suppliers, employees, payroll-runs, stock-adjustments, refunds, sale-returns, purchase-returns, warranty-claims, leads, deliveries (only collection + /transition), service-requests (only collection + /[id]/parts), brands, categories, units, tax-codes, tax-components, financial-accounts, fiscal-periods, accounting-policies, chart-of-accounts, advances, account-transfers, courier-settlements, landed-costs, gifts-cards, installments, fixed-asset-categories, exchange-rates (has [id]), webhook-endpoints, audit-logs, security-events, notifications (only /read), translations — 30+ modules.
+
+Findings:
+- HIGH — `src/app/api/v1/journal-entries/route.ts`: No `[id]/route.ts` exists. The `reverseJournalEntry` domain command (PostJournalEntry.ts:231) is fully implemented but UNREACHABLE from the REST API. No GET-by-id, no reverse endpoint. Same gap for `sales`, `expenses`, `purchases`, `products`, `customers`, `suppliers`, `employees` — the front-end cannot fetch, update, or soft-delete a single record by id.
+- HIGH — `sales/[id]/` only contains `void/route.ts`. No GET-by-id means the receipt page (`/print/receipt/[id]`) cannot fetch via REST; it uses a direct Prisma query inside the print route instead (acceptable for print, but the broader sales detail UI has no API to consume).
+- HIGH — `products/[id]/` only contains `activate` + `barcodes`. No PUT to update price/name/category, no DELETE for soft-delete. Products are immutable after creation except via raw DB access — the catalogue admin UI cannot edit a product.
+- HIGH — `purchases/[id]/` only contains `receivings`. No PUT to cancel/close a PO, no GET to view PO detail with items.
+- HIGH — `expenses/[id]/` only contains `approve`. No GET-by-id, no PUT to mark paid, no DELETE to void.
+- MEDIUM — `customers`, `suppliers`, `employees` have no `[id]` directory. Cannot edit customer credit limit, supplier tax identifier, or employee bank details via API. Currently these are write-once via POST.
+- MEDIUM — `transfers/[id]/`, `cashier-shifts/[id]/`, `approvals/[id]/` have action subroutes but no GET-by-id. Cannot fetch transfer detail, shift summary, or approval request details via REST.
+- LOW — `export-jobs/[id]/` only has `download`. No GET status endpoint to poll whether the export is ready (must call download and hope it 200s).
+- INFO — All list endpoints use `findMany` with `companyId` filter (RLS-equivalent) — good tenant isolation. No cross-tenant leak risk.
+
+Recommended Fix:
+- Add `[id]/route.ts` for every business module that has a collection route, exposing GET (by-id), PUT (update where mutable), DELETE (soft-delete where applicable), following the same pattern as `fixed-assets/[id]/route.ts`.
+- Add `journal-entries/[id]/reverse/route.ts` that calls `reverseJournalEntry(tx, ...)` — the domain command is already implemented, just needs an HTTP entry point.
+
+### Area 2: Idempotency Coverage — Status: PASS
+
+Evidence:
+- 101 route.ts files export POST/PUT/PATCH (`/tmp/all_routes.txt`).
+- 87 of those call `requireIdempotencyKey` (`/tmp/idem_routes.txt`).
+- 14 files do not call `requireIdempotencyKey`:
+  - `auth/login`, `auth/logout`, `auth/mfa/verify`, `auth/refresh` (4 — exempted per §9.1: auth flows)
+  - `webauthn/assertion/begin`, `webauthn/assertion/finish`, `webauthn/registration/begin`, `webauthn/registration/finish` (4 — exempted: WebAuthn challenge/response)
+  - `webhooks/courier/[provider]`, `webhooks/payment/[provider]` (2 — exempted: webhook receivers)
+  - `cron/risk-alerts`, `admin/risk-alerts/evaluate` (2 — exempted: cron jobs)
+  - `offline/bootstrap` (1 — exempted: read-only bootstrap)
+  - `notifications/[id]/read` (1 — exempted: notifications are non-financial)
+- After filtering exempt patterns (`grep -v "auth/\|webhooks/\|cron/\|health\|webauthn\|mfa/\|offline/bootstrap\|risk-alerts/evaluate\|notifications/"`), the diff is EMPTY — every non-exempt business mutation route has `requireIdempotencyKey`.
+
+Findings:
+- PASS — All 87 non-exempt business mutation routes enforce `requireIdempotencyKey` before parsing the body.
+- PASS — All 87 routes also call `withIdempotency({ idempotencyKey, requestHash, ... })` with a `computeRequestHash` body hash, so a replay with a different body returns `IDEMPOTENCY_KEY_REUSED` (409).
+- PASS — The 14 exempted routes are correctly categorised per §9.1 (auth, webhooks, cron, health, WebAuthn, offline bootstrap, notifications).
+
+Recommended Fix:
+- None required. (Optional: document the exemption list in `docs/adr/0004-idempotency.md`.)
+
+### Area 3: N+1 Query Audit — Status: PASS
+
+Evidence: read all 6 list routes' GET handlers.
+
+Findings:
+- PASS — `sales/route.ts:69-87`: uses `findMany` with `select` + `_count: { select: { items: true, payments: true } }`. No per-row loop, no additional queries. The `items.map(...)` at line 90 only formats already-fetched data.
+- PASS — `products/route.ts:64-73`: uses `findMany` with `include: { category, brand, unit }` (single eager load). No N+1.
+- PASS — `purchases/route.ts:64-84`: uses `findMany` with `select` + `_count: { select: { items: true, receivings: true } }`. No N+1.
+- WARN — `expenses/route.ts:42-50`: uses `findMany` with `select` (no `include` of relations) and `Promise.all` with `count` — no N+1 on the list, but the items are returned without any relation (no branch, no category, no supplier). The UI must make follow-up calls for each row to show supplier name. This is a payload-completeness gap, not an N+1.
+- PASS — `journal-entries/route.ts:54-79`: uses `findMany` with `select` + nested `lines: { take: 200, include: { chartOfAccount, branch } }` + `_count: { select: { lines: true } }`. The `entries.map(...)` at line 82 only formats already-fetched data; `lines.reduce(...)` at line 90-91 computes totals in-memory. No additional queries.
+- PASS — `fixed-assets/route.ts:58-66`: uses `findMany` with `include: { category, branch }`. No N+1.
+- INFO — `src/lib/auth/middleware.ts:39-44 + 89-92`: `authenticateRequest()` loads the user with roles, then `requirePermission()` re-queries the same user with roles. This is a 2× redundant query per request, not strictly N+1 but a perf cost (2 DB roundtrips instead of 1 on every authenticated API call).
+
+Recommended Fix:
+- Add `supplier: { select: { id, name } }` and `branch: { select: { id, name } }` to `expenses/route.ts:43-48` so the list returns display-ready rows.
+- Refactor `requirePermission` to accept the already-loaded `user` object from `authenticateRequest`, eliminating the duplicate query.
+
+### Area 4: Input Validation Audit — Status: PASS (with minor gaps)
+
+Evidence: read all 5 POST routes specified.
+
+Findings:
+- PASS — All 5 routes parse body via `await req.json()` then `Schema.parse(body)` using `zod`. Zod schemas enforce:
+  - Required fields via `z.string().min(1)` etc.
+  - UUID fields via `z.string().uuid()` (e.g. `branch_id`, `warehouse_id`, `customer_id`, `financial_account_id`, `chart_of_account_id`).
+  - Numeric fields via `z.number().positive()` / `z.number().min(0)` / `z.number().int().min(1).max(6000)`.
+  - Date fields via `z.string().datetime()` (sales, journal-entries) or `z.string()` parsed via `new Date(body.x)` (fixed-assets, expenses, bank-reconciliations).
+  - Currency codes via `z.string().length(3)`.
+  - Enums via `z.enum([...])` (depreciation_method, product_type, payment_method).
+- PASS — All 5 routes convert ZodError to `DomainError('VALIDATION_FAILED', ..., 400)` and return via `errorResponse()`.
+- PASS — Branch/company scope: all 5 routes call `authenticateRequest()` which sets `auth.companyId`, and the domain commands (`postSale`, `postJournalEntry`, `postExpense`, `postAssetAcquisition`, `createBankReconciliation`) validate that referenced `branch_id` / `warehouse_id` / `chart_of_account_id` / `financial_account_id` belong to `auth.companyId`. Mismatched references throw `DomainError('VALIDATION_FAILED', '... not found in this company', {}, 404)`.
+- WARN — `expenses/route.ts:14-29`: `expense_date: z.string()` is too permissive — accepts any string, then `new Date(body.expense_date)` may produce `Invalid Date` if the string is malformed. Should be `z.string().datetime()` or `z.coerce.date()`.
+- WARN — `fixed-assets/route.ts:22`: `purchase_date: z.string()` — same issue as expense_date.
+- WARN — `bank-reconciliations/route.ts:14-29`: `statement_date: z.string()` and `transaction_date: z.string()` — same issue.
+- MEDIUM — `sales/route.ts:30-40` (`PostSaleSchema`): does NOT validate that the cashier's `branch_id` is in `auth.branchIds` before calling `postSale`. Branch scope is enforced later inside `postSale` via the warehouse lookup (line 79-84 of PostSale.ts), but the route controller should fail-fast with 403 instead of letting the domain command discover the mismatch.
+- LOW — `journal-entries/route.ts:14-24`: `JournalLineSchema` allows both `debit` and `credit` to be 0 — the balance/uniqueness check is deferred to `postJournalEntry` (line 65-89), which is correct, but the API returns a 400 with a less-specific "must have either debit or credit > 0" message rather than the Zod 400 with field-level issues.
+
+Recommended Fix:
+- Replace `z.string()` date fields with `z.coerce.date()` or `z.string().datetime()` in expenses, fixed-assets, bank-reconciliations routes.
+- Add branch-scope pre-check in `sales/route.ts` POST handler: `if (!auth.isGlobal && !auth.branchIds.includes(body.branch_id)) throw new DomainError('FORBIDDEN_SCOPE', 'Branch access denied', { branch_id: body.branch_id }, 403);` before calling `postSale`.
+
+### Area 5: Error Handling Audit — Status: PASS (with one CRITICAL exception)
+
+Evidence: sampled 12 routes (quotations, transfers/dispatch, approvals/resolve, payments/initiate, payments/refund, payments/reverse, expenses/approve, cashier-shifts/open, onboarding/activate, webhook-endpoints, payments/[id], fixed-assets/[id]).
+
+Findings:
+- PASS — Every route wraps the entire handler body in `try { ... } catch (e) { return errorResponse(e, correlationId); }`.
+- PASS — `errorResponse()` (`src/lib/errors/codes.ts:82-85`) converts any error to `DomainError` via `toDomainError()` and returns `Response.json(err.toJSON(correlationId), { status: err.httpStatus })`. Response shape: `{ error: { code, message, details, correlation_id } }` — matches §13.1.
+- PASS — Proper HTTP status codes: 400 (validation), 401 (unauthorized), 403 (forbidden/branch scope), 404 (not found), 409 (conflict/state), 423 (locked), 500 (internal).
+- PASS — All DomainErrors use `ErrorCodes` constants from `src/lib/errors/codes.ts:4-44` (VALIDATION_FAILED, UNAUTHORIZED, FORBIDDEN_SCOPE, RESOURCE_NOT_FOUND, FISCAL_PERIOD_LOCKED, IDEMPOTENCY_KEY_REUSED, SELF_APPROVAL_PROHIBITED, NO_OPEN_SHIFT, SERIAL_NOT_AVAILABLE, etc.).
+- PASS — No sensitive info leaked: `toDomainError` only surfaces `e.message` for unknown errors (line 73), never stack traces or SQL. The risk fire-and-forget in `sales/route.ts:165-186` logs stack traces via `console.error` but never returns them to the client.
+- CRITICAL — `payments/initiate/route.ts:47-69`: `provider.initiatePayment()` (external HTTP call to payment gateway) is invoked INSIDE `withTenant()` transaction (line 40-92). If the gateway call succeeds but the subsequent `tx.payment.create()` or `tx.auditLog.create()` fails, the transaction rolls back — but the gateway has already created a chargeable payment intent. There is no outbox pattern; the gateway call should happen OUTSIDE the transaction (or the payment row should be committed first as `pending`, then the gateway called, then the row updated with the gateway txn id).
+- CRITICAL — `payments/[id]/refund/route.ts:54-68`: same issue — `provider.refund()` is called inside `withTenant()`. Worse: the refund endpoint only writes an `auditLog` entry; it does NOT create a refund record (e.g., a `payment` row with `paymentType='refund'` or a `payment_refund` row). If the gateway refunds the customer but the audit log insert fails, the books show no refund — customer is owed money with no record.
+- MEDIUM — `sales/route.ts:165-186`: fire-and-forget risk assessment uses `void (async () => { ... })()` with only `console.error` on failure. If the assessment fails 100 times in a row, no alert fires. Should publish to outbox for retry.
+- MEDIUM — `auth/login/route.ts:38-51`: when an unknown email is submitted, the code calls `db.company.findFirst({ where: { code: 'PLATFORM' } })` to attach the security event to a company. If `PLATFORM` company doesn't exist, `!.id` throws TypeError — login becomes a 500 for unknown emails when the platform company is missing. The `!` non-null assertion at line 44 is unsafe.
+- LOW — Multiple routes (`expenses/route.ts:35,59`, `approvals/[id]/resolve/route.ts:24`) check `if ('error' in auth) return NextResponse.json(auth, { status: auth.status });` after `authenticateRequest()`. But `authenticateRequest()` (`src/lib/auth/middleware.ts:24-73`) always throws on failure — it never returns an `{error, status}` object. These checks are dead code.
+- LOW — `courier/[provider]/route.ts:64`: `db.deliveryTracking.create({...}).catch(() => {/* deliveryTracking may not exist in sandbox schema */});` swallows all errors silently. If the table exists but the insert fails for a different reason (e.g., NOT NULL constraint), the failure is invisible.
+
+Recommended Fix:
+- CRITICAL: Refactor `payments/initiate` to (1) insert `pending` payment row in tx, (2) commit tx, (3) call `provider.initiatePayment()` outside tx, (4) update payment row with `gatewayTxnId` in a second tx. If step 3 fails, mark payment row as `failed`.
+- CRITICAL: Refactor `payments/refund` similarly. Also persist a `paymentRefund` (or `payment` with `paymentType='refund'`, `direction='outgoing'`) record — not just an audit log.
+- MEDIUM: Wrap the fire-and-forget risk assessment in `tx.outboxEvent.create({ ... })` inside the sale transaction; let `outboxWorker` deliver it with retry.
+- MEDIUM: In `auth/login/route.ts:44`, replace `(await db.company.findFirst({ where: { code: 'PLATFORM' } }))!.id` with a safe lookup that defaults to `null` companyId when PLATFORM company is absent.
+- LOW: Remove dead `if ('error' in auth)` checks. Replace silent `.catch(() => {})` with `.catch(e => console.warn('[deliveryTracking] insert failed:', e.message))`.
+
+### Area 6: Domain Command Audit — Status: PASS (with minor exceptions)
+
+Evidence: All 26 files in `src/domain/commands/{m2,m3,m4,m5,m6}/` were checked via ripgrep for the required signature pattern. Full source read for 10 of them.
+
+Findings:
+- PASS — All 26 domain commands accept `tx: Prisma.TransactionClient` as the first parameter (verified via `rg "tx: Prisma.TransactionClient"` — 26/26 matches).
+- PASS — All 26 domain commands accept `correlationId: string` as the third parameter (verified via `rg "correlationId: string"` — 26/26 matches).
+- PASS — All 26 domain commands throw `DomainError` (not generic `Error`) on validation failures. Verified: `rg "throw new Error\(" src/domain/commands/` returns ZERO matches.
+- PASS — All 26 domain commands return a typed result (`Promise<SomeResult>`). Verified: `rg "Promise<any>|Promise<void>" src/domain/commands/` returns ZERO matches. Every command exports an explicit `*Input` and `*Result` interface.
+- PASS — No external API calls inside transactions. Verified: `rg "fetch\(|axios|http\." src/domain/commands/` returns ZERO matches. External gateway calls (payment provider initiate/refund) happen at the API-route layer, not in domain commands. The outbox pattern is correctly used for webhook fan-out (`outboxWorker.ts` processes `outboxEvent` rows).
+- LOW — `src/domain/commands/m2/ReceivePurchase.ts:17`: imports `db` from `@/lib/db` but never uses it (dead import). Verified via `rg "\bdb\b" src/domain/commands/m2/ReceivePurchase.ts` — only the import line matches; no usage. The entire command uses `tx.*` correctly.
+- MEDIUM — `src/domain/commands/m6/PostPayrollRun.ts:82-126`: builds the BEFTN bank file (string generation, potentially multi-MB) inside the transaction. While not an external I/O call, holding a serializable transaction open for the duration of string concatenation for 1000+ employees will cause lock contention. Should generate the BEFTN file OUTSIDE the transaction after the payroll run commits.
+- MEDIUM — `src/domain/commands/m6/PostPayrollRun.ts:117`: queries `tx.company.findUnique` mid-loop iteration pattern (it's actually outside the loop, but is a single extra query inside the tx that could be done up-front). Minor.
+- MEDIUM — `src/domain/commands/m6/PostCommunicationCampaign.ts:37-50`: creates one `notification` row per recipient inside a `for` loop with `await tx.notification.create({...})` per iteration. For 10k recipients this is 10k inserts in a single transaction — should use `tx.notification.createMany({ data: [...] })`.
+- MEDIUM — `src/domain/commands/m3/PostSale.ts:341-419`: queries `tx.product.findFirst` (line 342) for each sale item a SECOND time (the first time was at line 136 inside the totals loop). The product data could be cached from the first query. Not strictly an N+1 (it's per-item, not per-result-row), but doubles query count for large sales.
+- LOW — `src/domain/commands/m4/PostJournalEntry.ts:79`: balance check uses `Math.abs(totalDebit - totalCredit) > 0.01` — float comparison. For integer-cents financial data this is OK, but if any input is a float (e.g., `0.1 + 0.2`), the tolerance of 0.01 could mask a real imbalance. Should multiply by 100 and compare integers.
+
+Recommended Fix:
+- Remove `import { db } from '@/lib/db';` from `ReceivePurchase.ts:17`.
+- Move BEFTN file generation in `PostPayrollRun.ts:126` to after the transaction commits — return the payroll run ID + JE number first, then generate the BEFTN file in a separate step (or via the outbox).
+- Replace the `for` loop in `PostCommunicationCampaign.ts:37-50` with a single `tx.notification.createMany({ data: eligibleRecipients.map(r => ({...})) })`.
+- Cache the product lookup in `PostSale.ts` — fetch once at line 136, reuse at line 342.
+
+### Area 7: Webhook Receiver Audit — Status: WARN
+
+Evidence: `src/app/api/v1/webhooks/payment/[provider]/route.ts` (99 lines) + `src/app/api/v1/webhooks/courier/[provider]/route.ts` (81 lines).
+
+Findings:
+- PASS — Payment webhook verifies HMAC signature via `provider.verifyWebhook({ rawBody, signature, timestamp })` (line 24). On verify failure, records a `payment_webhook_verify_failed` security event and returns 401.
+- PASS — Courier webhook verifies `X-Courier-Token` header against `process.env.COURIER_WEBHOOK_TOKEN` (line 12-14). On mismatch, records `courier_webhook_unauthorized` security event and returns 401.
+- PASS — Payment webhook is idempotent: line 71-72 `if (newStatus !== localPayment.status)` — re-delivery of the same webhook with the same status is a no-op.
+- PASS — Courier webhook is idempotent: line 48 `if (newStatus && newStatus !== delivery.status)` — re-delivery is a no-op.
+- WARN — Payment webhook does NOT use `withIdempotencyKey` or a dedicated event-id dedupe table. If the provider sends the same `paymentId` with a different status (e.g., success then a retry with success), the second call is correctly a no-op. But if two webhooks arrive concurrently (within the same millisecond), both pass the `if` check, both call `db.payment.update`, and the second update overwrites the first with potentially stale data. No row lock (`SELECT ... FOR UPDATE`) is used.
+- WARN — Courier webhook has the same concurrency gap: two concurrent callbacks for the same `providerShipmentId` could both pass the status-change check.
+- MEDIUM — Payment webhook line 84-95: when a payment completes, the code re-queries ALL completed payments for the sale (`db.payment.findMany`) and updates `sale.status` to `paid` or `partially_paid`. This is correct but NOT wrapped in a transaction — the payment update (line 73) and sale update (line 91) are separate queries. If the sale update fails, the payment is marked completed but the sale stays partially_paid.
+- MEDIUM — Courier webhook line 47: `mapCourierStatus` returns the raw lowercased status string if no pattern matches (line 80: `return s;`). This means an unknown courier status (e.g., `"rider_cancelled_pending"` — a typo from the provider) is written directly to `delivery_order.status`, potentially putting the delivery into an invalid state that the state-machine in `Delivery.ts:13-23` would reject on the next transition.
+- LOW — Payment webhook line 67: returns `No local payment for ${providerReference}` in the error message — leaks the provider's reference number back to the caller. Acceptable for legitimate debugging but could be used for enumeration.
+- LOW — Courier webhook line 64: silent `.catch(() => {})` on `deliveryTracking.create` — see Area 5.
+- LOW — Neither webhook enforces a request body size limit. A malicious provider (or attacker who stole the shared secret) could POST a 100MB body and exhaust memory.
+
+Recommended Fix:
+- Wrap the payment webhook's payment+sale update in a `withTenant` transaction with `SELECT ... FOR UPDATE` on the payment row, OR use a `payment_webhook_events` dedupe table keyed by `provider + providerEventId`.
+- In `mapCourierStatus`, return `null` (skip update) for unknown statuses instead of the raw string — let the delivery stay in its current state and log the unknown status for investigation.
+- Move the sale-status recompute to a `recomputeSaleStatus(saleId)` helper called inside the same transaction as the payment update.
+- Add a 1MB body size limit at the middleware or route level for webhook endpoints.
+- Remove `providerReference` from the 404 error message — return a generic "Payment not found" instead.
+
+### Area 8: Rate Limiting — Status: FAIL
+
+Evidence:
+- `rg "rateLimit|rate.limit|RATE_LIMIT|throttle|tooManyRequests|redis|upstash|ioredis" src/` returns ZERO matches. No rate-limiting infrastructure exists.
+- `package.json` dependencies: no `@upstash/redis`, no `ioredis`, no `rate-limiter-flexible`, no `lru-cache`.
+- `src/middleware.ts`: applies CSRF checks only; no per-IP or per-user throttling.
+
+Findings:
+- PASS — Login endpoint (`src/app/api/v1/auth/login/route.ts:79-99`) implements progressive lockout via `PROGRESSIVE_LOCKOUT_STEPS` in `src/lib/auth/password.ts:25-30`: 5 failures → 5min lock, 10 → 30min, 15 → 4h, 20 → 24h. Account is locked via `lockedUntil` column on `user` table. This is per-account, not per-IP.
+- CRITICAL — MFA verify endpoint (`src/app/api/v1/auth/mfa/verify/route.ts`) has NO rate limiting and NO progressive lockout for failed MFA attempts. The TOTP code is 6 digits (1M possibilities). Without rate limiting, an attacker who stole the password can brute-force the MFA code in ~500k requests on average. The endpoint only records a `mfa_failed` security event (line 41-49) — no lockout, no throttle, no IP block. With 1000 req/s this is brute-forceable in ~8 minutes.
+- HIGH — No password reset endpoint exists (`rg "password.*reset|forgot" src/app/api/` returns ZERO matches). Users who forget their password have no self-service flow. This is a blueprint gap (§6 rule 4 mentions password hashing but the reset flow is not implemented).
+- HIGH — No rate limiting on public API endpoints. The `payments/initiate` endpoint (which calls an external gateway) can be called unlimited times per second by an authenticated user, potentially DOSing the payment gateway or running up gateway API quota costs.
+- HIGH — No rate limiting on `webhook-endpoints` POST — an authenticated user could create unlimited webhook endpoints, each generating a secret, potentially exhausting entropy or storage.
+- MEDIUM — No per-IP rate limiting on login. While the per-account lockout prevents password brute-force against a single account, an attacker can rotate through 1000 different email addresses with 4 attempts each (3999 total attempts) without triggering any lockout, because each individual account stays under the 5-failure threshold.
+- MEDIUM — No rate limiting on `offline/sync` endpoint — a misbehaving POS device could upload 500-command batches continuously, consuming server resources.
+- LOW — WebAuthn assertion/registration begin+finish endpoints have no rate limiting. An attacker could spam `begin` to exhaust challenge storage.
+
+Recommended Fix:
+- CRITICAL: Add MFA verify rate limiting — at minimum, per-account progressive lockout mirroring `PROGRESSIVE_LOCKOUT_STEPS` (3 failures → 5min lock, etc.). Store `failed_mfa_count` and `mfa_locked_until` on the user table. Ideally also add per-IP throttle (max 10 MFA attempts per minute per IP).
+- HIGH: Implement a `password-reset/request` endpoint (POST email → send token via email) and `password-reset/confirm` endpoint (POST token + new password). Rate-limit to 3 requests per email per hour.
+- HIGH: Add a rate-limit middleware using an in-memory Map (for single-instance) or Redis (for multi-instance) keyed by `userId + endpoint` for write endpoints. Suggested limits: 10 req/min for `payments/initiate`, 5 req/min for `webhook-endpoints` POST, 60 req/min for general mutations.
+- MEDIUM: Add per-IP rate limiting on `auth/login` (max 20 attempts per minute per IP) to complement the per-account lockout.
+- MEDIUM: Add per-device rate limiting on `offline/sync` (max 1 batch per 5 seconds per device_id).
+
+---
+
+Summary by severity:
+- CRITICAL: 3 (MFA verify has no rate limit/lockout — brute-forceable in minutes; payment gateway calls inside transaction in /payments/initiate + /payments/refund — outbox-pattern violation; /payments/refund doesn't persist a refund record — only audit log)
+- HIGH: 7 (No [id] routes for journal-entries/sales/expenses/products/purchases/customers — REST CRUD incomplete; reverseJournalEntry unreachable from API; no rate limiting on public endpoints; no password reset endpoint; courier webhook unknown-status writes invalid state to delivery_order)
+- MEDIUM: 11 (expenses list missing relations; branch-scope pre-check missing on sales POST; fire-and-forget risk with no retry; login PLATFORM company unsafe !; concurrent webhook race; sale-status recompute not in tx; PostPayrollRun BEFTN inside tx; PostCommunicationCampaign per-row insert; PostSale duplicate product query; per-IP login throttle missing; offline/sync no throttle)
+- LOW: 9 (dead `if ('error' in auth)` checks; silent deliveryTracking catch; float balance check tolerance; dead db import in ReceivePurchase; providerReference leaked in 404; no webhook body size limit; no WebAuthn rate limit; expenses/fixed-assets/bank-rec date validation too permissive; journal line zero-check deferred to domain)
+
+No code changes were made — audit-only. Recommended fix order:
+1. CRITICAL: MFA verify rate limit + lockout (security blocker — ship first).
+2. CRITICAL: Refactor /payments/initiate + /payments/refund to call gateway outside tx + persist refund record (data integrity + financial correctness).
+3. HIGH: Add [id]/route.ts for journal-entries (with /reverse), sales, expenses, products, purchases, customers (REST CRUD completeness).
+4. HIGH: Implement password-reset/request + /confirm endpoints with rate limiting.
+5. HIGH: Add rate-limit middleware for write endpoints (payments/initiate, webhook-endpoints, offline/sync).
+6. MEDIUM: Fix courier webhook `mapCourierStatus` to return null for unknown statuses.
+7. MEDIUM: Move BEFTN generation + bulk notification insert out of transaction.
+8. LOW: Clean up dead code, tighten date validation, add webhook body size limit.
+
+Work records saved inline above. No code changes were made — audit-only.
+
+---
+Task ID: FIX-UI
+Agent: ui-fix-specialist
+Task: Fix 6 CRITICAL/HIGH UI bugs in the Bangladesh ERP/POS system.
+
+Work Log:
+- Bug 1 (HIGH) — Created `src/app/(erp)/dashboard/payments/page.tsx` (client component) with payment list (Table: date, reference, method, counterparty, amount, status, actions), status filter chips (All/Pending/Completed/Failed/Reversed), "New Payment" Dialog (payment_method select, amount, financial_account_id, method_reference + payment_type/direction/branch/notes), Skeleton loading state, EmptyState, ErrorState, toast.error on failures, Idempotency-Key header on POST. Added `/dashboard/payments` nav item to `src/app/(erp)/dashboard/layout.tsx` between "Cashier Shifts" and "Products" with `Banknote` icon (CreditCard and Wallet were already taken by POS and Expenses). Added two supporting GET endpoints: `src/app/api/v1/branches/route.ts` and `src/app/api/v1/warehouses/route.ts`.
+- Bug 2 (CRITICAL) — `src/app/(erp)/dashboard/accounting/journal/page.tsx` `handleSubmit`: added client-side balance check (`Math.abs(totalDebit - totalCredit) > 0.01` → `toast.error('Debits must equal credits')` and early return; also rejects `totalDebit <= 0`). Wrapped fetch in try/catch with `toast.error('Failed to post journal entry: ' + ...)` and `finally { setPosting(false) }` so spinner always resets.
+- Bug 3 (CRITICAL) — `src/app/(erp)/dashboard/assets/page.tsx` `handleAcquire`: wrapped fetch in try/catch with `toast.error('Failed to acquire asset: ' + (e instanceof Error ? e.message : 'Unknown error'))` and `finally { setPosting(false) }`.
+- Bug 4 (HIGH) — `src/app/print/receipt/[id]/route.ts`: added `company: { select: { displayName, bin, tin } }` to `db.sale.findFirst` include; passed `vatRegistrationNo: sale.company.bin ?? sale.company.tin ?? undefined` into `ReceiptTemplateData`. `src/lib/pdf/index.ts` `renderReceiptHtml`: changed header label from `VAT:` to `BIN:` so the receipt now displays `BIN: <vatRegistrationNo>` near the branch name.
+- Bug 5 (HIGH) — `src/lib/pdf/index.ts`: added `sdTotal?: number` field to `InvoiceTemplateData`; in `renderInvoiceHtml` added `SD: ৳{sdTotal.toFixed(2)}` line directly below the VAT line, conditionally rendered only when `sdTotal > 0`. `src/app/print/invoice/[id]/route.ts`: added `taxes: { include: { taxComponent: { select: { componentType, componentCode } } } }` to items include; computed `sdTotal` by iterating `sale.items[*].taxes[*]` and summing `taxAmount` where `taxComponent.componentType === 'SD'`; passed `sdTotal` into `InvoiceTemplateData`.
+- Bug 6 (HIGH) — `src/app/(erp)/dashboard/pos/page.tsx`: added typed interfaces `WarehouseOption`, `FinancialAccountOption`, `CashierShiftOption` and state for options lists + loading/error. Added mount-time `useEffect` that fetches `/api/v1/warehouses`, `/api/v1/financial-accounts` (filtered to `is_active`), and `/api/v1/cashier-shifts?status=open`. On fetch failure: `toast.error(msg)` + `setOptionsError(msg)` and selects get `disabled`. Replaced 3 free-text UUID `<Input>` fields (warehouse-id, shift-id, fin-account-id) with `<Select>` dropdowns showing human-readable labels. Added `handleWarehouseChange` to derive `branchId` from the warehouse's branch relation. Auto-selects the only open cashier shift when there's exactly one.
+
+Verification:
+- `bunx tsc --noEmit 2>&1 | grep -E "(payments|journal|assets|receipt|invoice|pos|branches|warehouses)" | head -20`:
+  - All reported errors are PRE-EXISTING (e.g., `Decimal not assignable to string` from `parseFloat(sale.subtotal)`, `Property 'saleType' does not exist` — same pattern as `src/app/api/v1/print/escpos/[saleId]/route.ts` which was already failing pre-change).
+  - Verified by `git stash` baseline comparison: zero NEW errors introduced. Line numbers shifted by exactly the number of lines added (e.g., receipt route errors moved from 46-49,55 → 48-51,57 — exact +2 shift matching the 2 new lines added to the include + data).
+  - New files (`payments/page.tsx`, `branches/route.ts`, `warehouses/route.ts`) — ZERO TypeScript errors.
+- `bun run lint` — exit 0, no errors or warnings.
+
+Files Touched:
+- Created:
+  - `src/app/(erp)/dashboard/payments/page.tsx`
+  - `src/app/api/v1/branches/route.ts`
+  - `src/app/api/v1/warehouses/route.ts`
+- Modified:
+  - `src/app/(erp)/dashboard/layout.tsx`
+  - `src/app/(erp)/dashboard/accounting/journal/page.tsx`
+  - `src/app/(erp)/dashboard/assets/page.tsx`
+  - `src/app/(erp)/dashboard/pos/page.tsx`
+  - `src/app/print/receipt/[id]/route.ts`
+  - `src/app/print/invoice/[id]/route.ts`
+  - `src/lib/pdf/index.ts`
+
+Work records saved to `/home/z/my-project/agent-ctx/FIX-UI-ui-fix-specialist.md`.

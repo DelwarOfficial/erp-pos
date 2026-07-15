@@ -70,6 +70,17 @@ export default function JournalPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Client-side balance check: total debits must equal total credits.
+    const totalDebit = form.lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+    const totalCredit = form.lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      toast.error('Debits must equal credits');
+      return;
+    }
+    if (totalDebit <= 0) {
+      toast.error('Total debit must be greater than zero');
+      return;
+    }
     setPosting(true);
     try {
       const idempotencyKey = `je-${Date.now()}`;
@@ -91,6 +102,8 @@ export default function JournalPage() {
       toast.success(`Journal ${data.entry_no} posted — Dr ${data.total_debit} / Cr ${data.total_credit}`);
       setShowForm(false);
       await loadEntries();
+    } catch (e) {
+      toast.error('Failed to post journal entry: ' + (e instanceof Error ? e.message : 'Unknown error'));
     } finally { setPosting(false); }
   }
 
