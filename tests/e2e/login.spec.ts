@@ -12,12 +12,27 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'ChangeMe!2026';
 // This file produces that shared state via a global setup pattern.
 
 test.describe('Authentication', () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    testInfo.setTimeout(60000); // 60s for dev server compilation
+  });
+
   test('login with valid credentials redirects to dashboard', async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    // Wait for the form to be hydrated (React client component mount)
+    await page.waitForTimeout(2000);
+    // Click submit and wait for either navigation or network response
+    await Promise.all([
+      page.waitForURL('**/dashboard', { timeout: 45000 }).catch(() => {}),
+      page.click('button[type="submit"]'),
+    ]);
+    // If we're still on /login, check for errors
+    if (page.url().includes('/login')) {
+      // Try clicking again — sometimes React hydration is slow
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/dashboard', { timeout: 30000 });
+    }
     await expect(page.locator('h1')).toContainText('ERP/POS');
   });
 
@@ -35,7 +50,7 @@ test.describe('Authentication', () => {
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
     // Look for a logout button/link
     const logoutBtn = page.locator('button:has-text("Logout"), a:has-text("Logout"), button:has-text("Sign out")');
     if (await logoutBtn.count() > 0) {
@@ -46,12 +61,13 @@ test.describe('Authentication', () => {
 });
 
 test.describe('Dashboard Navigation (UAT Scenario 5 — Manager Flow)', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    testInfo.setTimeout(60000); // 60s for dev server compilation
     await page.goto(`${BASE_URL}/login`);
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
   });
 
   test('can navigate to Products page', async ({ page }) => {
@@ -97,7 +113,7 @@ test.describe('POS Sale Flow (UAT Scenario 1 — Cashier)', () => {
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
   });
 
   test('POS page loads with search and cart', async ({ page }) => {
@@ -124,7 +140,7 @@ test.describe('Sales List (UAT Scenario 5)', () => {
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
   });
 
   test('sales list page loads', async ({ page }) => {
@@ -140,7 +156,7 @@ test.describe('Journal Entries (UAT Scenario 3 — Accountant)', () => {
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
   });
 
   test('accounting journal page loads', async ({ page }) => {

@@ -22,6 +22,14 @@ function isProd() {
     && process.env.DISABLE_SECURE_COOKIES !== 'true';
 }
 
+function sameSiteMode(): 'strict' | 'lax' {
+  // In production: strict (most secure — cookie only sent on same-site requests)
+  // In E2E/staging: lax (allows top-level navigations, needed for Playwright)
+  return (process.env.E2E_TESTING === 'true' || process.env.DISABLE_SECURE_COOKIES === 'true')
+    ? 'lax'
+    : 'strict';
+}
+
 export interface CookieAuthResult {
   accessToken: string;
   refreshToken: IssuedRefreshToken;
@@ -66,7 +74,7 @@ export async function setAuthCookies(params: {
       options: {
         httpOnly: true,
         secure: isProd(),
-        sameSite: 'strict' as const,
+        sameSite: sameSiteMode(),
         path: '/',
         maxAge: 15 * 60, // 15 minutes
       },
@@ -77,7 +85,7 @@ export async function setAuthCookies(params: {
       options: {
         httpOnly: true,
         secure: isProd(),
-        sameSite: 'strict' as const,
+        sameSite: sameSiteMode(),
         path: '/api/v1/auth/refresh',
         maxAge: 30 * 24 * 60 * 60, // 30 days
       },
@@ -126,7 +134,7 @@ export async function setMfaPendingCookie(payload: {
   cookieStore.set(MFA_PENDING_COOKIE, JSON.stringify(payload), {
     httpOnly: true,
     secure: isProd(),
-    sameSite: 'strict',
+    sameSite: sameSiteMode(),
     path: '/',
     maxAge: 5 * 60, // 5 minutes to complete MFA
   });

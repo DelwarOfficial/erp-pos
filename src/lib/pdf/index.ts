@@ -67,7 +67,14 @@ html, body { margin: 0; padding: 0; font-family: 'Noto Sans Bengali', 'Hind Sili
 
   // Try Puppeteer
   try {
-    const puppeteer = await import('puppeteer' as string).catch(() => null) as any;
+    // puppeteer is an optional dependency — use eval to prevent Next.js from
+    // trying to bundle it at build time. If not installed, falls back to HTML.
+    let puppeteer: any = null;
+    try {
+      puppeteer = (0, eval)('require')('puppeteer');
+    } catch {
+      // puppeteer not installed — fall through to HTML fallback
+    }
     if (puppeteer) {
       const browser = await puppeteer.default.launch({ headless: 'new', args: ['--no-sandbox'] });
       try {
