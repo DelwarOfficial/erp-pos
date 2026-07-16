@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { rotateRefreshToken } from '@/lib/auth/refreshToken';
-import { setAuthCookies, getRefreshCookieName } from '@/lib/auth/sessions';
+import { setAuthCookies, getRefreshCookieName, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
 
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     // Issue a new access token
     const branchIds = user.branchAccess.map(b => b.branchId);
     const sessionId = randomUUID();
-    await setAuthCookies({
+    const refreshResult = await setAuthCookies({
       userId: user.id,
       companyId: user.companyId,
       accessScope: user.accessScope,
@@ -64,10 +64,12 @@ export async function POST(req: NextRequest) {
       mfaVerified: true, // refresh after MFA completes keeps verification
     });
 
-    return NextResponse.json({
+    const refreshResponse = NextResponse.json({
       refreshed: true,
       access_token_expires_in: 900,
     });
+    applyCookiesToResponse(refreshResponse, refreshResult);
+    return refreshResponse;
   } catch (e) {
     if (e instanceof DomainError) return errorResponse(e, correlationId);
     const msg = e instanceof Error ? e.message : 'Unknown error';

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { verifyMfaCode } from '@/lib/auth/mfa';
-import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie } from '@/lib/auth/sessions';
+import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const branchIds = user.branchAccess.map(b => b.branchId);
     const sessionId = randomUUID();
-    await setAuthCookies({
+    const mfaResult = await setAuthCookies({
       userId: user.id,
       companyId: user.companyId,
       accessScope: user.accessScope,
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       userAgent: ua,
     });
 
-    return NextResponse.json({
+    const mfaResponse = NextResponse.json({
       mfa_required: false,
       user: {
         id: user.id,
@@ -110,6 +110,8 @@ export async function POST(req: NextRequest) {
       },
       access_token_expires_in: 900,
     });
+    applyCookiesToResponse(mfaResponse, mfaResult);
+    return mfaResponse;
   } catch (e) {
     if (e instanceof z.ZodError) {
       return errorResponse(

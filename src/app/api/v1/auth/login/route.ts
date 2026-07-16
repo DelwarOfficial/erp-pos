@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { verifyPassword, getLockoutDuration } from '@/lib/auth/password';
-import { setAuthCookies, setMfaPendingCookie } from '@/lib/auth/sessions';
+import { setAuthCookies, setMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       mfa_required: false,
       user: {
         id: user.id,
@@ -229,6 +229,9 @@ export async function POST(req: NextRequest) {
       },
       access_token_expires_in: 900,
     });
+    // Apply auth cookies to the response (Route Handler pattern)
+    applyCookiesToResponse(response, result);
+    return response;
   } catch (e) {
     if (e instanceof z.ZodError) {
       return errorResponse(

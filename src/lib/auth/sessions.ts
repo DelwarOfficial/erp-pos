@@ -2,6 +2,7 @@
 // Session-level helpers — issue access+refresh cookie pair, clear on logout.
 
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { issueAccessToken, AccessClaims } from './jwt';
 import { issueRefreshToken, IssuedRefreshToken } from './refreshToken';
 
@@ -10,13 +11,23 @@ const REFRESH_COOKIE = 'erp_refresh';
 const MFA_PENDING_COOKIE = 'erp_mfa_pending';
 
 function isProd() {
-  return process.env.NODE_ENV === 'production';
+  // In production with HTTPS, cookies should be Secure.
+  // But when E2E_TESTING=true or running on HTTP (staging), Secure cookies
+  // are rejected by the browser. Only set Secure when:
+  //   1. NODE_ENV=production AND
+  //   2. E2E_TESTING is not set AND
+  //   3. HTTPS is explicitly enabled (or not on localhost)
+  return process.env.NODE_ENV === 'production'
+    && process.env.E2E_TESTING !== 'true'
+    && process.env.DISABLE_SECURE_COOKIES !== 'true';
 }
 
 export interface CookieAuthResult {
   accessToken: string;
   refreshToken: IssuedRefreshToken;
   accessClaims: AccessClaims;
+  /** Cookie definitions to apply to a NextResponse */
+  cookieDefs: Array<{ name: string; value: string; options: Record<string, unknown> }>;
 }
 
 export async function setAuthCookies(params: {
@@ -48,23 +59,52 @@ export async function setAuthCookies(params: {
     familyId: params.familyId,
   });
 
-  const cookieStore = await cookies();
-  cookieStore.set(ACCESS_COOKIE, accessToken, {
-    httpOnly: true,
-    secure: isProd(),
-    sameSite: 'strict',
-    path: '/',
-    maxAge: 15 * 60, // 15 minutes
-  });
-  cookieStore.set(REFRESH_COOKIE, refreshToken.token, {
-    httpOnly: true,
-    secure: isProd(),
-    sameSite: 'strict',
-    path: '/api/v1/auth/refresh',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  });
+  const cookieDefs = [
+    {
+      name: ACCESS_COOKIE,
+      value: accessToken,
+      options: {
+        httpOnly: true,
+        secure: isProd(),
+        sameSite: 'strict' as const,
+        path: '/',
+        maxAge: 15 * 60, // 15 minutes
+      },
+    },
+    {
+      name: REFRESH_COOKIE,
+      value: refreshToken.token,
+      options: {
+        httpOnly: true,
+        secure: isProd(),
+        sameSite: 'strict' as const,
+        path: '/api/v1/auth/refresh',
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+      },
+    },
+  ];
 
-  return { accessToken, refreshToken, accessClaims };
+  // Also set via next/headers for Server Component compatibility
+  const cookieStore = await cookies();
+  for (const def of cookieDefs) {
+    cookieStore.set(def.name, def.value, def.options as never);
+  }
+
+  return { accessToken, refreshToken, accessClaims, cookieDefs };
+}
+
+/**
+ * Apply auth cookies to a NextResponse object (for Route Handlers).
+ * Use this after creating the response: `applyCookiesToResponse(res, result)`
+ */
+export function applyCookiesToResponse(
+  res: NextResponse,
+  result: CookieAuthResult,
+): NextResponse {
+  for (const def of result.cookieDefs) {
+    res.cookies.set(def.name, def.value, def.options as never);
+  }
+  return res;
 }
 
 export async function clearAuthCookies(): Promise<void> {
