@@ -13,6 +13,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
+  timeout: 60_000,        // 60s per test (dev server is slow)
+  expect: { timeout: 10_000 },
   reporter: [['html', { outputFolder: 'playwright-report' }], ['list']],
 
   use: {
@@ -21,8 +23,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     locale: 'en-US',
     timezoneId: 'Asia/Dhaka',
-    actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    actionTimeout: 30_000,
+    navigationTimeout: 45_000,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',

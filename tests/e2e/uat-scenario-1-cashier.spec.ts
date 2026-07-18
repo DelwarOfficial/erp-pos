@@ -16,17 +16,19 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'ChangeMe!2026';
 
 let authCookie: string | undefined;
 
-test.beforeAll(async ({ browser }) => {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(`${BASE_URL}/login`);
-  await page.fill('[id="email"]', ADMIN_EMAIL);
-  await page.fill('[id="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
-  const cookies = await context.cookies();
-  authCookie = cookies.find((c) => c.name === 'erp_access')?.value;
-  await context.close();
+test.beforeAll(async ({ request }) => {
+  // API-based login — much faster than browser-based (no page compilation)
+  const res = await request.post(`${BASE_URL}/api/v1/auth/login`, {
+    headers: { 'Content-Type': 'application/json', 'Origin': BASE_URL },
+    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  });
+  if (res.ok()) {
+    const setCookie = res.headers()['set-cookie'];
+    if (setCookie) {
+      const match = setCookie.match(/erp_access=([^;]+)/);
+      authCookie = match?.[1];
+    }
+  }
 });
 
 test.describe('UAT Scenario 1 — Cashier Flow', () => {

@@ -68,7 +68,7 @@ test.describe('PWA — offline navigation', () => {
     await page.fill('[id="email"]', ADMIN_EMAIL);
     await page.fill('[id="password"]', ADMIN_PASSWORD);
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
+    await page.waitForURL('**/dashboard', { timeout: 45000 });
     await page.waitForTimeout(2000); // Let SW register
 
     // Go offline

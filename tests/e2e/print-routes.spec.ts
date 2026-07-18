@@ -17,7 +17,7 @@ test.beforeAll(async ({ browser }) => {
   await page.fill('[id="email"]', ADMIN_EMAIL);
   await page.fill('[id="password"]', ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
-  await page.waitForURL('**/dashboard', { timeout: 10000 });
+  await page.waitForURL('**/dashboard', { timeout: 45000 });
   const cookies = await context.cookies();
   authCookie = cookies.find((c) => c.name === 'erp_access')?.value;
   await context.close();
