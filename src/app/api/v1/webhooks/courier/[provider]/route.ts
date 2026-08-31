@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { recordSecurityEvent } from '@/lib/audit';
 
 // POST /api/v1/webhooks/courier/[provider]

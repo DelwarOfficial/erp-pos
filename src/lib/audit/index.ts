@@ -2,7 +2,7 @@
 // Append-only audit logger per §5.15 audit_logs.
 // Application role has INSERT/SELECT only — never UPDATE/DELETE.
 
-import { db } from '../db';
+import { db, systemDb } from '../db';
 import { getTenantContext } from '../db/transaction';
 
 export interface AuditParams {
@@ -60,6 +60,9 @@ export interface SecurityEventParams {
 
 export async function recordSecurityEvent(params: SecurityEventParams): Promise<void> {
   const ctx = getTenantContext();
+  if (ctx && !ctx.isGlobal && params.companyId && params.companyId !== ctx.companyId) {
+    throw new Error('TENANT_VIOLATION');
+  }
   const companyId = params.companyId ?? ctx?.companyId;
   // For platform-level events (webhooks, unauthenticated requests), create a
   // sentinel company if needed. Webhooks are unauthenticated and have no
@@ -69,7 +72,8 @@ export async function recordSecurityEvent(params: SecurityEventParams): Promise<
     console.warn(`[security] Event "${params.eventType}" logged without companyId (platform-level):`, params.metadata);
     return;
   }
-  await db.securityEvent.create({
+  const client = ctx ? db : systemDb;
+  await client.securityEvent.create({
     data: {
       companyId,
       userId: params.userId ?? ctx?.userId ?? null,

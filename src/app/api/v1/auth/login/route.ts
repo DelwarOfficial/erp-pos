@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { verifyPassword, getLockoutDuration } from '@/lib/auth/password';
 import { setAuthCookies, setMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';

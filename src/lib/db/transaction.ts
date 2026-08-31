@@ -20,37 +20,12 @@
 
 import { PrismaClient, Prisma } from '@prisma/client';
 export type TransactionClient = Prisma.TransactionClient;
-import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
-
-export interface TenantContext {
-  companyId: string;
-  userId?: string;
-  deviceId?: string;
-  branchIds: string[]; // explicit allowed branches for this user
-  isGlobal: boolean;   // platform_operations only
-  correlationId: string;
-  requestId: string;
-  ip?: string;
-  userAgent?: string;
-}
-
-const tenantStorage = new AsyncLocalStorage<TenantContext>();
-
-export function getTenantContext(): TenantContext | undefined {
-  return tenantStorage.getStore();
-}
-
-export function requireTenantContext(): TenantContext {
-  const ctx = tenantStorage.getStore();
-  if (!ctx) {
-    throw new Error(
-      'TenantContext is required but missing. Wrap the call in withTenant().',
-    );
-  }
-  return ctx;
-}
+import { db, systemDb } from './index';
+import { tenantStorage } from './transactionContext';
+import type { TenantContext } from './transactionContext';
+export type { TenantContext } from './transactionContext';
+export { getTenantContext, requireTenantContext } from './transactionContext';
 
 export type UnitOfWork<T> = (tx: TransactionClient) => Promise<T>;
 
@@ -143,4 +118,4 @@ export function buildTenantContext(params: {
 // seeds, platform_operations cross-tenant views). Tenant-scoped code MUST
 // NOT import this directly — see blueprint §6 rule 9.
  */
-export const systemDb: PrismaClient = db;
+export { systemDb };

@@ -6,8 +6,9 @@ import { cookies } from 'next/headers';
 import { verifyAccessToken } from './jwt';
 import { getAccessCookieName } from './sessions';
 import { DomainError } from '../errors/codes';
-import { db } from '../db';
+import { db, systemDb } from '../db';
 import { buildTenantContext, TenantContext } from '../db/transaction';
+import { enterTenantContext } from '../db/transactionContext';
 
 export interface AuthResult {
   ctx: TenantContext;
@@ -36,7 +37,7 @@ export async function authenticateRequest(): Promise<AuthResult> {
   }
 
   // Re-validate the user still exists and is active
-  const user = await db.user.findFirst({
+  const user = await systemDb.user.findFirst({
     where: { id: claims.sub, companyId: claims.company_id, isActive: true, deletedAt: null },
     include: {
       roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
@@ -47,7 +48,7 @@ export async function authenticateRequest(): Promise<AuthResult> {
     throw new DomainError('UNAUTHORIZED', 'User not found or inactive', {}, 401);
   }
 
-  const company = await db.company.findUnique({ where: { id: claims.company_id } });
+  const company = await systemDb.company.findUnique({ where: { id: claims.company_id } });
   if (!company || company.status !== 'active') {
     throw new DomainError('COMPANY_SUSPENDED', 'Company is not active', {}, 403);
   }
@@ -58,6 +59,7 @@ export async function authenticateRequest(): Promise<AuthResult> {
     branchIds: claims.branch_ids,
     isGlobal: claims.is_global,
   });
+  enterTenantContext(ctx);
 
   return {
     ctx,

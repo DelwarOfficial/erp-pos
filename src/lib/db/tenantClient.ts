@@ -1,138 +1,142 @@
-// src/lib/db/tenantClient.ts
-// Prisma client extension that enforces RLS-equivalent tenant isolation.
-// Every query is automatically scoped by the TenantContext from AsyncLocalStorage.
-// This is the SQLite sandbox equivalent of PostgreSQL RLS policies.
+// Prisma extension enforcing fail-closed tenant isolation for MariaDB/SQLite.
 
 import { Prisma, PrismaClient } from '@prisma/client';
-import { db } from './index';
-import { getTenantContext } from './transaction';
+import { getTenantContext } from './transactionContext';
 
-// Tables that have a `companyId` column and must be tenant-scoped.
-const TENANT_SCOPED_MODELS = new Set([
-  // M0
-  'company',
-  'branch',
-  'warehouse',
-  'exchangeRate',
-  'companyDomain',
-  'user',
-  'role',
-  'permission', // global, not tenant-scoped — skipped below
-  'rolePermission',
-  'userRole',
-  'userBranchAccess',
-  'device',
-  'refreshToken',
-  'securityEvent',
-  'cashierDevicePin',
-  'documentSequence',
-  'documentNumberLease',
-  'idempotencyRequest',
-  'businessEvent',
-  'documentExchangeRate',
-  'auditLog',
-  'approvalRequest',
-  'statutoryDocument',
-  'taxReturnPeriod',
-  'reconciliationRun',
-  'reconciliationFinding',
-  'recoveryEpoch',
-  'integrationCredential',
-  // M1 — §5.4 Catalogue
-  'category',
-  'brand',
-  'unit',
-  'customerGroup',
-  'product',
-  'mediaAsset',
-  'entityMediaLink',
-  'productBarcode',
-  'productUnitOption',
-  'productComboItem',
-  'discountPolicy',
-  'productPrice',
-  'taxCode',
-  'taxComponent',
-  'taxCodeComponent',
-  'withholdingRule',
-  // M1 — §5.14A Settings
-  'configurationValue',
-  'posProfile',
-  'documentTemplate',
-  'companyLanguage',
-  'translationOverride',
-  'featureFlag',
-  'dashboardPreference',
-  'salesTarget',
-  'savedReportFilter',
-  'reportExportJob',
-  'supportTicket',
-  'supportTicketMessage',
-  'communicationTemplate',
-]);
-
-// Models that are NOT tenant-scoped (global reference data).
 const GLOBAL_MODELS = new Set([
-  'currency',
-  'permission',
-  'configurationDefinition',
-  'supportedLanguage',
+  'Currency',
+  'Permission',
+  'ConfigurationDefinition',
+  'SupportedLanguage',
 ]);
 
-/**
- * Apply tenant isolation to the Prisma client. Reads the TenantContext from
- * AsyncLocalStorage and injects `companyId` filter on every query against
- * tenant-scoped models.
- *
- * If no TenantContext is set (e.g., during system init, migration, or
-// public auth endpoints), no filter is applied — matching the behavior of
- * a migration_role that bypasses RLS.
- */
+const DIRECT_TENANT_MODELS = new Set(
+  Prisma.dmmf.datamodel.models
+    .filter((model) => model.fields.some((field) => field.name === 'companyId'))
+    .map((model) => model.name),
+);
+
+const INDIRECT_SCOPES: Record<string, (companyId: string) => Record<string, unknown>> = {
+  RolePermission: (companyId) => ({ role: { companyId } }),
+  UserRole: (companyId) => ({ user: { companyId } }),
+  UserBranchAccess: (companyId) => ({ user: { companyId } }),
+  TaxCodeComponent: (companyId) => ({ taxCode: { companyId } }),
+  StockAdjustmentItemSerial: (companyId) => ({ stockAdjustmentItem: { companyId } }),
+  PurchaseReceivingItemSerial: (companyId) => ({ purchaseReceivingItem: { companyId } }),
+  LandedCostAllocation: (companyId) => ({ landedCostDocument: { companyId } }),
+  PurchaseReturnItemSerial: (companyId) => ({ purchaseReturnItem: { companyId } }),
+  TransferItemSerial: (companyId) => ({ transferItem: { companyId } }),
+  SaleItemSerial: (companyId) => ({ saleItem: { companyId } }),
+  SaleReturnItemSerial: (companyId) => ({ saleReturnItem: { companyId } }),
+  CourierCodSettlementItem: (companyId) => ({ settlement: { companyId } }),
+  UserNotification: (companyId) => ({ notification: { companyId } }),
+};
+
+const INDIRECT_CREATE_PARENTS: Record<string, Array<{ field: string; delegate: string }>> = {
+  RolePermission: [{ field: 'roleId', delegate: 'role' }],
+  UserRole: [{ field: 'userId', delegate: 'user' }, { field: 'roleId', delegate: 'role' }],
+  UserBranchAccess: [{ field: 'userId', delegate: 'user' }, { field: 'branchId', delegate: 'branch' }],
+  TaxCodeComponent: [{ field: 'taxCodeId', delegate: 'taxCode' }, { field: 'taxComponentId', delegate: 'taxComponent' }],
+  StockAdjustmentItemSerial: [{ field: 'stockAdjustmentItemId', delegate: 'stockAdjustmentItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  PurchaseReceivingItemSerial: [{ field: 'purchaseReceivingItemId', delegate: 'purchaseReceivingItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  LandedCostAllocation: [{ field: 'landedCostDocumentId', delegate: 'landedCostDocument' }, { field: 'purchaseItemId', delegate: 'purchaseItem' }],
+  PurchaseReturnItemSerial: [{ field: 'purchaseReturnItemId', delegate: 'purchaseReturnItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  TransferItemSerial: [{ field: 'transferItemId', delegate: 'transferItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  SaleItemSerial: [{ field: 'saleItemId', delegate: 'saleItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  SaleReturnItemSerial: [{ field: 'saleReturnItemId', delegate: 'saleReturnItem' }, { field: 'serialId', delegate: 'productSerial' }],
+  CourierCodSettlementItem: [{ field: 'settlementId', delegate: 'courierCodSettlement' }, { field: 'deliveryOrderId', delegate: 'deliveryOrder' }],
+  UserNotification: [{ field: 'notificationId', delegate: 'notification' }, { field: 'userId', delegate: 'user' }],
+};
+
+const FILTERED_OPERATIONS = new Set([
+  'findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow',
+  'count', 'aggregate', 'groupBy', 'update', 'updateMany', 'updateManyAndReturn',
+  'delete', 'deleteMany',
+]);
+
+function isScopedModel(model: string): boolean {
+  return model === 'Company' || DIRECT_TENANT_MODELS.has(model) || model in INDIRECT_SCOPES;
+}
+
+function scopeFor(model: string, companyId: string): Record<string, unknown> {
+  if (model === 'Company') return { id: companyId };
+  if (DIRECT_TENANT_MODELS.has(model)) return { companyId };
+  return INDIRECT_SCOPES[model](companyId);
+}
+
+function addScope(args: Record<string, any>, scope: Record<string, unknown>) {
+  const where = args.where ?? {};
+  args.where = { ...where, AND: [scope] };
+}
+
+function enforceCompanyId(data: Record<string, any>, companyId: string) {
+  if ('companyId' in data && data.companyId !== companyId) throw new Error('TENANT_VIOLATION');
+  data.companyId = companyId;
+}
+
+async function validateIndirectCreate(
+  prisma: PrismaClient,
+  model: string,
+  data: Record<string, any>,
+  companyId: string,
+) {
+  for (const parent of INDIRECT_CREATE_PARENTS[model] ?? []) {
+    const id = data[parent.field];
+    if (typeof id !== 'string') throw new Error(`TENANT_PARENT_REQUIRED:${model}.${parent.field}`);
+    const found = await (prisma as any)[parent.delegate].findFirst({
+      where: { id, companyId },
+      select: { id: true },
+    });
+    if (!found) throw new Error('TENANT_VIOLATION');
+  }
+}
+
 export function applyTenantIsolation(prisma: PrismaClient) {
   return prisma.$extends({
+    name: 'tenant-isolation',
     query: {
       $allModels: {
         async $allOperations({ args, query, operation, model }) {
-          if (!model || !TENANT_SCOPED_MODELS.has(model)) {
-            return query(args);
-          }
+          if (!model || GLOBAL_MODELS.has(model) || !isScopedModel(model)) return query(args);
 
-          // Skip tenant filter for system operations (no context)
           const ctx = getTenantContext();
-          if (!ctx) {
-            return query(args);
-          }
+          if (!ctx) throw new Error(`TENANT_CONTEXT_REQUIRED:${model}`);
+          if (ctx.isGlobal) return query(args);
 
-          // For find*: inject where.companyId
-          if (operation === 'findFirst' || operation === 'findMany' || operation === 'count' || operation === 'findUnique') {
-            const where = (args as { where?: Record<string, unknown> }).where ?? {};
-            // Skip if companyId is already explicitly set (e.g., system lookup)
-            if (!('companyId' in where)) {
-              (args as { where?: Record<string, unknown> }).where = {
-                ...where,
-                companyId: ctx.companyId,
-              };
-            }
-          }
+          const mutableArgs = args as Record<string, any>;
+          const scope = scopeFor(model, ctx.companyId);
 
-          // For create: inject data.companyId
+          if (FILTERED_OPERATIONS.has(operation)) addScope(mutableArgs, scope);
+
           if (operation === 'create') {
-            const data = (args as { data?: Record<string, unknown> }).data ?? {};
-            if (!('companyId' in data)) {
-              (args as { data?: Record<string, unknown> }).data = {
-                ...data,
-                companyId: ctx.companyId,
-              };
+            if (model === 'Company') throw new Error('SYSTEM_DB_REQUIRED:Company.create');
+            if (DIRECT_TENANT_MODELS.has(model)) enforceCompanyId(mutableArgs.data, ctx.companyId);
+            else await validateIndirectCreate(prisma, model, mutableArgs.data, ctx.companyId);
+          }
+
+          if (operation === 'createMany' || operation === 'createManyAndReturn') {
+            if (model === 'Company') throw new Error(`SYSTEM_DB_REQUIRED:Company.${operation}`);
+            const rows = Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
+            for (const row of rows) {
+              if (DIRECT_TENANT_MODELS.has(model)) enforceCompanyId(row, ctx.companyId);
+              else await validateIndirectCreate(prisma, model, row, ctx.companyId);
             }
           }
 
-          // For updateMany/deleteMany: inject where.companyId
-          if (operation === 'updateMany' || operation === 'deleteMany') {
-            const where = (args as { where?: Record<string, unknown> }).where ?? {};
-            (args as { where?: Record<string, unknown> }).where = {
-              ...where,
-              companyId: ctx.companyId,
-            };
+          if (operation === 'upsert') {
+            addScope(mutableArgs, scope);
+            if (model === 'Company') throw new Error('SYSTEM_DB_REQUIRED:Company.upsert');
+            if (DIRECT_TENANT_MODELS.has(model)) {
+              enforceCompanyId(mutableArgs.create, ctx.companyId);
+              if (mutableArgs.update?.companyId && mutableArgs.update.companyId !== ctx.companyId) throw new Error('TENANT_VIOLATION');
+            } else {
+              await validateIndirectCreate(prisma, model, mutableArgs.create, ctx.companyId);
+            }
+          }
+
+          if ((operation === 'update' || operation === 'updateMany' || operation === 'updateManyAndReturn')
+            && mutableArgs.data?.companyId && mutableArgs.data.companyId !== ctx.companyId) {
+            throw new Error('TENANT_VIOLATION');
           }
 
           return query(args);
@@ -143,9 +147,3 @@ export function applyTenantIsolation(prisma: PrismaClient) {
 }
 
 export type TenantIsolatedClient = ReturnType<typeof applyTenantIsolation>;
-
-// Singleton tenant-aware client (extension is applied at module load).
-// Note: this is the client tenant-scoped code should use. For transactions,
-// use `withTenant(ctx, tx => ...)` which yields a Prisma.TransactionClient that
-// inherits the extension.
-export const tenantDb = applyTenantIsolation(db);

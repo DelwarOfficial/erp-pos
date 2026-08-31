@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { verifyMfaCode } from '@/lib/auth/mfa';
 import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { recordSecurityEvent } from '@/lib/audit';

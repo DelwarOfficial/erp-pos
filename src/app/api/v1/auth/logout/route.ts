@@ -2,7 +2,7 @@
 // Revokes the refresh token family and clears auth cookies.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { clearAuthCookies, getRefreshCookieName } from '@/lib/auth/sessions';
 import { revokeFamily } from '@/lib/auth/refreshToken';
 import { DomainError, errorResponse } from '@/lib/errors/codes';

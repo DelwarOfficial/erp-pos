@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { rotateRefreshToken } from '@/lib/auth/refreshToken';
 import { setAuthCookies, getRefreshCookieName, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { DomainError, errorResponse } from '@/lib/errors/codes';

@@ -3,7 +3,7 @@
 // Reads pending campaigns and dispatches individual SMS/email/notification sends
 // via the provider registry. Per §7.16 + §20.D16.
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { providerRegistry } from '@/adapters';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 

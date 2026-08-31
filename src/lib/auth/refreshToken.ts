@@ -7,7 +7,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { sha256 } from '../crypto';
-import { db } from '../db';
+import { systemDb as db } from '../db';
 import { REFRESH_TOKEN_TTL_MS } from './jwt';
 
 export interface IssuedRefreshToken {

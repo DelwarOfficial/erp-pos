@@ -3,7 +3,7 @@
 // Per §6 rule 13 + §5.17 reconciliation_runs + reconciliation_findings.
 // Also runs daily risk alert evaluation.
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { runReconciliation } from '@/lib/reconciliation/checks';
 import { enqueue, QUEUE_NAMES } from '@/lib/queue';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';

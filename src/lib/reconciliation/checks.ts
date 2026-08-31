@@ -1,6 +1,7 @@
 // src/lib/reconciliation/checks.ts — 16 reconciliation checks per §11.3.
 import { db } from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { buildTenantContext, runInTenantContext } from '@/lib/db/transaction';
 
 export interface ReconciliationFinding {
   check_code: string;
@@ -444,6 +445,13 @@ export const ALL_CHECKS = [
 ];
 
 export async function runReconciliation(companyId: string, runType: 'nightly' | 'manual' | 'pre_close' | 'post_restore' = 'nightly', initiatedBy?: string) {
+  const ctx = buildTenantContext({
+    companyId,
+    userId: initiatedBy,
+    branchIds: [],
+    isGlobal: false,
+  });
+  return runInTenantContext(ctx, async () => {
   const run = await db.reconciliationRun.create({ data: { companyId, runType, status: 'running', initiatedBy: initiatedBy ?? null, summary: '{}' } });
   const allFindings: ReconciliationFinding[] = [];
   for (const check of ALL_CHECKS) {
@@ -460,4 +468,5 @@ export async function runReconciliation(companyId: string, runType: 'nightly' | 
   const status = allFindings.some(f => f.severity === 'critical') ? 'failed' : allFindings.some(f => f.severity === 'high') ? 'partial' : 'passed';
   await db.reconciliationRun.update({ where: { id: run.id }, data: { status, completedAt: new Date(), summary: JSON.stringify(summary) } });
   return { runId: run.id, findings: allFindings, summary };
+  });
 }

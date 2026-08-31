@@ -2,7 +2,7 @@
 // Releases stale cart/hold reservations older than the configured TTL.
 // Per §5.6 stock_reservations + §20.D11 hold rules.
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { postStockMovement } from '@/domain/inventory/stockMovement';
 

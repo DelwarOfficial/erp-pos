@@ -1,7 +1,7 @@
 // src/workers/outboxWorker.ts
 // Outbox event delivery worker per §5.16 + §6 rule 14.
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { signWebhook, generateDeliveryId, getTimestampHeader } from '@/lib/integrations/webhook';
 import { decryptString } from '@/lib/crypto';
 import { recordSecurityEvent } from '@/lib/audit';

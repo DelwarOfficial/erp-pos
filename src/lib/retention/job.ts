@@ -3,7 +3,7 @@
 // Hard-deletes very old (90+ day) audit/security events, anonymizes
 // customer PII for accounts closed > 12 months.
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 
 const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS ?? '90', 10);
 const CUSTOMER_ANONYMIZE_DAYS = parseInt(process.env.CUSTOMER_ANONYMIZE_DAYS ?? '365', 10);

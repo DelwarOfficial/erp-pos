@@ -8,7 +8,7 @@
 //
 // Alerts are sent via the provider registry (email + recorded as security event).
 
-import { db } from '@/lib/db';
+import { systemDb as db } from '@/lib/db';
 import { providerRegistry } from '@/adapters';
 import { recordSecurityEvent } from '@/lib/audit';
 
