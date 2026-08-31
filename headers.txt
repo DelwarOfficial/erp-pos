@@ -1,0 +1,12 @@
+HTTP/1.1 307 Moved
+Connection: close
+Content-length: 167
+Location: /cpsess5677213222/frontend/jupiter/index.html?login=1&post_login=34671218357683
+Set-Cookie: cprelogin=no; HttpOnly; SameSite=Lax; expires=Thu, 01-Jan-1970 00:00:01 GMT; path=/; port=2083; secure
+Set-Cookie: cpsession=rangpurt%3a9iwbT3STq07gcy8g%2cfba341d4d8ab2aa3d08b190b7d1ca826; HttpOnly; SameSite=Lax; path=/; port=2083; secure
+Set-Cookie: roundcube_sessid=expired; HttpOnly; SameSite=Lax; expires=Thu, 01-Jan-1970 00:00:01 GMT; path=/; port=2083; secure
+Set-Cookie: roundcube_sessauth=expired; HttpOnly; SameSite=Lax; domain=host.zhostbd.com; expires=Thu, 01-Jan-1970 00:00:01 GMT; path=/; port=2083; secure
+Set-Cookie: PPA_ID=expired; HttpOnly; SameSite=Lax; expires=Thu, 01-Jan-1970 00:00:01 GMT; path=/; port=2083; secure
+Content-type: text/html; charset="utf-8"
+Cache-Control: no-cache, no-store, must-revalidate, private
+
