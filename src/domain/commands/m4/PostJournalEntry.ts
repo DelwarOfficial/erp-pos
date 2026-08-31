@@ -37,6 +37,7 @@ export interface PostJournalEntryInput {
   currencyCode: string;
   exchangeRate: number;
   createdBy: string;
+  reversalOfEntryId?: string;
   lines: JournalLineInput[];
 }
 
@@ -171,6 +172,7 @@ export async function postJournalEntry(
       createdBy: input.createdBy,
       postedBy: input.createdBy,
       postedAt: new Date(),
+      reversalOfEntryId: input.reversalOfEntryId ?? null,
     },
   });
 
@@ -280,14 +282,13 @@ export async function reverseJournalEntry(
     currencyCode: original.currencyCode,
     exchangeRate: parseFloat(original.exchangeRate.toString()),
     createdBy: params.reversedBy,
+    reversalOfEntryId: params.journalEntryId,
     lines: reversedLines,
   }, correlationId);
 
-  // Link the reversal to the original + mark original as reversed
-  await tx.journalEntry.update({
-    where: { id: result.journalEntryId },
-    data: { reversalOfEntryId: params.journalEntryId },
-  });
+  // The reversal link is written at INSERT time so the posted reversal is
+  // never mutated. Only the original's allowed posted -> reversed transition
+  // remains.
   await tx.journalEntry.update({
     where: { id: params.journalEntryId },
     data: { status: 'reversed' },

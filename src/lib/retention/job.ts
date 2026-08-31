@@ -24,8 +24,12 @@ export async function runRetentionJob(policy: RetentionPolicy = 'default'): Prom
 
   if (policy === 'default' || policy === 'audit_only') {
     // Delete old audit log entries (90 days default per §13.3 retention policy)
-    const auditResult = await db.auditLog.deleteMany({ where: { occurredAt: { lt: auditCutoff } } });
-    auditEventsDeleted = auditResult.count;
+    // MariaDB audit rows are protected by append-only triggers. Purging there
+    // requires a separately privileged archive workflow, never the app login.
+    if (!/^mysql:/i.test(process.env.DATABASE_URL ?? '')) {
+      const auditResult = await db.auditLog.deleteMany({ where: { occurredAt: { lt: auditCutoff } } });
+      auditEventsDeleted = auditResult.count;
+    }
 
     // Delete old security events (90 days — keep recent for forensic investigation)
     const securityResult = await db.securityEvent.deleteMany({ where: { occurredAt: { lt: auditCutoff } } });

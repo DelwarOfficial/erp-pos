@@ -16,6 +16,9 @@ ALTER TABLE `journal_lines`
   ADD CONSTRAINT `journal_lines_debit_xor_credit_chk`
   CHECK ((`debit_base` > 0 AND `credit_base` = 0) OR (`debit_base` = 0 AND `credit_base` > 0));
 
+ALTER TABLE `journal_entries`
+  ADD UNIQUE INDEX `uq_journal_entries_single_reversal` (`company_id`, `reversal_of_entry_id`);
+
 ALTER TABLE `supplier_advance_ledger`
   ADD CONSTRAINT `supplier_advance_exactly_one_source_chk`
   CHECK (((`payment_id` IS NOT NULL) + (`purchase_return_id` IS NOT NULL)) = 1);

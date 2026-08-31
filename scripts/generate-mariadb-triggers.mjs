@@ -65,8 +65,9 @@ trigger('trg_document_leases_no_overlap_upd', 'BEFORE', 'UPDATE', 'document_numb
 `);
 
 trigger('trg_journal_entries_immutable_upd', 'BEFORE', 'UPDATE', 'journal_entries', `
-  IF OLD.status = 'posted' AND NOT (
-    NEW.status = 'reversed'
+  IF OLD.status IN ('posted', 'reversed') AND NOT (
+    OLD.status = 'posted'
+    AND NEW.status = 'reversed'
     AND OLD.company_id <=> NEW.company_id
     AND OLD.entry_no <=> NEW.entry_no
     AND OLD.event_id <=> NEW.event_id
@@ -78,15 +79,18 @@ trigger('trg_journal_entries_immutable_upd', 'BEFORE', 'UPDATE', 'journal_entrie
     AND OLD.currency_code <=> NEW.currency_code
     AND OLD.exchange_rate <=> NEW.exchange_rate
     AND OLD.description <=> NEW.description
+    AND OLD.reversal_of_entry_id <=> NEW.reversal_of_entry_id
+    AND OLD.created_by <=> NEW.created_by
     AND OLD.posted_by <=> NEW.posted_by
     AND OLD.posted_at <=> NEW.posted_at
+    AND OLD.created_at <=> NEW.created_at
   ) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'POSTED_JOURNAL_IMMUTABLE';
   END IF;
 `);
 
 trigger('trg_journal_entries_immutable_del', 'BEFORE', 'DELETE', 'journal_entries', `
-  IF OLD.status = 'posted' THEN
+  IF OLD.status IN ('posted', 'reversed') THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'POSTED_JOURNAL_IMMUTABLE';
   END IF;
 `);
