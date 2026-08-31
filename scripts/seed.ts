@@ -2,7 +2,7 @@
 // Seed base currency, permissions catalogue, system roles, and the first
 // platform_operations admin user. Run after the first migration push.
 
-import { db } from '../src/lib/db';
+import { systemDb as db } from '../src/lib/db';
 import { seedPermissions, SYSTEM_ROLES, PERMISSIONS } from '../src/lib/permissions/catalogue';
 import { hashPassword } from '../src/lib/auth/password';
 

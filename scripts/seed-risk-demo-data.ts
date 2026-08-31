@@ -7,8 +7,7 @@
 //
 // Idempotent — safe to run multiple times.
 
-import { PrismaClient } from '@prisma/client';
-const db = new PrismaClient();
+import { systemDb as db } from '../src/lib/db';
 
 const ADMIN_COMPANY_ID = 'af3641f2-946b-47a2-a78a-4e8e65f4c4b5';
 const ADMIN_USER_ID = (await db.user.findFirst({ where: { email: 'admin@erp-platform.local' }, select: { id: true } }))?.id;

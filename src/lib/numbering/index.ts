@@ -10,6 +10,7 @@
 // on the row update.
 
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 
 export interface DocumentNumberParams {
   companyId: string;
@@ -26,11 +27,64 @@ export interface DocumentNumberResult {
   nextNumber: bigint;
 }
 
+function isMariaDb(): boolean {
+  return /^(mysql|mariadb):\/\//i.test(process.env.DATABASE_URL ?? '');
+}
+
+async function reserveMariaDbRange(
+  tx: Prisma.TransactionClient,
+  params: DocumentNumberParams,
+  count: number,
+): Promise<{ sequenceId: string; rangeStart: bigint; rangeEnd: bigint }> {
+  if (!Number.isSafeInteger(count) || count < 1) throw new Error('INVALID_SEQUENCE_COUNT');
+  const padding = params.padding ?? 6;
+  const branchId = params.branchId ?? null;
+  const initialNext = BigInt(count + 1);
+  const generatedId = randomUUID();
+
+  await tx.$executeRaw`
+    INSERT INTO document_sequences
+      (id, company_id, branch_id, document_type, fiscal_year, prefix, next_number, padding, version)
+    VALUES
+      (${generatedId}, ${params.companyId}, ${branchId}, ${params.documentType}, ${params.fiscalYear},
+       ${params.prefix}, ${initialNext}, ${padding}, 1)
+    ON DUPLICATE KEY UPDATE
+      next_number = next_number + ${BigInt(count)},
+      version = version + 1
+  `;
+
+  const sequence = await tx.documentSequence.findFirst({
+    where: {
+      companyId: params.companyId,
+      branchId,
+      documentType: params.documentType,
+      fiscalYear: params.fiscalYear,
+    },
+    select: { id: true, nextNumber: true },
+  });
+  if (!sequence) throw new Error('SEQUENCE_ALLOCATION_FAILED');
+
+  return {
+    sequenceId: sequence.id,
+    rangeStart: sequence.nextNumber - BigInt(count),
+    rangeEnd: sequence.nextNumber - BigInt(1),
+  };
+}
+
 export async function nextDocumentNumber(
   tx: Prisma.TransactionClient,
   params: DocumentNumberParams,
 ): Promise<DocumentNumberResult> {
   const padding = params.padding ?? 6;
+
+  if (isMariaDb()) {
+    const allocation = await reserveMariaDbRange(tx, params, 1);
+    return {
+      documentNumber: `${params.prefix}${String(allocation.rangeStart).padStart(padding, '0')}`,
+      sequenceId: allocation.sequenceId,
+      nextNumber: allocation.rangeStart,
+    };
+  }
 
   // Find existing sequence (companyId + branchId|null + documentType + fiscalYear).
   // If not found, create it atomically.
@@ -93,6 +147,37 @@ export async function leaseDocumentNumbers(
     expiresAt: Date;
   },
 ): Promise<{ rangeStart: bigint; rangeEnd: bigint; nextNumber: bigint; leaseId: string }> {
+  if (isMariaDb()) {
+    const leaseSequenceType = `__LEASE__:${params.documentType}:${params.prefix}`;
+    const allocation = await reserveMariaDbRange(tx, {
+      companyId: params.companyId,
+      branchId: null,
+      documentType: leaseSequenceType,
+      fiscalYear: 0,
+      prefix: params.prefix,
+    }, params.count);
+    const lease = await tx.documentNumberLease.create({
+      data: {
+        companyId: params.companyId,
+        branchId: params.branchId,
+        deviceId: params.deviceId,
+        documentType: params.documentType,
+        prefix: params.prefix,
+        rangeStart: allocation.rangeStart,
+        rangeEnd: allocation.rangeEnd,
+        nextNumber: allocation.rangeStart,
+        expiresAt: params.expiresAt,
+        status: 'active',
+      },
+    });
+    return {
+      rangeStart: allocation.rangeStart,
+      rangeEnd: allocation.rangeEnd,
+      nextNumber: allocation.rangeStart,
+      leaseId: lease.id,
+    };
+  }
+
   // Find the current max leased range_end for this company/type/prefix
   const leases = await tx.documentNumberLease.findMany({
     where: {

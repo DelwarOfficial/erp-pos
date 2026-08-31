@@ -2,7 +2,7 @@
 // Seed M1 defaults for the existing platform company (which was created
 // before M1 was built). For new tenants, the onboarding API handles this.
 
-import { db } from '../src/lib/db';
+import { systemDb as db } from '../src/lib/db';
 import { seedFeatureFlagsForCompany } from '../src/lib/featureFlags';
 import { seedLocalizationForCompany } from '../src/lib/i18n';
 import { seedPermissions } from '../src/lib/permissions/catalogue';

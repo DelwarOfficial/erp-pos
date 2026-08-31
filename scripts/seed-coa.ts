@@ -2,7 +2,7 @@
 // Seeds the default chart of accounts + accounting policies for the existing
 // platform company (created before M4). For new tenants, the onboarding API handles this.
 
-import { db } from '../src/lib/db';
+import { systemDb as db } from '../src/lib/db';
 import { hashPassword } from '../src/lib/auth/password';
 import { seedDefaultCoa } from '../src/lib/accounting/seedCoa';
 
