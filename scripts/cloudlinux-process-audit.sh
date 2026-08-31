@@ -25,8 +25,8 @@ for proc in /proc/[0-9]*; do
     *prisma*|*schema-engine*|*query-engine*)
       parent_exists=yes
       [[ -d "/proc/$ppid" ]] || parent_exists=no
-      printf 'pid=%s ppid=%s parent_exists=%s state=%s age_seconds=%s comm=%q\n' \
-        "$pid" "$ppid" "$parent_exists" "$state" "$age_seconds" "$comm"
+      printf 'pid=%s ppid=%s parent_exists=%s state=%s start_ticks=%s age_seconds=%s comm=%q\n' \
+        "$pid" "$ppid" "$parent_exists" "$state" "$start_ticks" "$age_seconds" "$comm"
       ;;
   esac
 done

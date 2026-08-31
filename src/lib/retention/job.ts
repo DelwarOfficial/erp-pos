@@ -23,7 +23,6 @@ export async function runRetentionJob(policy: RetentionPolicy = 'default'): Prom
   let customersAnonymized = 0;
 
   if (policy === 'default' || policy === 'audit_only') {
-    // Delete old audit log entries (90 days default per §13.3 retention policy)
     // MariaDB audit rows are protected by append-only triggers. Purging there
     // requires a separately privileged archive workflow, never the app login.
     if (!/^mysql:/i.test(process.env.DATABASE_URL ?? '')) {
