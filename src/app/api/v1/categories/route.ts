@@ -75,6 +75,8 @@ export async function POST(req: NextRequest) {
                 name: body.name,
                 code: body.code,
                 parentId: body.parent_id ?? null,
+                // Normalized scope for uq_categories_parent_scope_name + CHECK.
+                parentScope: body.parent_id ?? '',
                 isActive: true,
               },
             });

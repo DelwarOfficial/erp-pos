@@ -42,11 +42,15 @@ async function reserveMariaDbRange(
   const initialNext = BigInt(count + 1);
   const generatedId = randomUUID();
 
+  // branch_scope is a real NOT NULL column guarded by CHECK
+  // (branch_scope = IFNULL(branch_id, '')) + UNIQUE(company, scope, type, year).
+  // It MUST be written here: it is what makes ON DUPLICATE KEY UPDATE atomic.
+  const branchScope = branchId ?? '';
   await tx.$executeRaw`
     INSERT INTO document_sequences
-      (id, company_id, branch_id, document_type, fiscal_year, prefix, next_number, padding, version)
+      (id, company_id, branch_id, branch_scope, document_type, fiscal_year, prefix, next_number, padding, version)
     VALUES
-      (${generatedId}, ${params.companyId}, ${branchId}, ${params.documentType}, ${params.fiscalYear},
+      (${generatedId}, ${params.companyId}, ${branchId}, ${branchScope}, ${params.documentType}, ${params.fiscalYear},
        ${params.prefix}, ${initialNext}, ${padding}, 1)
     ON DUPLICATE KEY UPDATE
       next_number = next_number + ${BigInt(count)},
@@ -105,6 +109,7 @@ export async function nextDocumentNumber(
       data: {
         companyId: params.companyId,
         branchId: params.branchId ?? null,
+        branchScope: params.branchId ?? '',
         documentType: params.documentType,
         fiscalYear: params.fiscalYear,
         prefix: params.prefix,

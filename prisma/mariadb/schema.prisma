@@ -646,7 +646,7 @@ model SecurityEvent {
   severity    String   @default("info") // info/warning/high/critical
   ipAddress   String?  @map("ip_address")
   userAgent   String?  @map("user_agent")
-  metadata    String   @default("{}") // JSONB equivalent (SQLite TEXT)
+  metadata    String   @db.Text @default("{}") // JSONB equivalent (SQLite TEXT)
   occurredAt  DateTime @default(now()) @map("occurred_at")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -695,7 +695,7 @@ model WebAuthnCredential {
   counter           Int      @default(0)
   deviceType        String?  @map("device_type") // single_device | multi_device
   backedUp          Boolean  @default(false) @map("backed_up")
-  transports        String   @default("[]") @map("transports") // JSON array
+  transports        String   @db.Text @default("[]") @map("transports") // JSON array
   name              String?  // user-assigned label
   createdAt         DateTime @default(now()) @map("created_at")
   lastUsedAt        DateTime? @map("last_used_at")
@@ -739,6 +739,13 @@ model DocumentSequence {
   id           String   @id @default(uuid())
   companyId    String   @map("company_id")
   branchId     String?  @map("branch_id")
+  // MariaDB-native normalized scope: '' means company-wide (branchId NULL).
+  // Plain UNIQUE on nullable branchId is NOT equivalent (multiple NULLs allowed).
+  // A PERSISTENT generated column was rejected by MariaDB 11.8 (ERROR 1901), and a
+  // trigger-maintained column is fragile; instead this is a real column guarded by
+  // migration-managed CHECK (branch_scope = IFNULL(branch_id, '')) + UNIQUE below.
+  // Writers MUST set branchScope = branchId ?? ''. See src/lib/numbering/index.ts.
+  branchScope  String   @default("") @map("branch_scope")
   documentType String   @map("document_type")
   fiscalYear   Int      @map("fiscal_year")
   prefix       String  
@@ -749,10 +756,9 @@ model DocumentSequence {
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   branch  Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  // SQLite cannot enforce partial UNIQUEs directly; we enforce in app code via
-  // nextDocumentNumber() with deterministic locking.
+  // DB-enforced by uq_document_sequences_scope in the critical invariants migration.
+  @@unique([companyId, branchScope, documentType, fiscalYear])
   @@index([companyId, documentType, fiscalYear])
-  @@index([companyId, branchId, documentType, fiscalYear])
   @@map("document_sequences")
 }
 
@@ -786,23 +792,23 @@ model IdempotencyRequest {
   companyId       String   @map("company_id")
   userId          String?  @map("user_id")
   deviceId        String?  @map("device_id")
-  idempotencyKey  String   @unique @map("idempotency_key")
-  operation       String  
+  // Tenant-scoped identity: two tenants may reuse the same key.
+  // DB-enforced by uq_idempotency_company_key. NEVER restore global @unique.
+  idempotencyKey  String   @map("idempotency_key")
+  operation       String
   requestHash     String   @map("request_hash")
   status          String   @default("processing") // processing/succeeded/failed
   resourceType    String?  @map("resource_type")
   resourceId      String?  @map("resource_id")
   responseStatus  Int?     @map("response_status")
-  responseBody    String?  @map("response_body") // JSON
+  responseBody    String?  @db.Text @map("response_body") // JSON, TEXT: bodies exceed VARCHAR(191)
   lockedAt        DateTime @default(now()) @map("locked_at")
   completedAt     DateTime? @map("completed_at")
   expiresAt       DateTime @map("expires_at")
 
-  // Note: SQLite cannot enforce UNIQUE(company_id, idempotency_key) where the
-  // composite is the natural key — we use @unique on idempotency_key globally
-  // and validate company_id match in the middleware.
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, idempotencyKey])
   @@index([companyId])
   @@index([userId])
   @@index([deviceId])
@@ -908,7 +914,7 @@ model ApprovalRequest {
   approvedBy    String?  @map("approved_by")
   status        String   @default("pending") // pending/approved/rejected/cancelled/expired
   reason        String
-  payload       String   @default("{}") // JSONB
+  payload       String   @db.Text @default("{}") // JSONB
   requestedAt   DateTime @default(now()) @map("requested_at")
   resolvedAt    DateTime? @map("resolved_at")
   waivedBy      String?  @map("waived_by")
@@ -942,7 +948,7 @@ model StatutoryDocument {
   issueDate       DateTime @map("issue_date")
   taxPeriodStart  DateTime? @map("tax_period_start")
   taxPeriodEnd    DateTime? @map("tax_period_end")
-  payloadSnapshot String   @map("payload_snapshot") @default("{}") // JSONB
+  payloadSnapshot String   @db.Text @map("payload_snapshot") @default("{}") // JSONB
   objectKey       String?  @map("object_key")
   status          String   @default("draft") // draft/issued/replaced/cancelled/filed
   replacementOfId String?  @map("replacement_of_id")
@@ -994,7 +1000,7 @@ model ReconciliationRun {
   completedAt  DateTime? @map("completed_at")
   status       String   @default("running") // running/passed/failed/partial
   initiatedBy  String?  @map("initiated_by")
-  summary      String   @default("{}") // JSONB
+  summary      String   @db.Text @default("{}") // JSONB
 
   company       Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
   initiatedByUser User?                 @relation(fields: [initiatedBy], references: [id])
@@ -1019,7 +1025,7 @@ model ReconciliationFinding {
   expectedValue        Decimal? @map("expected_value")
   actualValue          Decimal? @map("actual_value")
   variance             Decimal?
-  details              String   @default("{}") // JSONB
+  details              String   @db.Text @default("{}") // JSONB
   status               String   @default("open") // open/acknowledged/resolved/false_positive
   resolvedBy           String?  @map("resolved_by")
   resolvedAt           DateTime? @map("resolved_at")
@@ -1085,6 +1091,7 @@ model Category {
   id         String   @id @default(uuid())
   companyId  String   @map("company_id")
   parentId   String?  @map("parent_id")
+  parentScope String  @default("") @map("parent_scope")
   name       String
   code       String
   isActive   Boolean  @default(true) @map("is_active")
@@ -1099,8 +1106,11 @@ model Category {
   stockCounts StockCount[]
 
   @@unique([companyId, code])
-  // MariaDB nullable-parent uniqueness is enforced through parent_scope in the
-  // critical invariants migration. A nullable composite UNIQUE permits duplicates.
+  // MariaDB-native normalized scope: '' means root (parentId NULL). Real column
+  // guarded by migration-managed CHECK (parent_scope = IFNULL(parent_id, '')).
+  // Writers MUST set parentScope = parentId ?? ''.
+  // DB-enforced by uq_categories_parent_scope_name in the critical invariants migration.
+  @@unique([companyId, parentScope, name])
   @@index([companyId])
   @@index([parentId])
   @@index([isActive])
@@ -1391,6 +1401,11 @@ model ProductPrice {
   productId        String   @map("product_id")
   branchId         String?  @map("branch_id")
   customerGroupId  String?  @map("customer_group_id")
+  // MariaDB-native normalized scopes ('' = NULL scope). Real columns guarded by
+  // migration-managed CHECKs. Writers MUST set branchScope = branchId ?? '' and
+  // customerGroupScope = customerGroupId ?? ''.
+  branchScope        String @default("") @map("branch_scope")
+  customerGroupScope String @default("") @map("customer_group_scope")
   currencyCode     String   @map("currency_code")
   price            Decimal  @default(0)
   validFrom        DateTime @map("valid_from")
@@ -1403,8 +1418,9 @@ model ProductPrice {
   customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   currency       Currency       @relation(fields: [currencyCode], references: [code])
 
-  // MariaDB nullable-scope uniqueness is enforced through normalized scope
-  // columns in the critical invariants migration.
+  // DB-enforced by uq_product_prices_scope in the critical invariants migration.
+  // MariaDB nullable-scope uniqueness via normalized scope columns (see fields above).
+  @@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom])
   @@index([companyId])
   @@index([productId])
   @@index([branchId])
@@ -1490,7 +1506,7 @@ model WithholdingRule {
   minimumBaseAmount   Decimal  @default(0) @map("minimum_base_amount")
   effectiveFrom       DateTime @map("effective_from")
   effectiveTo         DateTime? @map("effective_to")
-  conditions          String   @default("{}") // JSONB
+  conditions          String   @db.Text @default("{}") // JSONB
   isActive            Boolean  @default(true) @map("is_active")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -1532,7 +1548,7 @@ model ConfigurationValue {
   definitionKey   String   @map("definition_key")
   scopeType       String   @default("company") @map("scope_type") // company/branch/warehouse/pos_profile/user
   scopeId         String   @map("scope_id")
-  value           String   @default("{}") // JSONB
+  value           String   @db.Text @default("{}") // JSONB
   version         Int      @default(1)
   updatedBy       String   @map("updated_by")
   updatedAt       DateTime @default(now()) @map("updated_at")
@@ -1583,7 +1599,7 @@ model DocumentTemplate {
   name           String
   locale         String
   version        Int      @default(1)
-  templateSchema String   @default("{}") @map("template_schema") // JSONB
+  templateSchema String   @db.Text @default("{}") @map("template_schema") // JSONB
   isActive       Boolean  @default(true) @map("is_active")
   approvedBy     String?  @map("approved_by")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -1654,7 +1670,7 @@ model FeatureFlag {
   companyId     String   @map("company_id")
   flagKey       String   @map("flag_key")
   enabled       Boolean  @default(false)
-  rolloutRules  String   @default("{}") @map("rollout_rules") // JSONB
+  rolloutRules  String   @db.Text @default("{}") @map("rollout_rules") // JSONB
   updatedBy     String   @map("updated_by")
   updatedAt     DateTime @default(now()) @map("updated_at")
 
@@ -1670,9 +1686,9 @@ model FeatureFlag {
 model DashboardPreference {
   userId            String  @id
   companyId         String  @map("company_id")
-  widgetLayout      String  @default("[]") @map("widget_layout") // JSONB
+  widgetLayout      String  @db.Text @default("[]") @map("widget_layout") // JSONB
   defaultDateRange  String  @default("today") @map("default_date_range")
-  defaultBranchIds  String  @default("[]") @map("default_branch_ids") // JSONB array
+  defaultBranchIds  String  @db.Text @default("[]") @map("default_branch_ids") // JSONB array
   updatedAt         DateTime @default(now()) @map("updated_at")
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1712,7 +1728,7 @@ model SavedReportFilter {
   userId      String   @map("user_id")
   reportCode  String   @map("report_code")
   name        String
-  filterJson  String   @default("{}") @map("filter_json") // JSONB
+  filterJson  String   @db.Text @default("{}") @map("filter_json") // JSONB
   isShared    Boolean  @default(false) @map("is_shared")
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -1732,7 +1748,7 @@ model ReportExportJob {
   requestedBy    String   @map("requested_by")
   reportCode     String   @map("report_code")
   format         String   @default("pdf") // pdf/csv/xlsx
-  filterJson     String   @default("{}") @map("filter_json") // JSONB
+  filterJson     String   @db.Text @default("{}") @map("filter_json") // JSONB
   dataCutoffAt   DateTime @map("data_cutoff_at")
   status         String   @default("queued") // queued/running/completed/failed/expired
   outputMediaId  String?  @map("output_media_id")
@@ -1808,7 +1824,7 @@ model CommunicationTemplate {
   locale           String
   subjectTemplate  String?  @map("subject_template")
   bodyTemplate     String   @map("body_template")
-  allowedTokens    String   @default("[]") @map("allowed_tokens") // JSONB array
+  allowedTokens    String   @db.Text @default("[]") @map("allowed_tokens") // JSONB array
   version          Int      @default(1)
   isActive         Boolean  @default(true) @map("is_active")
   approvedBy       String?  @map("approved_by")
@@ -1884,7 +1900,7 @@ model StockMovement {
   effectiveAt          DateTime @map("effective_at")
   postedAt             DateTime @default(now()) @map("posted_at")
   createdBy            String   @map("created_by")
-  metadata             String   @default("{}")
+  metadata             String   @db.Text @default("{}")
 
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
   businessEvent  BusinessEvent  @relation(fields: [eventId], references: [id])
@@ -3062,7 +3078,7 @@ model CashDrawerCount {
   cashierShiftId      String   @map("cashier_shift_id")
   countType           String   @default("opening") @map("count_type") // opening/spot/closing/recount
   countedAmount       Decimal  @default(0) @map("counted_amount")
-  denominationDetail  String   @default("{}") @map("denomination_detail") // JSONB
+  denominationDetail  String   @db.Text @default("{}") @map("denomination_detail") // JSONB
   countedBy           String   @map("counted_by")
   countedAt           DateTime @default(now()) @map("counted_at")
 
@@ -3361,9 +3377,10 @@ model JournalEntry {
   createdAt         DateTime @default(now()) @map("created_at")
 
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  businessEvent BusinessEvent  @relation("JournalEntryEvent", fields: [eventId], references: [id])
-  currency      Currency       @relation("JournalEntryCurrency", fields: [currencyCode], references: [code])
-  reversalOf    JournalEntry?  @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id])
+  businessEvent BusinessEvent  @relation("JournalEntryEvent", fields: [eventId], references: [id], onDelete: Restrict)
+  currency      Currency       @relation("JournalEntryCurrency", fields: [currencyCode], references: [code], onDelete: Restrict)
+  // Reversal provenance must not disappear: RESTRICT on delete (was SET NULL).
+  reversalOf    JournalEntry?  @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reversedBy    JournalEntry[] @relation("JournalEntryReversal")
   lines         JournalLine[]
   // M4 — expense
@@ -3372,8 +3389,8 @@ model JournalEntry {
   codSettlements CourierCodSettlement[] @relation("CodSettlementJournal")
   // Gap model backward relations
   accountTransfers AccountTransfer[]   @relation("TransferJournalEntry")
-  creator       User           @relation("JournalEntryCreatedBy", fields: [createdBy], references: [id])
-  poster        User?          @relation("JournalEntryPostedBy", fields: [postedBy], references: [id])
+  creator       User           @relation("JournalEntryCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  poster        User?          @relation("JournalEntryPostedBy", fields: [postedBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([companyId, entryNo])
   @@unique([companyId, eventId, postingKind])
@@ -3405,13 +3422,16 @@ model JournalLine {
 
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
   journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
-  branch         Branch?        @relation("JournalLineBranch", fields: [branchId], references: [id])
-  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id])
-  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id])
-  customer       Customer?      @relation("JournalLineCustomer", fields: [customerId], references: [id])
-  supplier       Supplier?      @relation("JournalLineSupplier", fields: [supplierId], references: [id])
-  product        Product?       @relation("JournalLineProduct", fields: [productId], references: [id])
-  currency       Currency?      @relation("JournalLineCurrency", fields: [currencyCode], references: [code])
+  // Immutable ledger dimensions: RESTRICT on delete (was SET NULL). Deleting a
+  // master with posted history is blocked instead of silently NULLing lines,
+  // and matches the composite tenant FKs. NEVER SET NULL here.
+  branch         Branch?        @relation("JournalLineBranch", fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customer       Customer?      @relation("JournalLineCustomer", fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  supplier       Supplier?      @relation("JournalLineSupplier", fields: [supplierId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  product        Product?       @relation("JournalLineProduct", fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  currency       Currency?      @relation("JournalLineCurrency", fields: [currencyCode], references: [code], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([journalEntryId, lineNo])
   @@index([companyId])
@@ -3654,7 +3674,7 @@ model CourierShipment {
   finalCharge            Decimal? @map("final_charge")
   lastProviderStatus     String?  @map("last_provider_status")
   lastSyncedAt           DateTime? @map("last_synced_at")
-  sanitizedProviderData  String   @default("{}") @map("sanitized_provider_data")
+  sanitizedProviderData  String   @db.Text @default("{}") @map("sanitized_provider_data")
 
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
   deliveryOrder  DeliveryOrder  @relation(fields: [deliveryOrderId], references: [id])
@@ -3791,7 +3811,7 @@ model ServiceEvent {
   companyId         String   @map("company_id")
   serviceRequestId  String   @map("service_request_id")
   eventType         String   @map("event_type") // status_change/diagnosis/estimate/customer_approval/part_used/note/message/delivery
-  eventData         String   @default("{}") @map("event_data")
+  eventData         String   @db.Text @default("{}") @map("event_data")
   createdBy         String?  @map("created_by")
   createdAt         DateTime @default(now()) @map("created_at")
 
@@ -4086,7 +4106,7 @@ model OutboxEvent {
   eventName       String   @map("event_name")
   aggregateType   String   @map("aggregate_type")
   aggregateId     String   @map("aggregate_id")
-  payload         String   @default("{}") // JSONB
+  payload         String   @db.Text @default("{}") // JSONB
   occurredAt      DateTime @default(now()) @map("occurred_at")
   publishedAt     DateTime? @map("published_at")
   attemptCount    Int      @default(0) @map("attempt_count")
@@ -4113,7 +4133,7 @@ model WebhookEndpoint {
   companyId       String   @map("company_id")
   url             String
   secretCiphertext Bytes   @map("secret_ciphertext")
-  subscribedEvents String  @default("[]") // JSONB array
+  subscribedEvents String  @db.Text @default("[]") // JSONB array
   status          String   @default("active") // active/disabled
   createdBy       String   @map("created_by")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -4140,7 +4160,7 @@ model WebhookDelivery {
   nextAttemptAt   DateTime @default(now()) @map("next_attempt_at")
   lastAttemptedAt DateTime? @map("last_attempted_at")
   responseStatus  Int?     @map("response_status")
-  responseBodyExcerpt String? @map("response_body_excerpt")
+  responseBodyExcerpt String? @db.Text @map("response_body_excerpt")
   lastError       String?  @map("last_error")
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -4314,11 +4334,14 @@ model CustomerAdvanceLedger {
   createdBy           String   @map("created_by")
 
   company       Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  customer      Customer     @relation(fields: [customerId], references: [id])
-  payment       Payment?     @relation(fields: [paymentId], references: [id])
-  saleReturn    SaleReturn?  @relation(fields: [saleReturnId], references: [id])
-  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
-  creator       User         @relation(fields: [createdBy], references: [id])
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  // Immutable ledger provenance: RESTRICT on delete so removing a payment/return
+  // cannot silently NULL the source (matches composite tenant FKs; XOR CHECK
+  // requires exactly one source present). NEVER SET NULL here.
+  payment       Payment?     @relation(fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  saleReturn    SaleReturn?  @relation(fields: [saleReturnId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  creator       User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@unique([companyId, eventId, eventLineNo])
   @@index([companyId])
@@ -4345,11 +4368,11 @@ model SupplierAdvanceLedger {
   createdBy           String   @map("created_by")
 
   company       Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  supplier      Supplier     @relation(fields: [supplierId], references: [id])
+  supplier      Supplier     @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   payment       Payment?     @relation("SupplierAdvancePayment", fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
-  creator       User         @relation(fields: [createdBy], references: [id])
+  businessEvent BusinessEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  creator       User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@unique([companyId, eventId, eventLineNo])
   @@index([companyId])
@@ -4631,7 +4654,7 @@ model PayrollItemComponent {
   payrollItemId       String   @map("payroll_item_id")
   payrollComponentId  String   @map("payroll_component_id")
   amount              Decimal  @default(0)
-  calculationBasis    String   @default("{}") @map("calculation_basis")
+  calculationBasis    String   @db.Text @default("{}") @map("calculation_basis")
 
   company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
   payrollComponent  PayrollComponent  @relation(fields: [payrollComponentId], references: [id])
@@ -4674,7 +4697,7 @@ model PayrollItem {
   deductionTotal      Decimal  @default(0) @map("deduction_total")
   withholdingTotal    Decimal  @default(0) @map("withholding_total")
   netPay              Decimal  @map("net_pay")
-  calculationDetail   String   @default("{}") @map("calculation_detail")
+  calculationDetail   String   @db.Text @default("{}") @map("calculation_detail")
   components          PayrollItemComponent[]
 
   company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -4719,7 +4742,7 @@ model CommunicationCampaign {
   name                String
   channel             String   @default("sms") // sms/email/push/whatsapp
   templateId          String   @map("template_id")
-  audienceDefinition  String   @default("{}") @map("audience_definition")
+  audienceDefinition  String   @db.Text @default("{}") @map("audience_definition")
   status              String   @default("draft") // draft/scheduled/running/completed/cancelled/failed
   scheduledAt         DateTime? @map("scheduled_at")
   createdBy           String   @map("created_by")
@@ -4869,9 +4892,9 @@ model RiskAssessment {
   requestEventId  String   @map("request_event_id")
   score           Decimal? 
   decision        String   @default("allow") // allow/review/block/unavailable
-  reasonCodes     String   @default("[]") // JSONB array
+  reasonCodes     String   @db.Text @default("[]") // JSONB array
   providerReference String? @map("provider_reference")
-  sanitizedResponse String @default("{}") @map("sanitized_response")
+  sanitizedResponse String @db.Text @default("{}") @map("sanitized_response")
   assessedAt      DateTime @default(now()) @map("assessed_at")
   expiresAt       DateTime @map("expires_at")
 

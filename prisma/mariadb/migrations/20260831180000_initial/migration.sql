@@ -252,7 +252,7 @@ CREATE TABLE `security_events` (
     `severity` VARCHAR(191) NOT NULL DEFAULT 'info',
     `ip_address` VARCHAR(191) NULL,
     `user_agent` VARCHAR(191) NULL,
-    `metadata` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `metadata` TEXT NOT NULL DEFAULT ('{}'),
     `occurred_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `security_events_company_id_idx`(`company_id`),
@@ -290,7 +290,7 @@ CREATE TABLE `webauthn_credentials` (
     `counter` INTEGER NOT NULL DEFAULT 0,
     `device_type` VARCHAR(191) NULL,
     `backed_up` BOOLEAN NOT NULL DEFAULT false,
-    `transports` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `transports` TEXT NOT NULL DEFAULT ('[]'),
     `name` VARCHAR(191) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `last_used_at` DATETIME(3) NULL,
@@ -326,6 +326,7 @@ CREATE TABLE `document_sequences` (
     `id` VARCHAR(191) NOT NULL,
     `company_id` VARCHAR(191) NOT NULL,
     `branch_id` VARCHAR(191) NULL,
+    `branch_scope` VARCHAR(191) NOT NULL DEFAULT '',
     `document_type` VARCHAR(191) NOT NULL,
     `fiscal_year` INTEGER NOT NULL,
     `prefix` VARCHAR(191) NOT NULL,
@@ -373,12 +374,12 @@ CREATE TABLE `idempotency_requests` (
     `resource_type` VARCHAR(191) NULL,
     `resource_id` VARCHAR(191) NULL,
     `response_status` INTEGER NULL,
-    `response_body` VARCHAR(191) NULL,
+    `response_body` TEXT NULL,
     `locked_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `completed_at` DATETIME(3) NULL,
     `expires_at` DATETIME(3) NOT NULL,
 
-    UNIQUE INDEX `idempotency_requests_idempotency_key_key`(`idempotency_key`),
+    UNIQUE INDEX `idempotency_requests_company_id_idempotency_key_key`(`company_id`, `idempotency_key`),
     INDEX `idempotency_requests_company_id_idx`(`company_id`),
     INDEX `idempotency_requests_user_id_idx`(`user_id`),
     INDEX `idempotency_requests_device_id_idx`(`device_id`),
@@ -460,7 +461,7 @@ CREATE TABLE `approval_requests` (
     `approved_by` VARCHAR(191) NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
     `reason` VARCHAR(191) NOT NULL,
-    `payload` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `payload` TEXT NOT NULL DEFAULT ('{}'),
     `requested_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `resolved_at` DATETIME(3) NULL,
     `waived_by` VARCHAR(191) NULL,
@@ -489,7 +490,7 @@ CREATE TABLE `statutory_documents` (
     `issue_date` DATETIME(3) NOT NULL,
     `tax_period_start` DATETIME(3) NULL,
     `tax_period_end` DATETIME(3) NULL,
-    `payload_snapshot` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `payload_snapshot` TEXT NOT NULL DEFAULT ('{}'),
     `object_key` VARCHAR(191) NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
     `replacement_of_id` VARCHAR(191) NULL,
@@ -533,7 +534,7 @@ CREATE TABLE `reconciliation_runs` (
     `completed_at` DATETIME(3) NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'running',
     `initiated_by` VARCHAR(191) NULL,
-    `summary` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `summary` TEXT NOT NULL DEFAULT ('{}'),
 
     INDEX `reconciliation_runs_company_id_idx`(`company_id`),
     INDEX `reconciliation_runs_run_type_idx`(`run_type`),
@@ -555,7 +556,7 @@ CREATE TABLE `reconciliation_findings` (
     `expected_value` DECIMAL(65, 30) NULL,
     `actual_value` DECIMAL(65, 30) NULL,
     `variance` DECIMAL(65, 30) NULL,
-    `details` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `details` TEXT NOT NULL DEFAULT ('{}'),
     `status` VARCHAR(191) NOT NULL DEFAULT 'open',
     `resolved_by` VARCHAR(191) NULL,
     `resolved_at` DATETIME(3) NULL,
@@ -606,6 +607,7 @@ CREATE TABLE `categories` (
     `id` VARCHAR(191) NOT NULL,
     `company_id` VARCHAR(191) NOT NULL,
     `parent_id` VARCHAR(191) NULL,
+    `parent_scope` VARCHAR(191) NOT NULL DEFAULT '',
     `name` VARCHAR(191) NOT NULL,
     `code` VARCHAR(191) NOT NULL,
     `is_active` BOOLEAN NOT NULL DEFAULT true,
@@ -834,6 +836,8 @@ CREATE TABLE `product_prices` (
     `product_id` VARCHAR(191) NOT NULL,
     `branch_id` VARCHAR(191) NULL,
     `customer_group_id` VARCHAR(191) NULL,
+    `branch_scope` VARCHAR(191) NOT NULL DEFAULT '',
+    `customer_group_scope` VARCHAR(191) NOT NULL DEFAULT '',
     `currency_code` VARCHAR(191) NOT NULL,
     `price` DECIMAL(65, 30) NOT NULL DEFAULT 0,
     `valid_from` DATETIME(3) NOT NULL,
@@ -909,7 +913,7 @@ CREATE TABLE `withholding_rules` (
     `minimum_base_amount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
     `effective_from` DATETIME(3) NOT NULL,
     `effective_to` DATETIME(3) NULL,
-    `conditions` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `conditions` TEXT NOT NULL DEFAULT ('{}'),
     `is_active` BOOLEAN NOT NULL DEFAULT true,
 
     INDEX `withholding_rules_company_id_idx`(`company_id`),
@@ -944,7 +948,7 @@ CREATE TABLE `configuration_values` (
     `definition_key` VARCHAR(191) NOT NULL,
     `scope_type` VARCHAR(191) NOT NULL DEFAULT 'company',
     `scope_id` VARCHAR(191) NOT NULL,
-    `value` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `value` TEXT NOT NULL DEFAULT ('{}'),
     `version` INTEGER NOT NULL DEFAULT 1,
     `updated_by` VARCHAR(191) NOT NULL,
     `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -987,7 +991,7 @@ CREATE TABLE `document_templates` (
     `name` VARCHAR(191) NOT NULL,
     `locale` VARCHAR(191) NOT NULL,
     `version` INTEGER NOT NULL DEFAULT 1,
-    `template_schema` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `template_schema` TEXT NOT NULL DEFAULT ('{}'),
     `is_active` BOOLEAN NOT NULL DEFAULT true,
     `approved_by` VARCHAR(191) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -1045,7 +1049,7 @@ CREATE TABLE `feature_flags` (
     `company_id` VARCHAR(191) NOT NULL,
     `flag_key` VARCHAR(191) NOT NULL,
     `enabled` BOOLEAN NOT NULL DEFAULT false,
-    `rollout_rules` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `rollout_rules` TEXT NOT NULL DEFAULT ('{}'),
     `updated_by` VARCHAR(191) NOT NULL,
     `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -1059,9 +1063,9 @@ CREATE TABLE `feature_flags` (
 CREATE TABLE `dashboard_preferences` (
     `userId` VARCHAR(191) NOT NULL,
     `company_id` VARCHAR(191) NOT NULL,
-    `widget_layout` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `widget_layout` TEXT NOT NULL DEFAULT ('[]'),
     `default_date_range` VARCHAR(191) NOT NULL DEFAULT 'today',
-    `default_branch_ids` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `default_branch_ids` TEXT NOT NULL DEFAULT ('[]'),
     `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `dashboard_preferences_company_id_idx`(`company_id`),
@@ -1095,7 +1099,7 @@ CREATE TABLE `saved_report_filters` (
     `user_id` VARCHAR(191) NOT NULL,
     `report_code` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
-    `filter_json` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `filter_json` TEXT NOT NULL DEFAULT ('{}'),
     `is_shared` BOOLEAN NOT NULL DEFAULT false,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -1113,7 +1117,7 @@ CREATE TABLE `report_export_jobs` (
     `requested_by` VARCHAR(191) NOT NULL,
     `report_code` VARCHAR(191) NOT NULL,
     `format` VARCHAR(191) NOT NULL DEFAULT 'pdf',
-    `filter_json` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `filter_json` TEXT NOT NULL DEFAULT ('{}'),
     `data_cutoff_at` DATETIME(3) NOT NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'queued',
     `output_media_id` VARCHAR(191) NULL,
@@ -1179,7 +1183,7 @@ CREATE TABLE `communication_templates` (
     `locale` VARCHAR(191) NOT NULL,
     `subject_template` VARCHAR(191) NULL,
     `body_template` VARCHAR(191) NOT NULL,
-    `allowed_tokens` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `allowed_tokens` TEXT NOT NULL DEFAULT ('[]'),
     `version` INTEGER NOT NULL DEFAULT 1,
     `is_active` BOOLEAN NOT NULL DEFAULT true,
     `approved_by` VARCHAR(191) NULL,
@@ -1235,7 +1239,7 @@ CREATE TABLE `stock_movements` (
     `effective_at` DATETIME(3) NOT NULL,
     `posted_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `created_by` VARCHAR(191) NOT NULL,
-    `metadata` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `metadata` TEXT NOT NULL DEFAULT ('{}'),
 
     INDEX `stock_movements_company_id_idx`(`company_id`),
     INDEX `stock_movements_event_id_idx`(`event_id`),
@@ -2125,7 +2129,7 @@ CREATE TABLE `cash_drawer_counts` (
     `cashier_shift_id` VARCHAR(191) NOT NULL,
     `count_type` VARCHAR(191) NOT NULL DEFAULT 'opening',
     `counted_amount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
-    `denomination_detail` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `denomination_detail` TEXT NOT NULL DEFAULT ('{}'),
     `counted_by` VARCHAR(191) NOT NULL,
     `counted_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -2567,7 +2571,7 @@ CREATE TABLE `courier_shipments` (
     `final_charge` DECIMAL(65, 30) NULL,
     `last_provider_status` VARCHAR(191) NULL,
     `last_synced_at` DATETIME(3) NULL,
-    `sanitized_provider_data` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `sanitized_provider_data` TEXT NOT NULL DEFAULT ('{}'),
 
     UNIQUE INDEX `courier_shipments_delivery_order_id_key`(`delivery_order_id`),
     INDEX `courier_shipments_company_id_idx`(`company_id`),
@@ -2679,7 +2683,7 @@ CREATE TABLE `service_events` (
     `company_id` VARCHAR(191) NOT NULL,
     `service_request_id` VARCHAR(191) NOT NULL,
     `event_type` VARCHAR(191) NOT NULL,
-    `event_data` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `event_data` TEXT NOT NULL DEFAULT ('{}'),
     `created_by` VARCHAR(191) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
@@ -2788,8 +2792,8 @@ CREATE TABLE `lead_activities` (
     `company_id` VARCHAR(191) NOT NULL,
     `lead_id` VARCHAR(191) NOT NULL,
     `activity_type` VARCHAR(191) NOT NULL,
-    `summary` VARCHAR(191) NOT NULL,
-    `details` VARCHAR(191) NULL,
+    `summary` TEXT NOT NULL,
+    `details` TEXT NULL,
     `scheduled_at` DATETIME(3) NULL,
     `completed_at` DATETIME(3) NULL,
     `created_by` VARCHAR(191) NOT NULL,
@@ -2927,7 +2931,7 @@ CREATE TABLE `outbox_events` (
     `event_name` VARCHAR(191) NOT NULL,
     `aggregate_type` VARCHAR(191) NOT NULL,
     `aggregate_id` VARCHAR(191) NOT NULL,
-    `payload` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `payload` TEXT NOT NULL DEFAULT ('{}'),
     `occurred_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `published_at` DATETIME(3) NULL,
     `attempt_count` INTEGER NOT NULL DEFAULT 0,
@@ -2951,7 +2955,7 @@ CREATE TABLE `webhook_endpoints` (
     `company_id` VARCHAR(191) NOT NULL,
     `url` VARCHAR(191) NOT NULL,
     `secret_ciphertext` LONGBLOB NOT NULL,
-    `subscribedEvents` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `subscribedEvents` TEXT NOT NULL DEFAULT ('[]'),
     `status` VARCHAR(191) NOT NULL DEFAULT 'active',
     `created_by` VARCHAR(191) NOT NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -2976,7 +2980,7 @@ CREATE TABLE `webhook_deliveries` (
     `next_attempt_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `last_attempted_at` DATETIME(3) NULL,
     `response_status` INTEGER NULL,
-    `response_body_excerpt` VARCHAR(191) NULL,
+    `response_body_excerpt` TEXT NULL,
     `last_error` VARCHAR(191) NULL,
 
     UNIQUE INDEX `webhook_deliveries_deliveryId_key`(`deliveryId`),
@@ -3040,7 +3044,7 @@ CREATE TABLE `offline_commands` (
     `device_id` VARCHAR(191) NOT NULL,
     `command_type` VARCHAR(191) NOT NULL,
     `sequence_number` INTEGER NOT NULL,
-    `payload` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `payload` TEXT NOT NULL DEFAULT ('{}'),
     `payload_hash` VARCHAR(191) NOT NULL,
     `idempotency_key` VARCHAR(191) NOT NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
@@ -3390,7 +3394,7 @@ CREATE TABLE `payroll_item_components` (
     `payroll_item_id` VARCHAR(191) NOT NULL,
     `payroll_component_id` VARCHAR(191) NOT NULL,
     `amount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
-    `calculation_basis` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `calculation_basis` TEXT NOT NULL DEFAULT ('{}'),
 
     INDEX `payroll_item_components_company_id_idx`(`company_id`),
     INDEX `payroll_item_components_payroll_item_id_idx`(`payroll_item_id`),
@@ -3428,7 +3432,7 @@ CREATE TABLE `payroll_items` (
     `deduction_total` DECIMAL(65, 30) NOT NULL DEFAULT 0,
     `withholding_total` DECIMAL(65, 30) NOT NULL DEFAULT 0,
     `net_pay` DECIMAL(65, 30) NOT NULL,
-    `calculation_detail` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `calculation_detail` TEXT NOT NULL DEFAULT ('{}'),
 
     INDEX `payroll_items_company_id_idx`(`company_id`),
     INDEX `payroll_items_payroll_run_id_idx`(`payroll_run_id`),
@@ -3464,7 +3468,7 @@ CREATE TABLE `communication_campaigns` (
     `name` VARCHAR(191) NOT NULL,
     `channel` VARCHAR(191) NOT NULL DEFAULT 'sms',
     `template_id` VARCHAR(191) NOT NULL,
-    `audience_definition` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `audience_definition` TEXT NOT NULL DEFAULT ('{}'),
     `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
     `scheduled_at` DATETIME(3) NULL,
     `created_by` VARCHAR(191) NOT NULL,
@@ -3592,9 +3596,9 @@ CREATE TABLE `risk_assessments` (
     `request_event_id` VARCHAR(191) NOT NULL,
     `score` DECIMAL(65, 30) NULL,
     `decision` VARCHAR(191) NOT NULL DEFAULT 'allow',
-    `reasonCodes` VARCHAR(191) NOT NULL DEFAULT '[]',
+    `reasonCodes` TEXT NOT NULL DEFAULT ('[]'),
     `provider_reference` VARCHAR(191) NULL,
-    `sanitized_response` VARCHAR(191) NOT NULL DEFAULT '{}',
+    `sanitized_response` TEXT NOT NULL DEFAULT ('{}'),
     `assessed_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `expires_at` DATETIME(3) NOT NULL,
 
@@ -3614,7 +3618,7 @@ CREATE TABLE `data_subject_requests` (
     `customer_id` VARCHAR(191) NULL,
     `supplier_id` VARCHAR(191) NULL,
     `status` VARCHAR(191) NOT NULL DEFAULT 'open',
-    `details` VARCHAR(191) NULL,
+    `details` TEXT NULL,
     `resolved_by` VARCHAR(191) NULL,
     `resolved_at` DATETIME(3) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -4801,13 +4805,13 @@ ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_event_id_fkey` FOR
 ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_currency_code_fkey` FOREIGN KEY (`currency_code`) REFERENCES `currencies`(`code`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_reversal_of_entry_id_fkey` FOREIGN KEY (`reversal_of_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_reversal_of_entry_id_fkey` FOREIGN KEY (`reversal_of_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_created_by_fkey` FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_posted_by_fkey` FOREIGN KEY (`posted_by`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_entries` ADD CONSTRAINT `journal_entries_posted_by_fkey` FOREIGN KEY (`posted_by`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -4816,25 +4820,25 @@ ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_company_id_fkey` FOREI
 ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_journal_entry_id_fkey` FOREIGN KEY (`journal_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_chart_of_account_id_fkey` FOREIGN KEY (`chart_of_account_id`) REFERENCES `chart_of_accounts`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_financial_account_id_fkey` FOREIGN KEY (`financial_account_id`) REFERENCES `financial_accounts`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_financial_account_id_fkey` FOREIGN KEY (`financial_account_id`) REFERENCES `financial_accounts`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_customer_id_fkey` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_customer_id_fkey` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_supplier_id_fkey` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_supplier_id_fkey` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_currency_code_fkey` FOREIGN KEY (`currency_code`) REFERENCES `currencies`(`code`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `journal_lines` ADD CONSTRAINT `journal_lines_currency_code_fkey` FOREIGN KEY (`currency_code`) REFERENCES `currencies`(`code`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `accounting_policies` ADD CONSTRAINT `accounting_policies_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -5173,10 +5177,10 @@ ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_co
 ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_customer_id_fkey` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_payment_id_fkey` FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_payment_id_fkey` FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_sale_return_id_fkey` FOREIGN KEY (`sale_return_id`) REFERENCES `sale_returns`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_sale_return_id_fkey` FOREIGN KEY (`sale_return_id`) REFERENCES `sale_returns`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `customer_advance_ledger` ADD CONSTRAINT `customer_advance_ledger_event_id_fkey` FOREIGN KEY (`event_id`) REFERENCES `business_events`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

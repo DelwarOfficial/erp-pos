@@ -1,22 +1,35 @@
 -- Critical MariaDB business invariants absent from Prisma's schema language.
+--
+-- NOTE (Phase 0, MariaDB 11.8): scope columns are REAL columns created in the
+-- initial migration (NOT NULL DEFAULT ''), NOT PERSISTENT generated columns.
+-- A generated `branch_scope AS (IFNULL(branch_id, '')) PERSISTENT` failed on
+-- fresh MariaDB 11.8 with ERROR 1901, and a trigger-maintained workaround is
+-- structurally fragile (parent FK cascades/SET NULL can bypass child triggers
+-- in MySQL-family semantics). The CHECK-plus-UNIQUE design below is
+-- self-validating on every write path instead of silently derivable:
+-- any writer that diverges scope from its FK is REJECTED rather than repaired.
+-- All branch/parent FKs touching these tables are RESTRICT/RESTRICT, so no
+-- parent cascade can invalidate the scope without failing closed.
+-- Writers MUST set scope = fk ?? '' (see DocumentSequence.branchScope,
+-- Category.parentScope, ProductPrice scopes + src/lib/numbering/index.ts).
 
 ALTER TABLE `document_sequences`
-  ADD COLUMN `branch_scope` VARCHAR(36) AS (IFNULL(`branch_id`, '')) PERSISTENT,
+  ADD CONSTRAINT `document_sequences_branch_scope_chk` CHECK (`branch_scope` = IFNULL(`branch_id`, '')),
   ADD CONSTRAINT `document_sequences_next_positive_chk` CHECK (`next_number` > 0),
   ADD CONSTRAINT `document_sequences_padding_chk` CHECK (`padding` BETWEEN 1 AND 12),
   ADD UNIQUE INDEX `uq_document_sequences_scope` (`company_id`, `branch_scope`, `document_type`, `fiscal_year`);
 
--- MariaDB permits multiple NULL values in a UNIQUE index. Normalize the optional
--- hierarchy scope so root categories remain unique per company and name.
+-- MariaDB permits multiple NULL values in a UNIQUE index. The normalized
+-- parent_scope column preserves root-category uniqueness per company and name.
 ALTER TABLE `categories`
-  ADD COLUMN `parent_scope` VARCHAR(36) AS (IFNULL(`parent_id`, '')) PERSISTENT,
+  ADD CONSTRAINT `categories_parent_scope_chk` CHECK (`parent_scope` = IFNULL(`parent_id`, '')),
   ADD UNIQUE INDEX `uq_categories_parent_scope_name` (`company_id`, `parent_scope`, `name`);
 
 -- Normalize both optional pricing scopes. This preserves one price for the same
 -- product/scope/currency/effective instant even when either scope is NULL.
 ALTER TABLE `product_prices`
-  ADD COLUMN `branch_scope` VARCHAR(36) AS (IFNULL(`branch_id`, '')) PERSISTENT,
-  ADD COLUMN `customer_group_scope` VARCHAR(36) AS (IFNULL(`customer_group_id`, '')) PERSISTENT,
+  ADD CONSTRAINT `product_prices_branch_scope_chk` CHECK (`branch_scope` = IFNULL(`branch_id`, '')),
+  ADD CONSTRAINT `product_prices_customer_group_scope_chk` CHECK (`customer_group_scope` = IFNULL(`customer_group_id`, '')),
   ADD UNIQUE INDEX `uq_product_prices_scope`
     (`company_id`, `product_id`, `branch_scope`, `customer_group_scope`, `currency_code`, `valid_from`);
 
@@ -40,6 +53,33 @@ ALTER TABLE `supplier_advance_ledger`
     OR
     (`payment_id` IS NULL AND `purchase_return_id` IS NOT NULL)
   );
+
+-- Same invariant class for the customer ledger: exactly one of payment /
+-- sale return must be present. The stray purchase_return_id column (no relation,
+-- never written by application code) must stay NULL so it cannot become a
+-- shadow second source. All source FKs (single + composite) are RESTRICT, so a
+-- deleted parent fails closed instead of NULLing provenance and breaking this
+-- CHECK — the failure mode that defeated the original CHECK design.
+ALTER TABLE `customer_advance_ledger`
+  ADD CONSTRAINT `customer_advance_exactly_one_source_chk`
+  CHECK (
+    (
+      (`payment_id` IS NOT NULL AND `sale_return_id` IS NULL)
+      OR
+      (`payment_id` IS NULL AND `sale_return_id` IS NOT NULL)
+    )
+    AND `purchase_return_id` IS NULL
+  );
+
+-- Journal lifecycle states referenced by posting/reversal code.
+-- Balance enforcement (SUM(debit)=SUM(credit) for POSTED entries) is NOT a
+-- row-level trigger here by design: entries are created before their lines, so
+-- an INSERT/row trigger would make legitimate multi-line posting impossible.
+-- Phase 2 must move posting through a guarded draft->posted transition
+-- (default status + application transaction + posting-state trigger/procedure).
+ALTER TABLE `journal_entries`
+  ADD CONSTRAINT `journal_entries_status_chk`
+  CHECK (`status` IN ('draft', 'posted', 'reversed'));
 
 ALTER TABLE `transfer_items`
   ADD CONSTRAINT `transfer_items_qty_nonnegative_chk`

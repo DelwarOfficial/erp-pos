@@ -44,12 +44,26 @@ describe('MariaDB 11.8 migration compatibility', () => {
   });
 
   it('normalizes nullable scopes before enforcing uniqueness', () => {
-    expect(invariants).toContain("`branch_scope` VARCHAR(36) AS (IFNULL(`branch_id`, '')) PERSISTENT");
-    expect(invariants).toContain("`parent_scope` VARCHAR(36) AS (IFNULL(`parent_id`, '')) PERSISTENT");
-    expect(invariants).toContain("`customer_group_scope` VARCHAR(36) AS (IFNULL(`customer_group_id`, '')) PERSISTENT");
+    // Phase 0: real NOT NULL columns (initial migration) + consistency CHECK +
+    // UNIQUE in invariants. PERSISTENT generated columns failed on MariaDB 11.8
+    // with ERROR 1901 and must not return.
+    expect(invariants).not.toMatch(/ADD COLUMN.*AS \(.*\)\s*(PERSISTENT|VIRTUAL)/);
+    expect(invariants).not.toMatch(/GENERATED\s+ALWAYS/);
+    expect(initial).toContain('`branch_scope` VARCHAR(191) NOT NULL');
+    expect(initial).toContain('`parent_scope` VARCHAR(191) NOT NULL');
+    expect(initial).toContain('`customer_group_scope` VARCHAR(191) NOT NULL');
+    expect(invariants).toContain('`document_sequences_branch_scope_chk`');
+    expect(invariants).toContain("CHECK (`branch_scope` = IFNULL(`branch_id`, ''))");
+    expect(invariants).toContain("CHECK (`parent_scope` = IFNULL(`parent_id`, ''))");
+    expect(invariants).toContain("CHECK (`customer_group_scope` = IFNULL(`customer_group_id`, ''))");
     expect(invariants).toContain('UNIQUE INDEX `uq_document_sequences_scope`');
     expect(invariants).toContain('UNIQUE INDEX `uq_categories_parent_scope_name`');
     expect(invariants).toContain('UNIQUE INDEX `uq_product_prices_scope`');
+    expect(schema).toContain('@@unique([companyId, branchScope, documentType, fiscalYear])');
+    expect(schema).toContain('@@unique([companyId, parentScope, name])');
+    expect(schema).toContain(
+      '@@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom])',
+    );
   });
 
   it('does not retain ineffective nullable composite uniques in Prisma schema', () => {
@@ -57,5 +71,48 @@ describe('MariaDB 11.8 migration compatibility', () => {
     expect(schema).not.toContain(
       '@@unique([companyId, productId, branchId, customerGroupId, currencyCode, validFrom])',
     );
+  });
+
+  it('scopes idempotency identity per tenant with TEXT bodies', () => {
+    expect(schema).toContain('@@unique([companyId, idempotencyKey])');
+    expect(schema).not.toMatch(/idempotencyKey\s+String\s+@unique/);
+    expect(initial).toContain(
+      'UNIQUE INDEX `idempotency_requests_company_id_idempotency_key_key`(`company_id`, `idempotency_key`)',
+    );
+    expect(initial).toContain('`response_body` TEXT NULL');
+  });
+
+  it('stores JSON payloads as TEXT instead of VARCHAR(191)', () => {
+    for (const column of [
+      '`metadata` TEXT NOT NULL',
+      '`payload` TEXT NOT NULL',
+      '`payload_snapshot` TEXT NOT NULL',
+      '`sanitized_provider_data` TEXT NOT NULL',
+      '`response_body_excerpt` TEXT NULL',
+    ]) {
+      expect(initial).toContain(column);
+    }
+    expect(initial).not.toContain('`response_body` VARCHAR');
+  });
+
+  it('enforces customer-advance XOR alongside supplier-advance XOR', () => {
+    expect(invariants).toContain('customer_advance_exactly_one_source_chk');
+    expect(invariants).toContain('(`payment_id` IS NOT NULL AND `sale_return_id` IS NULL)');
+    expect(invariants).toContain('(`payment_id` IS NULL AND `sale_return_id` IS NOT NULL)');
+  });
+
+  it('keeps immutable-ledger FKs RESTRICT on delete in both layers', () => {
+    for (const line of [
+      '`customer_advance_ledger_payment_id_fkey` FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON DELETE RESTRICT',
+      '`customer_advance_ledger_sale_return_id_fkey` FOREIGN KEY (`sale_return_id`) REFERENCES `sale_returns`(`id`) ON DELETE RESTRICT',
+      '`journal_entries_reversal_of_entry_id_fkey` FOREIGN KEY (`reversal_of_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE RESTRICT',
+      '`journal_lines_customer_id_fkey` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE RESTRICT',
+      '`journal_lines_supplier_id_fkey` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE RESTRICT',
+      '`journal_lines_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT',
+    ]) {
+      expect(initial).toContain(line);
+    }
+    expect(initial).not.toContain('`purchase_return_id`) REFERENCES `purchase_returns`(`id`) ON DELETE SET NULL');
+    expect(invariants).toContain("CHECK (`status` IN ('draft', 'posted', 'reversed'))");
   });
 });

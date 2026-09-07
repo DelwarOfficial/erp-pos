@@ -78,16 +78,22 @@ export async function withIdempotency<T extends Response>(
       },
     });
   } catch (e) {
-    // Likely unique violation — key already exists. Re-throw any other error.
+    // Likely unique violation — (company_id, key) already exists. Re-throw other errors.
+    // Phase 0: identity is tenant-scoped; MariaDB reports ER_DUP_ENTRY (1062) via P2002.
     const errStr = e instanceof Error ? e.message : String(e);
+    const code = (e as { code?: string })?.code ?? '';
     const isUnique =
+      code === 'P2002' ||
       errStr.includes('Unique constraint') ||
-      errStr.includes('UNIQUE constraint failed');
+      errStr.includes('UNIQUE constraint failed') ||
+      errStr.includes('ER_DUP_ENTRY') ||
+      errStr.includes('1062') ||
+      errStr.includes('Duplicate entry');
     if (!isUnique) {
       throw new DomainError('INTERNAL_ERROR', `Idempotency create failed: ${errStr}`, {}, 500);
     }
     const existing = await db.idempotencyRequest.findFirst({
-      where: { idempotencyKey: params.idempotencyKey },
+      where: { companyId: params.companyId, idempotencyKey: params.idempotencyKey },
     });
     if (!existing) {
       // Raced — re-throw original error
