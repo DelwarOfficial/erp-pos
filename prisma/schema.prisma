@@ -746,7 +746,7 @@ model DocumentSequence {
   version      Int      @default(0)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  branch  Branch? @relation(fields: [branchId], references: [id])
+  branch  Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // SQLite cannot enforce partial UNIQUEs directly; we enforce in app code via
   // nextDocumentNumber() with deterministic locking.
@@ -1090,7 +1090,7 @@ model Category {
   deletedAt  DateTime? @map("deleted_at")
 
   company    Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  parent     Category? @relation("CategoryTree", fields: [parentId], references: [id])
+  parent     Category? @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   children   Category[] @relation("CategoryTree")
   products   Product[]
   discountPolicies DiscountPolicy[] @relation("DiscountPolicyCategory")
@@ -1098,7 +1098,8 @@ model Category {
   stockCounts StockCount[]
 
   @@unique([companyId, code])
-  @@unique([companyId, parentId, name])
+  // MariaDB nullable-parent uniqueness is enforced through parent_scope in the
+  // critical invariants migration. A nullable composite UNIQUE permits duplicates.
   @@index([companyId])
   @@index([parentId])
   @@index([isActive])
@@ -1397,11 +1398,12 @@ model ProductPrice {
 
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
   product        Product        @relation(fields: [productId], references: [id])
-  branch         Branch?        @relation("ProductPriceBranch", fields: [branchId], references: [id])
-  customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  branch         Branch?        @relation("ProductPriceBranch", fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customerGroup  CustomerGroup? @relation(fields: [customerGroupId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   currency       Currency       @relation(fields: [currencyCode], references: [code])
 
-  @@unique([companyId, productId, branchId, customerGroupId, currencyCode, validFrom])
+  // MariaDB nullable-scope uniqueness is enforced through normalized scope
+  // columns in the critical invariants migration.
   @@index([companyId])
   @@index([productId])
   @@index([branchId])
@@ -3154,8 +3156,8 @@ model PaymentAllocation {
   company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
   payment      Payment      @relation(fields: [paymentId], references: [id])
   businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
-  sale         Sale?        @relation(fields: [saleId], references: [id])
-  purchase     Purchase?    @relation(fields: [purchaseId], references: [id])
+  sale         Sale?        @relation(fields: [saleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  purchase     Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   creator      User         @relation("PaymentAllocCreatedBy", fields: [createdBy], references: [id])
   installments InstallmentAllocation[]
 
@@ -4343,8 +4345,8 @@ model SupplierAdvanceLedger {
 
   company       Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
   supplier      Supplier     @relation(fields: [supplierId], references: [id])
-  payment       Payment?     @relation("SupplierAdvancePayment", fields: [paymentId], references: [id])
-  purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
+  payment       Payment?     @relation("SupplierAdvancePayment", fields: [paymentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   businessEvent BusinessEvent @relation(fields: [eventId], references: [id])
   creator       User         @relation(fields: [createdBy], references: [id])
 

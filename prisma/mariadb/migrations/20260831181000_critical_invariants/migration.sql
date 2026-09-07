@@ -1,10 +1,24 @@
 -- Critical MariaDB business invariants absent from Prisma's schema language.
 
 ALTER TABLE `document_sequences`
-  ADD COLUMN `branch_scope` VARCHAR(191) AS (IFNULL(`branch_id`, '')) PERSISTENT,
+  ADD COLUMN `branch_scope` VARCHAR(36) AS (IFNULL(`branch_id`, '')) PERSISTENT,
   ADD CONSTRAINT `document_sequences_next_positive_chk` CHECK (`next_number` > 0),
   ADD CONSTRAINT `document_sequences_padding_chk` CHECK (`padding` BETWEEN 1 AND 12),
   ADD UNIQUE INDEX `uq_document_sequences_scope` (`company_id`, `branch_scope`, `document_type`, `fiscal_year`);
+
+-- MariaDB permits multiple NULL values in a UNIQUE index. Normalize the optional
+-- hierarchy scope so root categories remain unique per company and name.
+ALTER TABLE `categories`
+  ADD COLUMN `parent_scope` VARCHAR(36) AS (IFNULL(`parent_id`, '')) PERSISTENT,
+  ADD UNIQUE INDEX `uq_categories_parent_scope_name` (`company_id`, `parent_scope`, `name`);
+
+-- Normalize both optional pricing scopes. This preserves one price for the same
+-- product/scope/currency/effective instant even when either scope is NULL.
+ALTER TABLE `product_prices`
+  ADD COLUMN `branch_scope` VARCHAR(36) AS (IFNULL(`branch_id`, '')) PERSISTENT,
+  ADD COLUMN `customer_group_scope` VARCHAR(36) AS (IFNULL(`customer_group_id`, '')) PERSISTENT,
+  ADD UNIQUE INDEX `uq_product_prices_scope`
+    (`company_id`, `product_id`, `branch_scope`, `customer_group_scope`, `currency_code`, `valid_from`);
 
 ALTER TABLE `document_number_leases`
   ADD CONSTRAINT `document_leases_range_order_chk` CHECK (`range_end` >= `range_start`),
@@ -21,7 +35,11 @@ ALTER TABLE `journal_entries`
 
 ALTER TABLE `supplier_advance_ledger`
   ADD CONSTRAINT `supplier_advance_exactly_one_source_chk`
-  CHECK (((`payment_id` IS NOT NULL) + (`purchase_return_id` IS NOT NULL)) = 1);
+  CHECK (
+    (`payment_id` IS NOT NULL AND `purchase_return_id` IS NULL)
+    OR
+    (`payment_id` IS NULL AND `purchase_return_id` IS NOT NULL)
+  );
 
 ALTER TABLE `transfer_items`
   ADD CONSTRAINT `transfer_items_qty_nonnegative_chk`
@@ -54,7 +72,7 @@ ALTER TABLE `payment_allocations`
   ADD CONSTRAINT `payment_allocations_amount_chk`
     CHECK (`allocated_amount` > 0 AND `allocated_base_amount` > 0),
   ADD CONSTRAINT `payment_allocations_target_chk`
-    CHECK (((`sale_id` IS NOT NULL) + (`purchase_id` IS NOT NULL)) <= 1);
+    CHECK (`sale_id` IS NULL OR `purchase_id` IS NULL);
 
 CREATE FUNCTION `format_document_number`(
   `p_prefix` VARCHAR(191),

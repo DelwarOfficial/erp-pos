@@ -615,7 +615,6 @@ CREATE TABLE `categories` (
     INDEX `categories_parent_id_idx`(`parent_id`),
     INDEX `categories_is_active_idx`(`is_active`),
     UNIQUE INDEX `categories_company_id_code_key`(`company_id`, `code`),
-    UNIQUE INDEX `categories_company_id_parent_id_name_key`(`company_id`, `parent_id`, `name`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -847,7 +846,6 @@ CREATE TABLE `product_prices` (
     INDEX `product_prices_customer_group_id_idx`(`customer_group_id`),
     INDEX `product_prices_valid_from_idx`(`valid_from`),
     INDEX `product_prices_valid_to_idx`(`valid_to`),
-    UNIQUE INDEX `product_prices_company_id_product_id_branch_id_customer_grou_key`(`company_id`, `product_id`, `branch_id`, `customer_group_id`, `currency_code`, `valid_from`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -3924,7 +3922,7 @@ ALTER TABLE `webauthn_challenges` ADD CONSTRAINT `webauthn_challenges_user_id_fk
 ALTER TABLE `document_sequences` ADD CONSTRAINT `document_sequences_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `document_sequences` ADD CONSTRAINT `document_sequences_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `document_sequences` ADD CONSTRAINT `document_sequences_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `document_number_leases` ADD CONSTRAINT `document_number_leases_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -4017,7 +4015,7 @@ ALTER TABLE `integration_credentials` ADD CONSTRAINT `integration_credentials_cr
 ALTER TABLE `categories` ADD CONSTRAINT `categories_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `categories` ADD CONSTRAINT `categories_parent_id_fkey` FOREIGN KEY (`parent_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `categories` ADD CONSTRAINT `categories_parent_id_fkey` FOREIGN KEY (`parent_id`) REFERENCES `categories`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `brands` ADD CONSTRAINT `brands_company_id_fkey` FOREIGN KEY (`company_id`) REFERENCES `companies`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -4110,10 +4108,10 @@ ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_company_id_fkey` FOR
 ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_product_id_fkey` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_branch_id_fkey` FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_customer_group_id_fkey` FOREIGN KEY (`customer_group_id`) REFERENCES `customer_groups`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_customer_group_id_fkey` FOREIGN KEY (`customer_group_id`) REFERENCES `customer_groups`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `product_prices` ADD CONSTRAINT `product_prices_currency_code_fkey` FOREIGN KEY (`currency_code`) REFERENCES `currencies`(`code`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -4737,10 +4735,10 @@ ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_payment_id
 ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_event_id_fkey` FOREIGN KEY (`event_id`) REFERENCES `business_events`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_sale_id_fkey` FOREIGN KEY (`sale_id`) REFERENCES `sales`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_sale_id_fkey` FOREIGN KEY (`sale_id`) REFERENCES `sales`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_purchase_id_fkey` FOREIGN KEY (`purchase_id`) REFERENCES `purchases`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_purchase_id_fkey` FOREIGN KEY (`purchase_id`) REFERENCES `purchases`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `payment_allocations` ADD CONSTRAINT `payment_allocations_created_by_fkey` FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -5193,10 +5191,10 @@ ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_co
 ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_supplier_id_fkey` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_payment_id_fkey` FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_payment_id_fkey` FOREIGN KEY (`payment_id`) REFERENCES `payments`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
-ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_purchase_return_id_fkey` FOREIGN KEY (`purchase_return_id`) REFERENCES `purchase_returns`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_purchase_return_id_fkey` FOREIGN KEY (`purchase_return_id`) REFERENCES `purchase_returns`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
 ALTER TABLE `supplier_advance_ledger` ADD CONSTRAINT `supplier_advance_ledger_event_id_fkey` FOREIGN KEY (`event_id`) REFERENCES `business_events`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
