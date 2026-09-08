@@ -14,14 +14,16 @@ import { toast } from 'sonner';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@erp-platform.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [companyCode, setCompanyCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setFormError(null);
     try {
       const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
@@ -36,19 +38,25 @@ export default function LoginPage() {
           ...(companyCode ? { company_code: companyCode } : {}),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Login failed');
+        const message: string = data?.error?.message ?? 'Login failed';
+        setFormError(message);
+        toast.error(message);
         return;
       }
-      if (data.mfa_required) {
+      if (data.mfa_setup_required) {
+        router.push('/mfa/setup');
+      } else if (data.mfa_required) {
         router.push('/mfa');
       } else {
         toast.success('Login successful');
         router.push('/dashboard');
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      const message = e instanceof Error ? e.message : 'Network error';
+      setFormError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -65,6 +73,11 @@ export default function LoginPage() {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {formError ? (
+              <p role="alert" aria-live="assertive" className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+                {formError}
+              </p>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -107,9 +120,6 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign In'}
             </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Default platform admin: <code className="font-mono">admin@erp-platform.local</code> / <code className="font-mono">ChangeMe!2026</code>
-            </p>
             <p className="text-xs text-muted-foreground text-center">
               <Link href="#" className="hover:underline">Forgot password?</Link>
             </p>

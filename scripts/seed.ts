@@ -82,7 +82,17 @@ async function main() {
 
   console.log('→ Seeding first platform_operations admin...');
   const adminEmail = 'admin@erp-platform.local';
-  const adminPassword = process.env.PLATFORM_ADMIN_PASSWORD ?? 'ChangeMe!2026';
+  // Production must provide an explicit password: never fall back to a known
+  // default where real business data exists. Dev/test convenience default is
+  // strictly environment-gated.
+  const adminPassword = process.env.PLATFORM_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('PLATFORM_ADMIN_PASSWORD must be set in production');
+    }
+    console.log('  ! PLATFORM_ADMIN_PASSWORD not set — using development-only default');
+  }
+  const effectivePassword = adminPassword ?? 'ChangeMe!2026';
   const platformRole = await db.role.findFirst({
     where: { companyId: platformCompany.id, name: 'platform_operations' },
   });
@@ -92,7 +102,7 @@ async function main() {
     where: { companyId: platformCompany.id, email: adminEmail },
   });
   if (!existing) {
-    const hash = await hashPassword(adminPassword);
+    const hash = await hashPassword(effectivePassword);
     const admin = await db.user.create({
       data: {
         companyId: platformCompany.id,
@@ -106,7 +116,8 @@ async function main() {
     await db.userRole.create({
       data: { userId: admin.id, roleId: platformRole.id },
     });
-    console.log(`  ✓ admin user created: ${adminEmail} / ${adminPassword}`);
+    // Never print the plaintext password — it would land in deploy logs.
+    console.log(`  ✓ admin user created: ${adminEmail} (password ${adminPassword ? 'from PLATFORM_ADMIN_PASSWORD' : 'development default — rotate immediately'})`);
   } else {
     console.log(`  ✓ admin user already exists: ${adminEmail}`);
   }

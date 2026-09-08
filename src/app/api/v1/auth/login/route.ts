@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { systemDb as db } from '@/lib/db';
 import { verifyPassword, getLockoutDuration } from '@/lib/auth/password';
-import { setAuthCookies, setMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
+import { setAuthCookies, setMfaPendingCookie, setMfaSetupCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
+import { issueEnrollment } from '@/lib/auth/enrollment';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -130,27 +131,23 @@ export async function POST(req: NextRequest) {
     // privileged users without MFA. Production strictly enforces MFA per §6 rule 2.
     const isSandboxBypass = (process.env.NODE_ENV === 'development' || process.env.E2E_TESTING === 'true') && !user.mfaEnabled;
     if (hasPrivilegedRole && !user.mfaEnabled && !isSandboxBypass) {
-      await recordSecurityEvent({
-        eventType: 'login_blocked_mfa_required',
-        severity: 'high',
-        metadata: {
-          user_id: user.id,
-          reason: 'Privileged role requires MFA but MFA is not enabled',
-          is_platform: isPlatformUser,
-          is_global: isGlobalAccess,
-          roles: userRoles.map(ur => ur.role.name),
-        },
-        companyId: user.companyId,
+      // Bootstrap path: password is valid but MFA was never enrolled. Issue a
+      // short-lived, HMAC-bound enrollment state (NOT a session) and direct
+      // the client to the setup flow. MFA remains mandatory — this is the only
+      // way to satisfy it, and activation still requires TOTP proof.
+      const enrollment = await issueEnrollment({
         userId: user.id,
-        ip,
-        userAgent: ua,
+        companyId: user.companyId,
+        ctx: { ip, userAgent: ua },
       });
-      throw new DomainError(
-        'INVALID_MFA',
-        'MFA is mandatory for your account type. Please contact your administrator to set up MFA before logging in.',
-        { mfa_required: true, roles: userRoles.map(ur => ur.role.name) },
-        403,
-      );
+      const setupDef = await setMfaSetupCookie(enrollment.cookieValue);
+      const setupResponse = NextResponse.json({
+        mfa_required: false,
+        mfa_setup_required: true,
+        family_id: enrollment.familyId,
+      });
+      setupResponse.cookies.set(setupDef.name, setupDef.value, setupDef.options as never);
+      return setupResponse;
     }
 
     // If MFA enabled, set pending cookie and require verification

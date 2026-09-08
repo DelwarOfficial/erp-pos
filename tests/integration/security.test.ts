@@ -134,8 +134,14 @@ describe('Security: MFA Enforcement', () => {
   it('login route enforces MFA for privileged roles', () => {
     const login = readFileSync('src/app/api/v1/auth/login/route.ts', 'utf8');
     expect(login).toContain('hasPrivilegedRole');
-    expect(login).toContain('login_blocked_mfa_required');
-    expect(login).toContain('INVALID_MFA');
+    // Privileged users without MFA enter the password-bound enrollment flow —
+    // never a dead-end, never a bypass. MFA itself stays mandatory.
+    expect(login).toContain('mfa_setup_required');
+    expect(login).toContain('issueEnrollment');
+    // The dev-only bypass must stay gated behind non-production; production
+    // path always issues enrollment, never a session.
+    expect(login).toContain('isSandboxBypass');
+    expect(login).toMatch(/NODE_ENV === 'development'[\s\S]*E2E_TESTING/);
   });
 
   it('action-time MFA module exists', () => {

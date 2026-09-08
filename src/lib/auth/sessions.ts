@@ -165,3 +165,38 @@ export async function clearMfaPendingCookie(): Promise<void> {
 
 export function getAccessCookieName() { return ACCESS_COOKIE; }
 export function getRefreshCookieName() { return REFRESH_COOKIE; }
+
+const MFA_SETUP_COOKIE = 'erp_mfa_setup';
+
+/** Short-lived initial-MFA-enrollment state (HMAC-signed value, see mfaSetup). */
+export async function setMfaSetupCookie(
+  value: string,
+  maxAgeSeconds = 10 * 60,
+): Promise<{ name: string; value: string; options: Record<string, unknown> }> {
+  const def = {
+    name: MFA_SETUP_COOKIE,
+    value,
+    options: {
+      httpOnly: true,
+      secure: isProd(),
+      sameSite: sameSiteMode(),
+      path: '/api/v1/auth/mfa',
+      maxAge: maxAgeSeconds,
+    } as Record<string, unknown>,
+  };
+  const cookieStore = await cookies();
+  cookieStore.set(def.name, def.value, def.options as never);
+  return def;
+}
+
+export async function getMfaSetupCookie(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get(MFA_SETUP_COOKIE)?.value ?? null;
+}
+
+export async function clearMfaSetupCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(MFA_SETUP_COOKIE);
+}
+
+export function getMfaSetupCookieName() { return MFA_SETUP_COOKIE; }
