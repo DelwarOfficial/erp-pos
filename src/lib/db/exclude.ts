@@ -21,7 +21,7 @@ export async function nextDocumentNumber(tx: any, companyId: string, type: strin
   if (!seq) throw new Error('SEQUENCE_NOT_FOUND');
   const updated = await tx.document_sequences.update({
     where: { id: seq.id },
-    data: { next_number: { increment: 1n } }
+    data: { next_number: { increment: BigInt(1) } }
   });
-  return `${seq.prefix}${String(updated.next_number - 1n).padStart(seq.padding, '0')}`;
+  return `${seq.prefix}${String(updated.next_number - BigInt(1)).padStart(seq.padding, '0')}`;
 }

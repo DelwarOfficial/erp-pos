@@ -160,7 +160,7 @@ describe('Multi-Currency Revaluation (§20.D12)', () => {
     });
 
     it('allows revaluation of USD when BDT is the base currency', () => {
-      const baseCurrency = 'BDT';
+      const baseCurrency: string = 'BDT';
       const revaluationCurrency = 'USD';
 
       expect(baseCurrency !== revaluationCurrency).toBe(true);

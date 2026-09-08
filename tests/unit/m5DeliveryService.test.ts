@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { validateDeliveryTransition, validateServiceTransition } from '../../src/domain/commands/m5/Delivery';
+import { validateDeliveryTransition } from '../../src/domain/commands/m5/Delivery';
 import { validateServiceTransition as validateSvcTransition, validateWarrantyReplacement } from '../../src/domain/commands/m5/Service';
 import { DomainError } from '../../src/lib/errors/codes';
 

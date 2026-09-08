@@ -13,6 +13,7 @@ import { postSale } from '../../src/domain/commands/m3/PostSale';
 import { voidSale } from '../../src/domain/commands/m3/VoidSale';
 import { postStockMovement } from '../../src/domain/inventory/stockMovement';
 import { DomainError } from '../../src/lib/errors/codes';
+import { cleanupCompanyScope } from '../helpers/immutableTeardown';
 
 const db = new PrismaClient();
 
@@ -124,35 +125,36 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (companyId) {
-    // Delete in strict dependency order; wrap in try/catch to be non-fatal
-    const cleanup = async () => {
-      await db.paymentAllocation.deleteMany({ where: { companyId } });
-      await db.payment.deleteMany({ where: { companyId } });
-      const saleItemIds = await db.saleItem.findMany({ where: { companyId }, select: { id: true } });
-      if (saleItemIds.length > 0) {
-        await db.saleItemSerial.deleteMany({ where: { saleItemId: { in: saleItemIds.map(s => s.id) } } });
-      }
-      await db.saleItemTax.deleteMany({ where: { companyId } });
-      await db.saleItem.deleteMany({ where: { companyId } });
-      await db.sale.deleteMany({ where: { companyId } });
-      await db.serialEvent.deleteMany({ where: { companyId } });
-      await db.stockMovement.deleteMany({ where: { companyId } });
-      await db.warehouseStock.deleteMany({ where: { companyId } });
-      await db.productSerial.deleteMany({ where: { companyId } });
-      await db.businessEvent.deleteMany({ where: { companyId } });
-      await db.product.deleteMany({ where: { companyId } });
-      await db.unit.deleteMany({ where: { companyId } });
-      await db.category.deleteMany({ where: { companyId } });
-      await db.warehouse.deleteMany({ where: { companyId } });
-      await db.branch.deleteMany({ where: { companyId } });
-      await db.user.deleteMany({ where: { companyId } });
-      await db.auditLog.deleteMany({ where: { companyId } });
-      await db.securityEvent.deleteMany({ where: { companyId } });
-      await db.financialAccount.deleteMany({ where: { companyId } });
-      await db.chartOfAccount.deleteMany({ where: { companyId } });
-      await db.company.deleteMany({ where: { id: companyId } });
-    };
-    try { await cleanup(); } catch (e) { console.error('Cleanup error (non-fatal):', e); }
+    // Immutable rows (allocations, movements, serial events) cannot be deleted
+    // by design; steps they block are skipped, never forced. Suite isolation
+    // comes from the unique per-run companyId, not from a clean database.
+    const saleItemIds = await db.saleItem.findMany({ where: { companyId }, select: { id: true } });
+    await cleanupCompanyScope([
+      { label: 'paymentAllocation', run: () => db.paymentAllocation.deleteMany({ where: { companyId } }) },
+      { label: 'payment', run: () => db.payment.deleteMany({ where: { companyId } }) },
+      ...(saleItemIds.length > 0
+        ? [{ label: 'saleItemSerial', run: () => db.saleItemSerial.deleteMany({ where: { saleItemId: { in: saleItemIds.map(s => s.id) } } }) }]
+        : []),
+      { label: 'saleItemTax', run: () => db.saleItemTax.deleteMany({ where: { companyId } }) },
+      { label: 'saleItem', run: () => db.saleItem.deleteMany({ where: { companyId } }) },
+      { label: 'sale', run: () => db.sale.deleteMany({ where: { companyId } }) },
+      { label: 'serialEvent', run: () => db.serialEvent.deleteMany({ where: { companyId } }) },
+      { label: 'stockMovement', run: () => db.stockMovement.deleteMany({ where: { companyId } }) },
+      { label: 'warehouseStock', run: () => db.warehouseStock.deleteMany({ where: { companyId } }) },
+      { label: 'productSerial', run: () => db.productSerial.deleteMany({ where: { companyId } }) },
+      { label: 'businessEvent', run: () => db.businessEvent.deleteMany({ where: { companyId } }) },
+      { label: 'product', run: () => db.product.deleteMany({ where: { companyId } }) },
+      { label: 'unit', run: () => db.unit.deleteMany({ where: { companyId } }) },
+      { label: 'category', run: () => db.category.deleteMany({ where: { companyId } }) },
+      { label: 'warehouse', run: () => db.warehouse.deleteMany({ where: { companyId } }) },
+      { label: 'branch', run: () => db.branch.deleteMany({ where: { companyId } }) },
+      { label: 'user', run: () => db.user.deleteMany({ where: { companyId } }) },
+      { label: 'auditLog', run: () => db.auditLog.deleteMany({ where: { companyId } }) },
+      { label: 'securityEvent', run: () => db.securityEvent.deleteMany({ where: { companyId } }) },
+      { label: 'financialAccount', run: () => db.financialAccount.deleteMany({ where: { companyId } }) },
+      { label: 'chartOfAccount', run: () => db.chartOfAccount.deleteMany({ where: { companyId } }) },
+      { label: 'company', run: () => db.company.deleteMany({ where: { id: companyId } }) },
+    ]);
   }
   await db.$disconnect();
 });

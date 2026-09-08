@@ -145,7 +145,11 @@ describe('refresh token rotation', () => {
     });
     expect(rotated.token).not.toBe(issued.token);
     expect(rotated.familyId).toBe(issued.familyId);
-    expect(rotated.rotatedFromId ?? rotated.tokenId).toBeDefined();
+    expect(rotated.tokenId).toBeDefined();
+    // Rotation linkage is stored on the DB row (issueRefreshToken returns the
+    // new token + tokenId; rotatedFromId lives server-side, not client-side).
+    const rotatedRow = await db.refreshToken.findUnique({ where: { id: rotated.tokenId } });
+    expect(rotatedRow?.rotatedFromId).toBe(issued.tokenId);
   });
 
   it('revokes the entire family when a stale (already-rotated) token is reused', async () => {

@@ -19,7 +19,7 @@ describe('Stock Operations: Blind Count', () => {
     };
 
     // In blind mode, the counter should not see expectedQty
-    function getCounterView(item: { expectedQty: number; countedQty: number | null }) {
+    function getCounterView(item: { productId: string; expectedQty: number; countedQty: number | null }) {
       if (stockCount.isBlind) {
         return { productId: item.productId, countedQty: item.countedQty };
         // expectedQty is NOT included

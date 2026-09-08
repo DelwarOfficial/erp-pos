@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest';
 
 describe('CRM: Lead Conversion Idempotency', () => {
   it('converting the same lead twice does not create duplicate customer', () => {
-    const lead = { id: 'lead-1', status: 'won', convertedCustomerId: null };
+    const lead: { id: string; status: string; convertedCustomerId: string | null } =
+      { id: 'lead-1', status: 'won', convertedCustomerId: null };
     const conversions: string[] = [];
 
     // First conversion
@@ -36,7 +37,8 @@ describe('CRM: Lead Conversion Idempotency', () => {
   });
 
   it('conversion creates optional quotation idempotently', () => {
-    const lead = { id: 'lead-3', status: 'won', convertedCustomerId: null, quotationId: null };
+    const lead: { id: string; status: string; convertedCustomerId: string | null; quotationId: string | null } =
+      { id: 'lead-3', status: 'won', convertedCustomerId: null, quotationId: null };
     const idempotencyKey = 'convert-lead-3';
 
     // First call with idempotency key
@@ -50,14 +52,14 @@ describe('CRM: Lead Conversion Idempotency', () => {
 
   it('conversion does not create duplicate quotation on retry', () => {
     const quotationsCreated: string[] = [];
-    const lead = { id: 'lead-4', quotationId: null };
+    const lead: { id: string; quotationId: string | null } = { id: 'lead-4', quotationId: null };
 
-    function attemptQuotation() {
+    function attemptQuotation(): string {
       if (!lead.quotationId) {
         lead.quotationId = 'quote-' + Date.now();
         quotationsCreated.push(lead.quotationId);
       }
-      return lead.quotationId;
+      return lead.quotationId as string;
     }
 
     attemptQuotation();
@@ -143,21 +145,21 @@ describe('CRM: Provider Timeout No Duplicate', () => {
   });
 
   it('query status shows "sent" — do not retry (already sent)', () => {
-    const providerStatus = 'sent'; // provider confirms it was sent
+    const providerStatus: string = 'sent'; // provider confirms it was sent
     const shouldRetry = providerStatus === 'failed'; // only retry on confirmed failure
 
     expect(shouldRetry).toBe(false);
   });
 
   it('query status shows "failed" — safe to retry', () => {
-    const providerStatus = 'failed';
+    const providerStatus: string = 'failed';
     const shouldRetry = providerStatus === 'failed';
 
     expect(shouldRetry).toBe(true);
   });
 
   it('query status shows "pending" — wait and query again', () => {
-    const providerStatus = 'pending';
+    const providerStatus: string = 'pending';
     const shouldRetry = providerStatus === 'failed';
     const shouldWait = providerStatus === 'pending';
 

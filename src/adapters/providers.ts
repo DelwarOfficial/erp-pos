@@ -240,9 +240,13 @@ export class BkashPaymentProvider implements PaymentProvider {
   }
 
   async verifyWebhook(params: { rawBody: string; signature: string; timestamp: string }) {
-    // bKash doesn't use HMAC — it uses a different verification flow
-    // In production, execute the payment and check status
-    return { verified: true, paymentId: '', status: 'success' as const };
+    // FAIL-CLOSED: bKash has no HMAC webhook signature; live verification
+    // requires executing the payment query API and matching status/amount
+    // server-side. That flow is NOT implemented yet, so live callbacks must be
+    // rejected (route maps verified:false to 401 + security event) rather than
+    // trusted. Mock provider remains the only verifier for tests.
+    void params;
+    return { verified: false, paymentId: '', status: 'failed' as const };
   }
 
   async refund(params: { gatewayTxnId: string; amount: number }) {
@@ -272,7 +276,11 @@ export class NagadPaymentProvider implements PaymentProvider {
     return { gatewayUrl: `${this.apiUrl}/checkout?order=${params.reference}`, gatewayTxnId: params.reference };
   }
   async verifyWebhook(params: { rawBody: string; signature: string; timestamp: string }) {
-    return { verified: true, paymentId: '', status: 'success' as const };
+    // FAIL-CLOSED: Nagad webhook verification requires RSA signature
+    // validation, which is NOT implemented yet. Reject live callbacks until it
+    // is (route maps verified:false to 401 + security event).
+    void params;
+    return { verified: false, paymentId: '', status: 'failed' as const };
   }
   async refund(params: { gatewayTxnId: string; amount: number }) {
     return { refundId: `nagad-refund-${Date.now()}`, status: 'pending' as const };

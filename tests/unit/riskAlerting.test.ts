@@ -4,17 +4,26 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock db + provider registry + audit
-vi.mock('@/lib/db', () => ({
-  db: {
+// Mock db + provider registry + audit.
+// Production alerting.ts intentionally uses systemDb: evaluation runs in a
+// scheduled platform worker with no tenant context and aggregates global
+// risk metrics for ops alerting (never served per-tenant). The mock must
+// therefore expose the same `systemDb` contract — not tenant `db`.
+vi.mock('@/lib/db', () => {
+  const systemDb = {
     riskAssessment: {
       findMany: vi.fn(),
     },
-  },
-}));
+    company: {
+      findFirst: vi.fn(async () => null),
+    },
+  };
+  return { systemDb, db: systemDb };
+});
 vi.mock('@/adapters', () => ({
   providerRegistry: {
     getEmail: vi.fn(() => null),
+    getAllNotifications: vi.fn(() => []),
   },
 }));
 vi.mock('@/lib/audit', () => ({
@@ -143,5 +152,22 @@ describe('Risk Alerting', () => {
     expect(alert.metrics.falseNegatives).toBe(1);
     expect(alert.metrics.fnLossAmount).toBe(50000);
     expect(alert.metrics.windowDays).toBe(7);
+  });
+
+  it('never leaks per-tenant identifiers into ops alert payloads', async () => {
+    // Evaluation is intentionally platform-global (scheduled worker, no tenant
+    // context). Alerts must carry only aggregate metrics — never company data.
+    const mixed = buildAssessments({ tp: 1, tn: 5, fp: 10, fn: 0 }).map((a, i) => ({
+      ...a,
+      companyId: i % 2 === 0 ? 'company-a' : 'company-b',
+    }));
+    vi.mocked(db.riskAssessment).findMany.mockResolvedValueOnce(mixed);
+
+    const alerts = await evaluateRiskAlerts();
+    const highFp = alerts.find((a) => a.type === 'HIGH_FP_COUNT');
+    expect(highFp).toBeDefined();
+    const serialized = JSON.stringify(alerts);
+    expect(serialized).not.toContain('company-a');
+    expect(serialized).not.toContain('company-b');
   });
 });

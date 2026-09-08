@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { postStockMovement, reverseStockMovement, validateSerialTransition } from '../../src/domain/inventory/stockMovement';
 import { DomainError } from '../../src/lib/errors/codes';
+import { cleanupCompanyScope } from '../helpers/immutableTeardown';
 
 const db = new PrismaClient();
 
@@ -62,17 +63,21 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (companyId) {
-    await db.stockMovement.deleteMany({ where: { companyId } });
-    await db.warehouseStock.deleteMany({ where: { companyId } });
-    await db.businessEvent.deleteMany({ where: { companyId } });
-    await db.product.deleteMany({ where: { companyId } });
-    await db.unit.deleteMany({ where: { companyId } });
-    await db.category.deleteMany({ where: { companyId } });
-    await db.warehouse.deleteMany({ where: { companyId } });
-    await db.branch.deleteMany({ where: { companyId } });
-    await db.user.deleteMany({ where: { companyId } });
-    await db.auditLog.deleteMany({ where: { companyId } });
-    await db.company.deleteMany({ where: { id: companyId } });
+    // stockMovement rows are immutable: blocked steps are skipped by design.
+    // Isolation comes from the unique per-run companyId.
+    await cleanupCompanyScope([
+      { label: 'stockMovement', run: () => db.stockMovement.deleteMany({ where: { companyId } }) },
+      { label: 'warehouseStock', run: () => db.warehouseStock.deleteMany({ where: { companyId } }) },
+      { label: 'businessEvent', run: () => db.businessEvent.deleteMany({ where: { companyId } }) },
+      { label: 'product', run: () => db.product.deleteMany({ where: { companyId } }) },
+      { label: 'unit', run: () => db.unit.deleteMany({ where: { companyId } }) },
+      { label: 'category', run: () => db.category.deleteMany({ where: { companyId } }) },
+      { label: 'warehouse', run: () => db.warehouse.deleteMany({ where: { companyId } }) },
+      { label: 'branch', run: () => db.branch.deleteMany({ where: { companyId } }) },
+      { label: 'user', run: () => db.user.deleteMany({ where: { companyId } }) },
+      { label: 'auditLog', run: () => db.auditLog.deleteMany({ where: { companyId } }) },
+      { label: 'company', run: () => db.company.deleteMany({ where: { id: companyId } }) },
+    ]);
   }
   await db.$disconnect();
 });
@@ -197,6 +202,59 @@ describe('postStockMovement — moving-average cost', () => {
     const qtyAfterReversal = parseFloat(stockAfterReversal!.qtyOnHand.toString());
 
     expect(qtyAfterReversal).toBe(qtyAfterInbound - 5);
+
+    // Provenance is attached at INSERT time (immutable rows cannot be updated):
+    // the reversal row references the original, and the original is untouched.
+    const reversalRow = await db.stockMovement.findUnique({ where: { id: reversal.movementId } });
+    expect(reversalRow?.reversalOfMovementId).toBe(original.movementId);
+    expect(reversalRow?.movementType).toBe('reversal');
+    const originalRow = await db.stockMovement.findUnique({ where: { id: original.movementId } });
+    expect(originalRow?.reversalOfMovementId).toBeNull();
+  });
+
+  it('duplicate reversal is rejected as already-reversed (409)', async () => {
+    const original = await db.$transaction(async (tx) => {
+      return postStockMovement(tx, {
+        companyId, eventId, eventLineNo: 6,
+        warehouseId, productId,
+        movementType: 'purchase_receive',
+        qtyDelta: 5,
+        unitCost: 200,
+        referenceType: 'test', referenceId: 'test-6',
+        effectiveAt: new Date(),
+        createdBy: userId,
+      });
+    });
+    const reversalEventId = crypto.randomUUID();
+    await db.businessEvent.create({
+      data: { id: reversalEventId, companyId, eventType: 'reversal', sourceType: 'test', sourceId: 'reversal-2', correlationId: 'test' },
+    });
+    await db.$transaction(async (tx) => {
+      return reverseStockMovement(tx, {
+        originalMovementId: original.movementId,
+        eventId: reversalEventId,
+        eventLineNo: 1,
+        createdBy: userId,
+        reason: 'first reversal',
+      });
+    });
+
+    // Second reversal of the same movement — even with fresh event keys — 409s.
+    const retryEventId = crypto.randomUUID();
+    await db.businessEvent.create({
+      data: { id: retryEventId, companyId, eventType: 'reversal', sourceType: 'test', sourceId: 'reversal-3', correlationId: 'test' },
+    });
+    await expect(
+      db.$transaction(async (tx) => {
+        return reverseStockMovement(tx, {
+          originalMovementId: original.movementId,
+          eventId: retryEventId,
+          eventLineNo: 1,
+          createdBy: userId,
+          reason: 'duplicate reversal',
+        });
+      }),
+    ).rejects.toThrow(/already reversed/);
   });
 });
 

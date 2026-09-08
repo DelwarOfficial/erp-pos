@@ -75,7 +75,7 @@ describe('Delivery: COD Clearing', () => {
 
 describe('Delivery: Return Inspection Controls Restock', () => {
   it('returned item goes to quarantine, not sellable stock', () => {
-    const returnDisposition = 'pending_inspection';
+    const returnDisposition: string = 'pending_inspection';
     const canRestock = returnDisposition === 'resalable';
 
     expect(canRestock).toBe(false);

@@ -43,6 +43,10 @@ export interface PostStockMovementParams {
   referenceType: string;
   referenceId: string;
   sourceLineId?: string;
+  // Set ONLY by reverseStockMovement at creation time. The stock_movements
+  // table is immutable (IMMUTABLE_LEDGER trigger): provenance must be complete
+  // in the initial INSERT — never attached via a later UPDATE.
+  reversalOfMovementId?: string;
   effectiveAt: Date;
   createdBy: string;
   metadata?: Record<string, unknown>;
@@ -158,6 +162,7 @@ export async function postStockMovement(
       referenceType: params.referenceType,
       referenceId: params.referenceId,
       sourceLineId: params.sourceLineId ?? null,
+      reversalOfMovementId: params.reversalOfMovementId ?? null,
       effectiveAt: params.effectiveAt,
       postedAt: new Date(),
       createdBy: params.createdBy,
@@ -213,29 +218,52 @@ export async function reverseStockMovement(
     throw new DomainError('VALIDATION_FAILED', 'Movement already reversed', {}, 409);
   }
 
-  const result = await postStockMovement(tx, {
-    companyId: original.companyId,
-    eventId: params.eventId,
-    eventLineNo: params.eventLineNo,
-    warehouseId: original.warehouseId,
-    productId: original.productId,
-    stockBucket: original.stockBucket as StockBucket,
-    movementType: 'reversal',
-    qtyDelta: -parseFloat(original.qtyDelta.toString()),
-    unitCost: parseFloat(original.unitCost.toString()),
-    referenceType: 'reversal',
-    referenceId: params.originalMovementId,
-    effectiveAt: new Date(),
-    createdBy: params.createdBy,
-    metadata: { reversal_of: params.originalMovementId, reason: params.reason },
-  });
+  // INSERT-ONCE: provenance rides on the initial INSERT. A post-create UPDATE
+  // is rejected by the IMMUTABLE_LEDGER trigger — and must stay rejected.
+  // Duplicate delivery (retry / concurrent double-reverse) fails closed via
+  // @@unique(companyId, eventId, eventLineNo) and is mapped to 409 below.
+  try {
+    return await postStockMovement(tx, {
+      companyId: original.companyId,
+      eventId: params.eventId,
+      eventLineNo: params.eventLineNo,
+      warehouseId: original.warehouseId,
+      productId: original.productId,
+      stockBucket: original.stockBucket as StockBucket,
+      movementType: 'reversal',
+      qtyDelta: -parseFloat(original.qtyDelta.toString()),
+      unitCost: parseFloat(original.unitCost.toString()),
+      referenceType: 'reversal',
+      referenceId: params.originalMovementId,
+      reversalOfMovementId: params.originalMovementId,
+      effectiveAt: new Date(),
+      createdBy: params.createdBy,
+      metadata: { reversal_of: params.originalMovementId, reason: params.reason },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      const raced = await tx.stockMovement.findFirst({
+        where: { reversalOfMovementId: params.originalMovementId },
+      });
+      if (raced) {
+        throw new DomainError('VALIDATION_FAILED', 'Movement already reversed', {}, 409);
+      }
+    }
+    throw e;
+  }
+}
 
-  await tx.stockMovement.update({
-    where: { id: result.movementId },
-    data: { reversalOfMovementId: params.originalMovementId },
-  });
-
-  return result;
+function isUniqueViolation(e: unknown): boolean {
+  const code = (e as { code?: string })?.code ?? '';
+  const msg = e instanceof Error ? e.message : String(e);
+  return (
+    code === 'P2002' ||
+    msg.includes('Unique constraint') ||
+    msg.includes('UNIQUE constraint failed') ||
+    msg.includes('ER_DUP_ENTRY') ||
+    msg.includes('Duplicate entry') ||
+    msg.includes('1062')
+  );
 }
 
 /**

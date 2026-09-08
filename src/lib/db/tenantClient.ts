@@ -105,8 +105,12 @@ export function applyTenantIsolation(prisma: PrismaClient) {
 
           const mutableArgs = args as Record<string, any>;
           const scope = scopeFor(model, ctx.companyId);
+          // Widen for forward-compatible matching: this Prisma version's
+          // extension operation union lags bulk-returning operations, but the
+          // runtime still emits them and they MUST be tenant-scoped.
+          const op = operation as string;
 
-          if (FILTERED_OPERATIONS.has(operation)) addScope(mutableArgs, scope);
+          if (FILTERED_OPERATIONS.has(op)) addScope(mutableArgs, scope);
 
           if (operation === 'create') {
             if (model === 'Company') throw new Error('SYSTEM_DB_REQUIRED:Company.create');
@@ -114,7 +118,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
             else await validateIndirectCreate(prisma, model, mutableArgs.data, ctx.companyId);
           }
 
-          if (operation === 'createMany' || operation === 'createManyAndReturn') {
+          if (op === 'createMany' || op === 'createManyAndReturn') {
             if (model === 'Company') throw new Error(`SYSTEM_DB_REQUIRED:Company.${operation}`);
             const rows = Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
             for (const row of rows) {
@@ -123,7 +127,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
             }
           }
 
-          if (operation === 'upsert') {
+          if (op === 'upsert') {
             addScope(mutableArgs, scope);
             if (model === 'Company') throw new Error('SYSTEM_DB_REQUIRED:Company.upsert');
             if (DIRECT_TENANT_MODELS.has(model)) {
@@ -134,7 +138,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
             }
           }
 
-          if ((operation === 'update' || operation === 'updateMany' || operation === 'updateManyAndReturn')
+          if ((op === 'update' || op === 'updateMany' || op === 'updateManyAndReturn')
             && mutableArgs.data?.companyId && mutableArgs.data.companyId !== ctx.companyId) {
             throw new Error('TENANT_VIOLATION');
           }

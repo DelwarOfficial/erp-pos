@@ -183,7 +183,11 @@ describe('Provider Mock Integration: Payment Flow', () => {
     const webhook = provider.simulateWebhook(init.gatewayTxnId, 'success');
     const result = await provider.verifyWebhook(webhook);
     expect(result.verified).toBe(true);
+    // Narrow the verified/unverified union without casts: unverified results
+    // carry no status/paymentId.
+    if (!('status' in result)) throw new Error('expected verified webhook result');
     expect(result.status).toBe('success');
+    if (!('paymentId' in result)) throw new Error('expected paymentId in verified result');
     expect(result.paymentId).toBe(init.gatewayTxnId);
   });
 

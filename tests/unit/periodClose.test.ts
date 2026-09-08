@@ -27,14 +27,14 @@ describe('Period-End Close Workflow (§11.4)', () => {
 
     it('locked → open requires platform operations', () => {
       const isPlatformOps = false;
-      const currentStatus = 'locked';
+      const currentStatus: string = 'locked';
       const canUnlock = isPlatformOps || currentStatus !== 'locked';
 
       expect(canUnlock).toBe(false); // non-platform-ops cannot unlock
     });
 
     it('soft_locked → open is allowed (undo soft-lock)', () => {
-      const currentStatus = 'soft_locked';
+      const currentStatus: string = 'soft_locked';
       const canUnlock = currentStatus !== 'locked' || true; // soft_lock can be undone
 
       expect(canUnlock).toBe(true);
@@ -115,7 +115,7 @@ describe('Period-End Close Workflow (§11.4)', () => {
 
   describe('Step 5: Soft-Lock', () => {
     it('soft-lock prevents new entries but allows corrections', () => {
-      const softLockedStatus = 'soft_locked';
+      const softLockedStatus: string = 'soft_locked';
       const allowsNewEntries = softLockedStatus === 'open';
       const allowsCorrections = softLockedStatus === 'soft_locked' || softLockedStatus === 'open';
 
@@ -126,7 +126,7 @@ describe('Period-End Close Workflow (§11.4)', () => {
 
   describe('Step 6: Final Lock', () => {
     it('locked period is immutable — corrections require new-period reversal', () => {
-      const lockedStatus = 'locked';
+      const lockedStatus: string = 'locked';
       const allowsCorrections = lockedStatus === 'soft_locked' || lockedStatus === 'open';
       const requiresReversalInNewPeriod = lockedStatus === 'locked';
 

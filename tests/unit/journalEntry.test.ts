@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { postJournalEntry, reverseJournalEntry } from '../../src/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '../../src/lib/errors/codes';
+import { cleanupCompanyScope } from '../helpers/immutableTeardown';
 
 const db = new PrismaClient();
 
@@ -55,15 +56,17 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (companyId) {
-    try {
-      await db.journalLine.deleteMany({ where: { companyId } });
-      await db.journalEntry.deleteMany({ where: { companyId } });
-      await db.businessEvent.deleteMany({ where: { companyId } });
-      await db.chartOfAccount.deleteMany({ where: { companyId } });
-      await db.user.deleteMany({ where: { companyId } });
-      await db.auditLog.deleteMany({ where: { companyId } });
-      await db.company.deleteMany({ where: { id: companyId } });
-    } catch (e) { console.error('Cleanup (non-fatal):', e); }
+    // journalLine rows are immutable: blocked steps are skipped by design.
+    // Isolation comes from the unique per-run companyId.
+    await cleanupCompanyScope([
+      { label: 'journalLine', run: () => db.journalLine.deleteMany({ where: { companyId } }) },
+      { label: 'journalEntry', run: () => db.journalEntry.deleteMany({ where: { companyId } }) },
+      { label: 'businessEvent', run: () => db.businessEvent.deleteMany({ where: { companyId } }) },
+      { label: 'chartOfAccount', run: () => db.chartOfAccount.deleteMany({ where: { companyId } }) },
+      { label: 'user', run: () => db.user.deleteMany({ where: { companyId } }) },
+      { label: 'auditLog', run: () => db.auditLog.deleteMany({ where: { companyId } }) },
+      { label: 'company', run: () => db.company.deleteMany({ where: { id: companyId } }) },
+    ]);
   }
   await db.$disconnect();
 });

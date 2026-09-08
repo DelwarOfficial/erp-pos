@@ -72,7 +72,7 @@ describe('nextDocumentNumber', () => {
     const before = await testDb.documentSequence.findFirst({
       where: { companyId, branchId, documentType: 'PURCHASE', fiscalYear: 2026 },
     });
-    const beforeNext = before?.nextNumber ?? 1n;
+    const beforeNext = before?.nextNumber ?? BigInt(1);
 
     try {
       await testDb.$transaction(async (tx) => {
@@ -88,7 +88,7 @@ describe('nextDocumentNumber', () => {
     const after = await testDb.documentSequence.findFirst({
       where: { companyId, branchId, documentType: 'PURCHASE', fiscalYear: 2026 },
     });
-    expect(after?.nextNumber ?? 1n).toBe(beforeNext); // unchanged
+    expect(after?.nextNumber ?? BigInt(1)).toBe(beforeNext); // unchanged
   });
 
   it('issues distinct numbers under sequential transactions (SQLite serializes writes)', async () => {

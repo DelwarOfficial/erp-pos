@@ -109,7 +109,9 @@ describe('company activation logic', () => {
       where: { id: tenantUserId },
       data: {
         mfaEnabled: true,
-        mfaSecretCiphertext: enc.ciphertext,
+        // Prisma Bytes expects Uint8Array; Buffer's @types identity diverges
+        // across @types/node versions, so copy explicitly (test-only).
+        mfaSecretCiphertext: new Uint8Array(enc.ciphertext),
       },
     });
 

@@ -42,28 +42,34 @@ beforeAll(async () => {
     },
   });
   userId = user.id;
-  await seedFeatureFlagsForCompany(companyId, userId);
+  // Feature flags are tenant-scoped: seed inside the company's own context,
+  // exactly as production onboarding does. NEVER isGlobal here.
+  await runInTenantContext(ctx(), async () => {
+    await seedFeatureFlagsForCompany(companyId, userId);
+  });
 });
 
 afterAll(async () => {
-  if (companyId) {
-    await db.featureFlag.deleteMany({ where: { companyId } });
-    await db.companyLanguage.deleteMany({ where: { companyId } });
-    await db.securityEvent.deleteMany({ where: { companyId } });
-    await db.auditLog.deleteMany({ where: { companyId } });
-  }
-  if (userId) await db.user.deleteMany({ where: { id: userId } });
-  if (companyId) await db.company.deleteMany({ where: { id: companyId } });
+  await runInTenantContext(ctx(), async () => {
+    if (companyId) {
+      await db.featureFlag.deleteMany({ where: { companyId } });
+      await db.companyLanguage.deleteMany({ where: { companyId } });
+      await db.securityEvent.deleteMany({ where: { companyId } });
+      await db.auditLog.deleteMany({ where: { companyId } });
+    }
+    if (userId) await db.user.deleteMany({ where: { id: userId } });
+    if (companyId) await db.company.deleteMany({ where: { id: companyId } });
+  });
   await db.$disconnect();
 });
 
 const ctx = () => buildTenantContext({
-  companyId, userId, branchIds: [], isGlobal: true,
+  companyId, userId, branchIds: [], isGlobal: false,
 });
 
 describe('featureFlags', () => {
   it('seeds all flags from the catalogue with default values', async () => {
-    const flags = await listFeatureFlags(companyId);
+    const flags = await runInTenantContext(ctx(), async () => listFeatureFlags(companyId));
     expect(flags.length).toBe(FEATURE_FLAG_CATALOGUE.length);
     // Default-disabled flags (e.g. crm_enabled) should be off
     const crm = flags.find(f => f.flagKey === 'crm_enabled');
@@ -90,9 +96,9 @@ describe('featureFlags', () => {
 
   it('toggles a flag for an implemented module', async () => {
     // crm module is NOT implemented — should fail. Use 'sale' (quotation) which IS implemented.
-    const result = await toggleFeatureFlag({
+    const result = await runInTenantContext(ctx(), async () => toggleFeatureFlag({
       companyId, flagKey: 'quotation_enabled', enabled: false, updatedBy: userId,
-    });
+    }));
     expect(result.wasEnabled).toBe(true);
     expect(result.enabled).toBe(false);
 
@@ -102,19 +108,21 @@ describe('featureFlags', () => {
     });
 
     // Re-enable
-    await toggleFeatureFlag({ companyId, flagKey: 'quotation_enabled', enabled: true, updatedBy: userId });
+    await runInTenantContext(ctx(), async () =>
+      toggleFeatureFlag({ companyId, flagKey: 'quotation_enabled', enabled: true, updatedBy: userId }));
   });
 
   it('rejects enabling a flag for an unimplemented module with 409 MODULE_NOT_IMPLEMENTED', async () => {
     // crm_enabled has module='crm' which is NOT in IMPLEMENTED_MODULES for M1
     await expect(
-      toggleFeatureFlag({ companyId, flagKey: 'crm_enabled', enabled: true, updatedBy: userId }),
+      runInTenantContext(ctx(), async () =>
+        toggleFeatureFlag({ companyId, flagKey: 'crm_enabled', enabled: true, updatedBy: userId })),
     ).rejects.toThrow(/not implemented/);
 
     // Verify a security event was recorded
-    const events = await db.securityEvent.findMany({
+    const events = await runInTenantContext(ctx(), async () => db.securityEvent.findMany({
       where: { companyId, eventType: 'feature_flag_enable_unimplemented_module' },
-    });
+    }));
     expect(events.length).toBeGreaterThan(0);
   });
 
