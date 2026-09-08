@@ -69,14 +69,16 @@ export async function POST(req: NextRequest) {
               if (!parent) throw new DomainError('VALIDATION_FAILED', 'Parent category not found', {}, 400);
             }
 
+            // parentScope is MariaDB-only (UNIQUE + CHECK); the SQLite model
+            // has no such field, so it must only be sent on MariaDB.
+            const isMariaDb = /^(mysql|mariadb):\/\//i.test(process.env.DATABASE_URL ?? '');
             const category = await tx.category.create({
               data: {
                 companyId: auth.companyId,
                 name: body.name,
                 code: body.code,
                 parentId: body.parent_id ?? null,
-                // Normalized scope for uq_categories_parent_scope_name + CHECK.
-                parentScope: body.parent_id ?? '',
+                ...(isMariaDb ? { parentScope: body.parent_id ?? '' } : {}),
                 isActive: true,
               },
             });

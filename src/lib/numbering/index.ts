@@ -105,11 +105,13 @@ export async function nextDocumentNumber(
   let nextNumber: bigint;
 
   if (!existing) {
+    // NOTE: no branchScope here — the SQLite DocumentSequence model has no
+    // such field (MariaDB-only, where reserveMariaDbRange() writes
+    // branch_scope via raw SQL). Sending it throws Unknown argument.
     const created = await tx.documentSequence.create({
       data: {
         companyId: params.companyId,
         branchId: params.branchId ?? null,
-        branchScope: params.branchId ?? '',
         documentType: params.documentType,
         fiscalYear: params.fiscalYear,
         prefix: params.prefix,
