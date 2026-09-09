@@ -83,6 +83,12 @@ export async function runInTenantContext<T>(
   ctx: TenantContext,
   work: () => Promise<T>,
 ): Promise<T> {
+  // Prisma executes client-extension hooks lazily when the returned promise
+  // is first awaited — NOT when the query method is called. Therefore `work`
+  // MUST be an `async` function that awaits tenant-scoped queries inside its
+  // body (or chains them before returning). A sync arrow that merely returns
+  // a bare PrismaPromise (e.g. `() => db.user.findFirst(...)`) lets the hook
+  // fire after run() has exited, losing the context (fail-closed throw).
   return tenantStorage.run(ctx, work);
 }
 

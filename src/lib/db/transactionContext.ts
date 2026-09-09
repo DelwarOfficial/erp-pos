@@ -14,9 +14,13 @@ export interface TenantContext {
 
 export const tenantStorage = new AsyncLocalStorage<TenantContext>();
 
-export function enterTenantContext(ctx: TenantContext): void {
-  tenantStorage.enterWith(ctx);
-}
+// REMOVED: enterTenantContext() (AsyncLocalStorage.enterWith wrapper).
+// enterWith() sets the store only for the current async context and its
+// future children — it does NOT propagate back to the caller's continuation
+// after `await`, so tenant-scoped queries after `await authenticateRequest()`
+// ran without context (TENANT_CONTEXT_REQUIRED), and a stale store could leak
+// across requests sharing the context. Use tenantStorage.run() via
+// runInTenantContext()/withTenant()/withAuthenticatedTenant() instead.
 
 export function getTenantContext(): TenantContext | undefined {
   return tenantStorage.getStore();
