@@ -1,22 +1,49 @@
 // src/app/(auth)/mfa/setup/page.tsx
-// Initial MFA enrollment: displays the one-time otpauth URI + manual key,
-// then verifies the 6-digit code to activate MFA.
+// Initial MFA enrollment: client-side QR code from the one-time setup URI,
+// hidden-by-default manual key, then 6-digit verification to activate MFA.
+//
+// Privacy: the QR is rendered locally in the browser (react-qr-code SVG).
+// The setup URI / secret is never sent to any external service and never
+// displayed as raw text. No secret is logged.
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Component, type ReactNode, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import QRCode from 'react-qr-code';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+/** Isolates QR render failures so the manual key path always stays usable. */
+class QrErrorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { failed: boolean }
+> {
+  constructor(props: { children: ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
+
 export default function MfaSetupPage() {
   const router = useRouter();
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
   const [manualKey, setManualKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -31,8 +58,15 @@ export default function MfaSetupPage() {
           setFormError(data?.error?.message ?? 'Could not start MFA setup. Please log in again.');
           return;
         }
-        setOtpauthUrl(data.otpauth_url ?? null);
-        setManualKey(data.manual_key ?? null);
+        // Accept only a well-formed otpauth URI; anything else cannot be
+        // encoded into a trustworthy QR code.
+        const uri: unknown = data.otpauth_url;
+        if (typeof uri !== 'string' || !uri.startsWith('otpauth://')) {
+          setFormError('Could not start MFA setup. Please log in again.');
+          return;
+        }
+        setOtpauthUrl(uri);
+        setManualKey(typeof data.manual_key === 'string' ? data.manual_key : null);
       })
       .catch((e: unknown) => {
         if (!cancelled) setFormError(e instanceof Error ? e.message : 'Network error');
@@ -73,14 +107,16 @@ export default function MfaSetupPage() {
     }
   }
 
+  const preparing = !otpauthUrl && !formError;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 p-4">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Set up two-factor authentication</CardTitle>
           <CardDescription>
-            Your account requires MFA. Scan the setup link with Google Authenticator,
-            Microsoft Authenticator, or any compatible app, then enter the 6-digit code.
+            Your account requires MFA. Scan the QR code with Google Authenticator,
+            Microsoft Authenticator, or another TOTP-compatible app, then enter the 6-digit code.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -89,30 +125,61 @@ export default function MfaSetupPage() {
               {formError}
             </p>
           ) : null}
-          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-            <li>Open your authenticator app and add a new account.</li>
-            <li>Enter the manual setup key below (or open the setup link).</li>
-            <li>Type the 6-digit code shown by the app and press Verify.</li>
-          </ol>
-          {otpauthUrl ? (
+          {preparing ? (
+            <p aria-live="polite" className="text-sm text-muted-foreground text-center py-8">
+              Preparing QR code…
+            </p>
+          ) : null}
+          {otpauthUrl && !qrFailed ? (
             <div className="space-y-2">
-              <Label htmlFor="otpauth">Setup link (open on a device with the app)</Label>
-              <Input id="otpauth" readOnly value={otpauthUrl} onFocus={(e) => e.target.select()} />
+              <p id="qr-label" className="text-sm font-medium text-center">
+                Scan this QR code
+              </p>
+              <div
+                role="img"
+                aria-labelledby="qr-label qr-desc"
+                className="mx-auto w-52 h-52 sm:w-64 sm:h-64 rounded-lg border bg-white p-3 [&>svg]:h-full [&>svg]:w-full"
+              >
+                <QrErrorBoundary onError={() => setQrFailed(true)}>
+                  <QRCode value={otpauthUrl} level="M" title="MFA setup QR code" />
+                </QrErrorBoundary>
+              </div>
+              <p id="qr-desc" className="text-xs text-muted-foreground text-center">
+                Use Google Authenticator, Microsoft Authenticator, or another TOTP-compatible app.
+              </p>
             </div>
+          ) : null}
+          {otpauthUrl && qrFailed ? (
+            <p role="alert" className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              Could not render the QR code. Use the manual setup key below instead.
+            </p>
           ) : null}
           {manualKey ? (
             <div className="space-y-2">
-              <Label htmlFor="manual-key">Manual setup key</Label>
+              <p className="text-sm text-muted-foreground text-center">
+                Can&apos;t scan the QR code?
+              </p>
               <div className="flex gap-2">
-                <Input
-                  id="manual-key"
-                  readOnly
-                  type={showKey ? 'text' : 'password'}
-                  value={manualKey}
-                  onFocus={(e) => e.target.select()}
-                />
-                <Button type="button" variant="outline" onClick={() => setShowKey((v) => !v)}>
-                  {showKey ? 'Hide' : 'Show'}
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="manual-key">Manual setup key</Label>
+                  <Input
+                    id="manual-key"
+                    readOnly
+                    type={showKey ? 'text' : 'password'}
+                    value={showKey ? manualKey : '••••••••••••••••'}
+                    onFocus={(e) => e.target.select()}
+                    autoComplete="off"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="self-end"
+                  onClick={() => setShowKey((v) => !v)}
+                  aria-expanded={showKey}
+                  aria-controls="manual-key"
+                >
+                  {showKey ? 'Hide setup key' : 'Show setup key'}
                 </Button>
               </div>
             </div>
@@ -121,7 +188,7 @@ export default function MfaSetupPage() {
         <form onSubmit={handleActivate}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="code">6-digit code</Label>
+              <Label htmlFor="code">Verification code</Label>
               <Input
                 id="code"
                 inputMode="numeric"

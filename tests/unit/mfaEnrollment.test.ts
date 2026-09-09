@@ -276,10 +276,24 @@ describe('login UI + seed contract (static)', () => {
 
   it('setup page guides QR/manual-key/code without logging secrets', () => {
     const page = readFileSync('src/app/(auth)/mfa/setup/page.tsx', 'utf8');
-    expect(page).toContain('manual_key');
-    expect(page).toContain('otpauth');
-    expect(page).toContain('6-digit');
+    // Client-side QR from the otpauth URI; raw URI never displayed.
+    expect(page).toContain('react-qr-code');
+    expect(page).toContain('Scan this QR code');
+    expect(page).toContain('Manual setup key');
+    expect(page).toContain('Preparing QR code');
+    expect(page).toContain('one-time-code');
+    // The raw URI is never shown in a text field: every otpauthUrl reference
+    // must be state plumbing, a guard, the startsWith check, or the local
+    // QR encoder input — never an <Input> value.
+    expect(page).not.toMatch(/<Input[^>]*otpauth/i);
+    const refs = page.split('\n').filter((l) => l.includes('otpauthUrl'));
+    expect(refs.length).toBeGreaterThan(0);
+    for (const line of refs) {
+      expect(line).toMatch(/useState|setOtpauthUrl|otpauthUrl &&|!otpauthUrl|startsWith|QRCode value/);
+    }
     expect(page).not.toMatch(/console\.log/);
+    // No external QR service may receive the secret.
+    expect(page).not.toMatch(/api\.qrserver|qr-code.*http|https.*qr/i);
   });
 
   it('seed requires explicit password in production and never prints it', () => {
