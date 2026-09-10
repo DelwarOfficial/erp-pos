@@ -32,6 +32,8 @@ const PurchaseCreateSchema = z.object({
   items: z.array(PurchaseItemSchema).min(1),
 });
 
+const PRODUCT_VALIDATION_BATCH_SIZE = 500;
+
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
@@ -182,11 +184,22 @@ export async function POST(req: NextRequest) {
             });
 
             // Create items
+            const productIds = [...new Set(body.items.map(item => item.product_id))];
+            const products: Array<{ id: string; name: string; code: string }> = [];
+            for (let offset = 0; offset < productIds.length; offset += PRODUCT_VALIDATION_BATCH_SIZE) {
+              products.push(...await tx.product.findMany({
+                where: {
+                  companyId: auth.companyId,
+                  deletedAt: null,
+                  id: { in: productIds.slice(offset, offset + PRODUCT_VALIDATION_BATCH_SIZE) },
+                },
+                select: { id: true, name: true, code: true },
+              }));
+            }
+            const productById = new Map(products.map(product => [product.id, product]));
             let lineNo = 1;
             for (const item of body.items) {
-              const product = await tx.product.findFirst({
-                where: { id: item.product_id, companyId: auth.companyId, deletedAt: null },
-              });
+              const product = productById.get(item.product_id);
               if (!product) throw new DomainError('VALIDATION_FAILED', `Product ${item.product_id} not found`, {}, 404);
 
               const lineTotal = item.qty_ordered * item.unit_cost - item.discount_amount + item.tax_amount;

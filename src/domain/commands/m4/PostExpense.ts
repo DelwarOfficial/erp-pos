@@ -36,6 +36,8 @@ export interface PostExpenseResult {
   journalEntryNo: string;
 }
 
+const EXPENSE_CATEGORY_BATCH_SIZE = 500;
+
 export async function postExpense(
   tx: Prisma.TransactionClient,
   input: PostExpenseInput,
@@ -78,11 +80,21 @@ export async function postExpense(
   let lineNo = 1;
   const journalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string }> = [];
 
+  const categoryIds = [...new Set(input.items.map(item => item.expenseCategoryId))];
+  const categories: Prisma.ExpenseCategoryGetPayload<object>[] = [];
+  for (let offset = 0; offset < categoryIds.length; offset += EXPENSE_CATEGORY_BATCH_SIZE) {
+    categories.push(...await tx.expenseCategory.findMany({
+      where: {
+        companyId: input.companyId,
+        isActive: true,
+        id: { in: categoryIds.slice(offset, offset + EXPENSE_CATEGORY_BATCH_SIZE) },
+      },
+    }));
+  }
+  const categoryById = new Map(categories.map(category => [category.id, category]));
+
   for (const item of input.items) {
-    const cat = await tx.expenseCategory.findFirst({
-      where: { id: item.expenseCategoryId, companyId: input.companyId, isActive: true },
-      include: { expenseAccount: true },
-    });
+    const cat = categoryById.get(item.expenseCategoryId);
     if (!cat) throw new DomainError('VALIDATION_FAILED', 'Expense category not found', {}, 404);
 
     const baseAmount = item.amount * input.exchangeRate;

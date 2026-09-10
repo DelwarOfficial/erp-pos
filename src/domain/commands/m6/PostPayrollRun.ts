@@ -27,6 +27,8 @@ export interface PostPayrollRunInput {
   items: PayrollItemInput[];
 }
 
+const PAYROLL_READ_BATCH_SIZE = 500;
+
 export async function postPayrollRun(
   tx: Prisma.TransactionClient,
   input: PostPayrollRunInput,
@@ -86,11 +88,22 @@ export async function postPayrollRun(
   const beftnEntries: BEFTNEntry[] = [];
   const employeeData: Array<{ employeeId: string; net: number }> = [];
 
+  const employeeIds = [...new Set(input.items.map(item => item.employeeId))];
+  const employees: Prisma.EmployeeGetPayload<object>[] = [];
+  for (let offset = 0; offset < employeeIds.length; offset += PAYROLL_READ_BATCH_SIZE) {
+    employees.push(...await tx.employee.findMany({
+      where: {
+        companyId: input.companyId,
+        employmentStatus: 'active',
+        id: { in: employeeIds.slice(offset, offset + PAYROLL_READ_BATCH_SIZE) },
+      },
+    }));
+  }
+  const employeeById = new Map(employees.map(employee => [employee.id, employee]));
+
   // Validate employees + build BEFTN entries
   for (const item of input.items) {
-    const employee = await tx.employee.findFirst({
-      where: { id: item.employeeId, companyId: input.companyId, employmentStatus: 'active' },
-    });
+    const employee = employeeById.get(item.employeeId);
     if (!employee) {
       throw new DomainError('VALIDATION_FAILED', `Employee ${item.employeeId} not found or inactive`, {}, 404);
     }
@@ -127,9 +140,7 @@ export async function postPayrollRun(
 
   // Post journal: Dr Salaries Expense, Cr Deductions, Cr Payroll Payable (net)
   let journalEntryNo = '';
-  const firstEmp = await tx.employee.findFirst({
-    where: { id: input.items[0].employeeId, companyId: input.companyId },
-  });
+  const firstEmp = employeeById.get(input.items[0].employeeId);
 
   if (firstEmp) {
     const journalLines = [

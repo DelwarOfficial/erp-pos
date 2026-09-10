@@ -31,7 +31,7 @@ export interface TeardownReport {
   skipped: Array<{ label: string; reason: string }>;
 }
 
-const INVARIANT_BLOCK_PATTERN = /IMMUTABLE_LEDGER|1451|1452|foreign key constraint|a foreign key constraint fails/i;
+const INVARIANT_BLOCK_PATTERN = /IMMUTABLE_LEDGER|POSTED_JOURNAL_IMMUTABLE|1451|1452|foreign key constraint|a foreign key constraint fails/i;
 
 export function isInvariantBlock(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);

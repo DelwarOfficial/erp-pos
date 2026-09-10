@@ -15,12 +15,15 @@ export interface ReconciliationFinding {
 }
 export type ReconciliationCheck = (tx: Prisma.TransactionClient, companyId: string) => Promise<ReconciliationFinding[]>;
 
+const stockProjectionKey = (warehouseId: string, productId: string) => `${warehouseId}\u0000${productId}`;
+
 export const checkStockQtyLedger: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
   const stocks = await tx.warehouseStock.findMany({ where: { companyId }, select: { id: true, warehouseId: true, productId: true, qtyOnHand: true } });
+  const movements = await tx.stockMovement.groupBy({ by: ['warehouseId', 'productId'], where: { companyId, stockBucket: 'on_hand' }, _sum: { qtyDelta: true } });
+  const movementQtyByStock = new Map(movements.map(m => [stockProjectionKey(m.warehouseId, m.productId), m._sum.qtyDelta]));
   for (const stock of stocks) {
-    const movements = await tx.stockMovement.aggregate({ where: { companyId, warehouseId: stock.warehouseId, productId: stock.productId, stockBucket: 'on_hand' }, _sum: { qtyDelta: true } });
-    const expected = parseFloat(movements._sum.qtyDelta?.toString() ?? '0');
+    const expected = parseFloat(movementQtyByStock.get(stockProjectionKey(stock.warehouseId, stock.productId))?.toString() ?? '0');
     const actual = parseFloat(stock.qtyOnHand.toString());
     if (Math.abs(expected - actual) > 0.0001) findings.push({ check_code: 'STOCK_QTY_LEDGER', severity: 'critical', reference_type: 'warehouse_stock', reference_id: stock.id, expected_value: expected, actual_value: actual, variance: actual - expected, details: { warehouse_id: stock.warehouseId, product_id: stock.productId } });
   }
@@ -30,9 +33,10 @@ export const checkStockQtyLedger: ReconciliationCheck = async (tx, companyId) =>
 export const checkStockValueLedger: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
   const stocks = await tx.warehouseStock.findMany({ where: { companyId }, select: { id: true, warehouseId: true, productId: true, qtyOnHand: true, movingAverageCost: true } });
+  const movements = await tx.stockMovement.groupBy({ by: ['warehouseId', 'productId'], where: { companyId, stockBucket: 'on_hand' }, _sum: { totalCostDelta: true } });
+  const movementValueByStock = new Map(movements.map(m => [stockProjectionKey(m.warehouseId, m.productId), m._sum.totalCostDelta]));
   for (const stock of stocks) {
-    const movements = await tx.stockMovement.aggregate({ where: { companyId, warehouseId: stock.warehouseId, productId: stock.productId, stockBucket: 'on_hand' }, _sum: { totalCostDelta: true } });
-    const expected = parseFloat(movements._sum.totalCostDelta?.toString() ?? '0');
+    const expected = parseFloat(movementValueByStock.get(stockProjectionKey(stock.warehouseId, stock.productId))?.toString() ?? '0');
     const actual = parseFloat(stock.qtyOnHand.toString()) * parseFloat(stock.movingAverageCost.toString());
     if (Math.abs(expected - actual) > 0.01) findings.push({ check_code: 'STOCK_VALUE_LEDGER', severity: 'high', reference_type: 'warehouse_stock', reference_id: stock.id, expected_value: expected, actual_value: actual, variance: actual - expected, details: { warehouse_id: stock.warehouseId, product_id: stock.productId } });
   }
@@ -42,9 +46,11 @@ export const checkStockValueLedger: ReconciliationCheck = async (tx, companyId) 
 export const checkSerialStockCount: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
   const serials = await tx.productSerial.groupBy({ by: ['currentWarehouseId', 'productId'], where: { companyId, status: 'in_stock' }, _count: true });
+  const stocks = await tx.warehouseStock.findMany({ where: { companyId }, select: { id: true, warehouseId: true, productId: true, qtyOnHand: true } });
+  const stockByProjection = new Map(stocks.map(stock => [stockProjectionKey(stock.warehouseId, stock.productId), stock]));
   for (const group of serials) {
     if (!group.currentWarehouseId) continue;
-    const stock = await tx.warehouseStock.findUnique({ where: { companyId_warehouseId_productId: { companyId, warehouseId: group.currentWarehouseId, productId: group.productId } } });
+    const stock = stockByProjection.get(stockProjectionKey(group.currentWarehouseId, group.productId));
     if (stock && group._count !== parseFloat(stock.qtyOnHand.toString())) findings.push({ check_code: 'SERIAL_STOCK_COUNT', severity: 'high', reference_type: 'warehouse_stock', reference_id: stock.id, expected_value: parseFloat(stock.qtyOnHand.toString()), actual_value: group._count, variance: group._count - parseFloat(stock.qtyOnHand.toString()), details: { warehouse_id: group.currentWarehouseId, product_id: group.productId } });
   }
   return findings;
@@ -53,9 +59,10 @@ export const checkSerialStockCount: ReconciliationCheck = async (tx, companyId) 
 export const checkReservationProjection: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
   const stocks = await tx.warehouseStock.findMany({ where: { companyId, qtyReserved: { gt: 0 } }, select: { id: true, warehouseId: true, productId: true, qtyReserved: true } });
+  const reservations = await tx.stockReservation.groupBy({ by: ['warehouseId', 'productId'], where: { companyId, status: 'active' }, _sum: { qty: true } });
+  const reservedQtyByStock = new Map(reservations.map(r => [stockProjectionKey(r.warehouseId, r.productId), r._sum.qty]));
   for (const stock of stocks) {
-    const reservations = await tx.stockReservation.aggregate({ where: { companyId, warehouseId: stock.warehouseId, productId: stock.productId, status: 'active' }, _sum: { qty: true } });
-    const expected = parseFloat(reservations._sum.qty?.toString() ?? '0');
+    const expected = parseFloat(reservedQtyByStock.get(stockProjectionKey(stock.warehouseId, stock.productId))?.toString() ?? '0');
     const actual = parseFloat(stock.qtyReserved.toString());
     if (Math.abs(expected - actual) > 0.0001) findings.push({ check_code: 'RESERVATION_PROJECTION', severity: 'high', reference_type: 'warehouse_stock', reference_id: stock.id, expected_value: expected, actual_value: actual, variance: actual - expected, details: {} });
   }

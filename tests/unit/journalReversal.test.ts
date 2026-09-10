@@ -35,8 +35,8 @@ describe('journal reversal immutability', () => {
       },
       fiscalPeriod: { findFirst: vi.fn().mockResolvedValue(null) },
       chartOfAccount: {
-        findFirst: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
-          Promise.resolve({ code: where.id, allowManualPosting: true })),
+        findMany: vi.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map(id => ({ id, code: id, allowManualPosting: true })))),
       },
       businessEvent: { create: vi.fn().mockResolvedValue({}) },
       journalLine: { create: vi.fn().mockResolvedValue({}) },

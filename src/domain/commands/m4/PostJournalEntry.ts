@@ -49,6 +49,8 @@ export interface PostJournalEntryResult {
   totalCredit: string;
 }
 
+const ACCOUNT_VALIDATION_BATCH_SIZE = 500;
+
 export async function postJournalEntry(
   tx: Prisma.TransactionClient,
   input: PostJournalEntryInput,
@@ -120,10 +122,21 @@ export async function postJournalEntry(
   // If no period found, we allow posting (sandbox — in production this would be an error)
 
   // 4. Validate tenant consistency — all chart_of_account_ids belong to this company
+  const accountIds = [...new Set(input.lines.map(line => line.chartOfAccountId))];
+  const accounts: Array<{ id: string; code: string; allowManualPosting: boolean }> = [];
+  for (let offset = 0; offset < accountIds.length; offset += ACCOUNT_VALIDATION_BATCH_SIZE) {
+    accounts.push(...await tx.chartOfAccount.findMany({
+      where: {
+        companyId: input.companyId,
+        id: { in: accountIds.slice(offset, offset + ACCOUNT_VALIDATION_BATCH_SIZE) },
+        isActive: true,
+      },
+      select: { id: true, code: true, allowManualPosting: true },
+    }));
+  }
+  const accountById = new Map(accounts.map(account => [account.id, account]));
   for (const line of input.lines) {
-    const coa = await tx.chartOfAccount.findFirst({
-      where: { id: line.chartOfAccountId, companyId: input.companyId, isActive: true },
-    });
+    const coa = accountById.get(line.chartOfAccountId);
     if (!coa) {
       throw new DomainError('VALIDATION_FAILED', `Chart of account ${line.chartOfAccountId} not found in this company`, {}, 400);
     }

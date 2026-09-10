@@ -61,6 +61,12 @@ export interface PostSaleResult {
   eventId: string; // business_event.id — used by risk assessment hook
 }
 
+const SALE_READ_BATCH_SIZE = 500;
+
+type SaleProduct = Prisma.ProductGetPayload<{
+  include: { unit: true; defaultTaxCode: { include: { components: { include: { taxComponent: true } } } } };
+}>;
+
 export async function postSale(
   tx: Prisma.TransactionClient,
   input: PostSaleInput,
@@ -122,7 +128,44 @@ export async function postSale(
     taxAmount: number;
     lineTotal: number;
     serials: string[];
+    productType: string;
+    warrantyPeriodMonths: number | null;
+    taxComponents: Array<{
+      taxComponentId: string;
+      componentCode: string;
+      rate: Prisma.Decimal;
+      outputAccountId: string | null;
+    }>;
   }> = [];
+
+  const productIds = [...new Set(input.items.map(item => item.productId))];
+  const products: SaleProduct[] = [];
+  const stocks: Prisma.WarehouseStockGetPayload<object>[] = [];
+  for (let offset = 0; offset < productIds.length; offset += SALE_READ_BATCH_SIZE) {
+    const ids = productIds.slice(offset, offset + SALE_READ_BATCH_SIZE);
+    products.push(...await tx.product.findMany({
+      where: { id: { in: ids }, companyId: input.companyId, isActive: true, deletedAt: null },
+      include: { unit: true, defaultTaxCode: { include: { components: { include: { taxComponent: true } } } } },
+    }));
+    stocks.push(...await tx.warehouseStock.findMany({
+      where: { companyId: input.companyId, warehouseId: input.warehouseId, productId: { in: ids } },
+    }));
+  }
+  const productById = new Map(products.map(product => [product.id, product]));
+  const stockByProductId = new Map(stocks.map(stock => [stock.productId, stock]));
+
+  const requestedSerialNumbers = [...new Set(input.items.flatMap(item => item.serials ?? []))];
+  const availableSerials: Prisma.ProductSerialGetPayload<object>[] = [];
+  for (let offset = 0; offset < requestedSerialNumbers.length; offset += SALE_READ_BATCH_SIZE) {
+    availableSerials.push(...await tx.productSerial.findMany({
+      where: {
+        companyId: input.companyId,
+        currentWarehouseId: input.warehouseId,
+        serialNumber: { in: requestedSerialNumbers.slice(offset, offset + SALE_READ_BATCH_SIZE) },
+      },
+    }));
+  }
+  const serialByNumber = new Map(availableSerials.map(serial => [serial.serialNumber, serial]));
 
   let lineNo = 1;
   for (const item of input.items) {
@@ -133,25 +176,14 @@ export async function postSale(
       throw new DomainError('VALIDATION_FAILED', `Line ${lineNo}: unit price must be >= 0`, {}, 400);
     }
 
-    const product = await tx.product.findFirst({
-      where: { id: item.productId, companyId: input.companyId, isActive: true, deletedAt: null },
-      include: { unit: true, defaultTaxCode: { include: { components: { include: { taxComponent: true } } } } },
-    });
+    const product = productById.get(item.productId);
     if (!product) {
       throw new DomainError('RESOURCE_NOT_FOUND', `Product ${item.productId} not found or inactive`, {}, 404);
     }
 
     const isStockProduct = product.productType === 'standard' || product.productType === 'combo';
 
-    const stock = await tx.warehouseStock.findUnique({
-      where: {
-        companyId_warehouseId_productId: {
-          companyId: input.companyId,
-          warehouseId: input.warehouseId,
-          productId: item.productId,
-        },
-      },
-    });
+    const stock = stockByProductId.get(item.productId);
     const unitCost = stock ? parseFloat(stock.movingAverageCost.toString()) : 0;
 
     const grossAmount = item.qty * item.unitPrice;
@@ -179,9 +211,7 @@ export async function postSale(
         );
       }
       for (const serialNumber of item.serials) {
-        const serial = await tx.productSerial.findFirst({
-          where: { serialNumber, companyId: input.companyId, currentWarehouseId: input.warehouseId },
-        });
+        const serial = serialByNumber.get(serialNumber);
         if (!serial) {
           throw new DomainError('SERIAL_NOT_AVAILABLE', `Serial ${serialNumber} not found in this warehouse`, { serial: serialNumber }, 409);
         }
@@ -199,6 +229,14 @@ export async function postSale(
       qty: item.qty, unitCostSnapshot: unitCost, unitPriceSnapshot: item.unitPrice,
       grossAmount, discountAmount, taxableAmount, taxAmount: lineTaxAmount, lineTotal,
       serials: serialIds,
+      productType: product.productType,
+      warrantyPeriodMonths: product.warrantyPeriodMonths,
+      taxComponents: product.defaultTaxCode?.components.map(tc => ({
+        taxComponentId: tc.taxComponentId,
+        componentCode: tc.taxComponent.componentCode,
+        rate: tc.taxComponent.rate,
+        outputAccountId: tc.taxComponent.outputAccountId,
+      })) ?? [],
     });
 
     subtotal += grossAmount;
@@ -339,11 +377,6 @@ export async function postSale(
 
   let eventLineNo = 1;
   for (const itemData of saleItemsData) {
-    const product = await tx.product.findFirst({
-      where: { id: itemData.productId },
-      include: { defaultTaxCode: { include: { components: { include: { taxComponent: true } } } } },
-    });
-
     const saleItem = await tx.saleItem.create({
       data: {
         companyId: input.companyId, saleId: sale.id, lineNo: itemData.lineNo,
@@ -353,19 +386,19 @@ export async function postSale(
         qty: itemData.qty, unitCostSnapshot: itemData.unitCostSnapshot, unitPriceSnapshot: itemData.unitPriceSnapshot,
         grossAmount: itemData.grossAmount, discountAmount: itemData.discountAmount,
         taxableAmount: itemData.taxableAmount, taxAmount: itemData.taxAmount, lineTotal: itemData.lineTotal,
-        warrantyMonthsSnapshot: product?.warrantyPeriodMonths ?? null,
-        inventoryIssueSource: (product?.productType === 'service' || product?.productType === 'digital') ? 'none' : 'sale',
+        warrantyMonthsSnapshot: itemData.warrantyPeriodMonths,
+        inventoryIssueSource: (itemData.productType === 'service' || itemData.productType === 'digital') ? 'none' : 'sale',
       },
     });
 
-    if (product?.defaultTaxCode && itemData.taxAmount > 0) {
-      for (const tc of product.defaultTaxCode.components) {
-        const rate = parseFloat(tc.taxComponent.rate.toString());
+    if (itemData.taxComponents.length > 0 && itemData.taxAmount > 0) {
+      for (const tc of itemData.taxComponents) {
+        const rate = parseFloat(tc.rate.toString());
         const componentTax = itemData.taxableAmount * rate / 100;
         await tx.saleItemTax.create({
           data: {
             companyId: input.companyId, saleItemId: saleItem.id, taxComponentId: tc.taxComponentId,
-            componentCodeSnapshot: tc.taxComponent.componentCode, rateSnapshot: tc.taxComponent.rate,
+            componentCodeSnapshot: tc.componentCode, rateSnapshot: tc.rate,
             taxableBase: itemData.taxableAmount, taxAmount: componentTax,
           },
         });
@@ -376,7 +409,7 @@ export async function postSale(
       await tx.saleItemSerial.create({ data: { saleItemId: saleItem.id, serialId } });
     }
 
-    if (product && (product.productType === 'standard' || product.productType === 'combo')) {
+    if (itemData.productType === 'standard' || itemData.productType === 'combo') {
       const movementResult = await postStockMovement(tx, {
         companyId: input.companyId, eventId, eventLineNo,
         warehouseId: input.warehouseId, productId: itemData.productId,
@@ -398,8 +431,8 @@ export async function postSale(
               status: 'sold', currentWarehouseId: null, soldSaleItemId: saleItem.id,
               version: { increment: 1 }, updatedAt: new Date(),
               warrantyStartDate: input.businessDate,
-              warrantyExpiryDate: product.warrantyPeriodMonths
-                ? new Date(input.businessDate.getTime() + product.warrantyPeriodMonths * 30 * 24 * 60 * 60 * 1000)
+              warrantyExpiryDate: itemData.warrantyPeriodMonths
+                ? new Date(input.businessDate.getTime() + itemData.warrantyPeriodMonths * 30 * 24 * 60 * 60 * 1000)
                 : null,
             },
           });
@@ -459,6 +492,18 @@ export async function postSale(
   //    COGS JE: Dr COGS (qty × unit_cost_snapshot), Cr Inventory (qty × unit_cost_snapshot)
   const policies = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
   if (policies) {
+    const financialAccountIds = [...new Set(input.payments.map(payment => payment.financialAccountId))];
+    const financialAccounts: Prisma.FinancialAccountGetPayload<object>[] = [];
+    for (let offset = 0; offset < financialAccountIds.length; offset += SALE_READ_BATCH_SIZE) {
+      financialAccounts.push(...await tx.financialAccount.findMany({
+        where: {
+          companyId: input.companyId,
+          id: { in: financialAccountIds.slice(offset, offset + SALE_READ_BATCH_SIZE) },
+        },
+      }));
+    }
+    const financialAccountById = new Map(financialAccounts.map(account => [account.id, account]));
+
     // Revenue journal
     const revenueJournalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string; branchId?: string }> = [];
 
@@ -475,9 +520,7 @@ export async function postSale(
     }
     // Dr Cash/Bank for payments received
     for (const payment of input.payments) {
-      const fa = await tx.financialAccount.findFirst({
-        where: { id: payment.financialAccountId, companyId: input.companyId },
-      });
+      const fa = financialAccountById.get(payment.financialAccountId);
       if (fa) {
         revenueJournalLines.push({
           chartOfAccountId: fa.chartOfAccountId,
@@ -502,11 +545,7 @@ export async function postSale(
       // Find the VAT output account from tax components
       const firstTaxLine = saleItemsData.find(si => si.taxAmount > 0);
       if (firstTaxLine) {
-        const product = await tx.product.findFirst({
-          where: { id: firstTaxLine.productId },
-          include: { defaultTaxCode: { include: { components: { include: { taxComponent: { include: { outputAccount: true } } } } } } },
-        });
-        const vatAccount = product?.defaultTaxCode?.components?.[0]?.taxComponent?.outputAccountId;
+        const vatAccount = firstTaxLine.taxComponents[0]?.outputAccountId;
         if (vatAccount) {
           revenueJournalLines.push({
             chartOfAccountId: vatAccount,
@@ -541,8 +580,7 @@ export async function postSale(
     const cogsJournalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string; branchId?: string }> = [];
     let totalCogs = 0;
     for (const itemData of saleItemsData) {
-      const product = await tx.product.findFirst({ where: { id: itemData.productId } });
-      if (product && (product.productType === 'standard' || product.productType === 'combo')) {
+      if (itemData.productType === 'standard' || itemData.productType === 'combo') {
         const cogs = itemData.qty * itemData.unitCostSnapshot;
         totalCogs += cogs;
       }
