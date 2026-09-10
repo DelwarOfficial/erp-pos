@@ -34,8 +34,10 @@ export async function GET(req: NextRequest) {
       where.OR = [{ name: { contains: search } }, { phone: { contains: search } }, { email: { contains: search } }];
     }
 
-    const suppliers = await db.supplier.findMany({
-      where, take: limit, orderBy: { name: 'asc' },
+    const suppliers = await runInTenantContext(auth.ctx, async () => {
+      return db.supplier.findMany({
+        where, take: limit, orderBy: { name: 'asc' },
+      });
     });
     return NextResponse.json({
       items: suppliers.map(s => ({

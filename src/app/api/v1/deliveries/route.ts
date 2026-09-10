@@ -55,9 +55,10 @@ export async function GET(req: NextRequest) {
       if (to) (where.createdAt as Record<string, unknown>).lte = to;
     }
 
-    const deliveries = await db.deliveryOrder.findMany({
-      where, take: limit, orderBy: { createdAt: 'desc' },
-      select: {
+    const deliveries = await runInTenantContext(auth.ctx, async () => {
+      return db.deliveryOrder.findMany({
+        where, take: limit, orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         referenceNo: true,
         status: true,
@@ -71,7 +72,8 @@ export async function GET(req: NextRequest) {
         deliveredAt: true,
         sale: { select: { id: true, referenceNo: true, grandTotal: true } },
         _count: { select: { items: true, events: true } },
-      },
+        },
+      });
     });
     return NextResponse.json({
       items: deliveries.map(d => ({

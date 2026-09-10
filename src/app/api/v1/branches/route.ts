@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -15,10 +16,13 @@ export async function GET(req: NextRequest) {
     // Fall through silently if the user lacks 'inventory.read' — we still need a tenant-scoped list.
     try { await requirePermission(auth, 'inventory.read'); } catch { /* optional */ }
 
-    const branches = await db.branch.findMany({
-      where: { companyId: auth.companyId, isActive: true },
-      orderBy: [{ code: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, code: true, address: true, phone: true },
+    // Tenant-scoped read must run inside explicit context (no ambient ALS).
+    const branches = await runInTenantContext(auth.ctx, async () => {
+      return db.branch.findMany({
+        where: { companyId: auth.companyId, isActive: true },
+        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, code: true, address: true, phone: true },
+      });
     });
 
     return NextResponse.json({

@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -13,9 +14,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'inventory.read');
     const { id } = await params;
 
-    const sc = await db.stockCount.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    const sc = await runInTenantContext(auth.ctx, async () => {
+      return db.stockCount.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         branch: { select: { id: true, name: true } },
         warehouse: { select: { id: true, name: true, code: true } },
         category: { select: { id: true, name: true } },
@@ -27,8 +29,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
             reasonCode: { select: { id: true, code: true, name: true } },
           },
           orderBy: { productId: 'asc' },
+          },
         },
-      },
+      });
     });
     if (!sc) throw new DomainError('RESOURCE_NOT_FOUND', 'Stock count not found', {}, 404);
 

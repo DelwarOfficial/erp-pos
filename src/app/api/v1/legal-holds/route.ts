@@ -22,14 +22,16 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
-    const [items, total] = await Promise.all([
-      db.legalHold.findMany({
-        where: { companyId: auth.companyId, releasedAt: null },
-        orderBy: { declaredAt: 'desc' },
-        take: limit, skip: offset,
-      }),
-      db.legalHold.count({ where: { companyId: auth.companyId, releasedAt: null } }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.legalHold.findMany({
+          where: { companyId: auth.companyId, releasedAt: null },
+          orderBy: { declaredAt: 'desc' },
+          take: limit, skip: offset,
+        }),
+        db.legalHold.count({ where: { companyId: auth.companyId, releasedAt: null } }),
+      ]);
+    });
     return NextResponse.json({ items, total, limit, offset });
   } catch (e) { return errorResponse(e, correlationId); }
 }

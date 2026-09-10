@@ -41,16 +41,18 @@ export async function GET(req: NextRequest) {
     if (customerId) where.customerId = customerId;
     if (entryType) where.entryType = entryType;
 
-    const [items, total] = await Promise.all([
-      db.customerAdvanceLedger.findMany({
-        where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
-        include: {
-          customer: { select: { id: true, name: true, phone: true } },
-          payment: { select: { id: true, referenceNo: true } },
-        },
-      }),
-      db.customerAdvanceLedger.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.customerAdvanceLedger.findMany({
+          where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { id: true, name: true, phone: true } },
+            payment: { select: { id: true, referenceNo: true } },
+          },
+        }),
+        db.customerAdvanceLedger.count({ where }),
+      ]);
+    });
 
     // Aggregate current advance balance per customer (running total)
     return NextResponse.json({

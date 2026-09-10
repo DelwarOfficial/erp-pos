@@ -33,13 +33,15 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'sale_return.post');
   await requirePermission(auth, 'sale.read');
-    const returns = await db.saleReturn.findMany({
-      where: { companyId: auth.companyId },
-      take: 50, orderBy: { createdAt: 'desc' },
-      include: {
-        sale: { select: { id: true, referenceNo: true, grandTotal: true } },
-        _count: { select: { items: true } },
-      },
+    const returns = await runInTenantContext(auth.ctx, async () => {
+      return db.saleReturn.findMany({
+        where: { companyId: auth.companyId },
+        take: 50, orderBy: { createdAt: 'desc' },
+        include: {
+          sale: { select: { id: true, referenceNo: true, grandTotal: true } },
+          _count: { select: { items: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: returns.map(r => ({

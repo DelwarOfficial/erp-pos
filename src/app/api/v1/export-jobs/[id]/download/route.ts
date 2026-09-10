@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { generateCsv, escapeFormulaCell } from '@/lib/import-export/csv';
@@ -16,36 +17,45 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   
 
   const { id } = await params;
-  const job = await db.reportExportJob.findFirst({
-    where: { id, companyId: auth.companyId },
-  });
-  if (!job) {
-    return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Export job not found' } }, { status: 404 });
-  }
-
-  if (job.status !== 'completed') {
-    return NextResponse.json({ error: { code: 'NOT_READY', message: `Export job status is '${job.status}'` } }, { status: 409 });
-  }
-
-  // Check expiry
-  if (job.expiresAt && job.expiresAt < new Date()) {
-    await db.reportExportJob.update({
-      where: { id: job.id },
-      data: { status: 'expired' },
+  // All tenant-scoped reads/writes (including regenerateExport helpers below)
+  // run inside explicit context. Error statuses are returned as data (not
+  // thrown) to preserve the exact response contracts below.
+  const outcome = await runInTenantContext(auth.ctx, async () => {
+    const job = await db.reportExportJob.findFirst({
+      where: { id, companyId: auth.companyId },
     });
-    return NextResponse.json({ error: { code: 'EXPIRED', message: 'Export has expired' } }, { status: 410 });
-  }
+    if (!job) {
+      return { error: { code: 'NOT_FOUND', message: 'Export job not found' }, status: 404 } as const;
+    }
 
-  // In production: download from S3 via media_asset
-  // For sandbox: regenerate the export (deterministic since filter_json + data_cutoff_at are preserved)
-  const filters = JSON.parse(job.filterJson || '{}');
-  const canExportSensitive = auth.isGlobal;
-  let exportData;
-  try {
-    exportData = await regenerateExport(job.reportCode, job.companyId, filters, canExportSensitive);
-  } catch (e) {
-    return NextResponse.json({ error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } }, { status: 500 });
+    if (job.status !== 'completed') {
+      return { error: { code: 'NOT_READY', message: `Export job status is '${job.status}'` }, status: 409 } as const;
+    }
+
+    // Check expiry
+    if (job.expiresAt && job.expiresAt < new Date()) {
+      await db.reportExportJob.update({
+        where: { id: job.id },
+        data: { status: 'expired' },
+      });
+      return { error: { code: 'EXPIRED', message: 'Export has expired' }, status: 410 } as const;
+    }
+
+    // In production: download from S3 via media_asset
+    // For sandbox: regenerate the export (deterministic since filter_json + data_cutoff_at are preserved)
+    const filters = JSON.parse(job.filterJson || '{}');
+    const canExportSensitive = auth.isGlobal;
+    try {
+      const exportData = await regenerateExport(job.reportCode, job.companyId, filters, canExportSensitive);
+      return { job, exportData };
+    } catch (e) {
+      return { error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' }, status: 500 } as const;
+    }
+  });
+  if ('error' in outcome) {
+    return NextResponse.json({ error: outcome.error }, { status: outcome.status });
   }
+  const { job, exportData } = outcome;
 
   const csv = generateCsv([exportData.headers, ...exportData.rows]);
 

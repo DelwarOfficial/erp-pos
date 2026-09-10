@@ -26,10 +26,12 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'category.manage');
   await requirePermission(auth, 'product.read');
-    const units = await db.unit.findMany({
-      where: { companyId: auth.companyId },
-      include: { baseUnit: { select: { id: true, name: true, code: true } } },
-      orderBy: { name: 'asc' },
+    const units = await runInTenantContext(auth.ctx, async () => {
+      return db.unit.findMany({
+        where: { companyId: auth.companyId },
+        include: { baseUnit: { select: { id: true, name: true, code: true } } },
+        orderBy: { name: 'asc' },
+      });
     });
     return NextResponse.json({
       items: units.map(u => ({

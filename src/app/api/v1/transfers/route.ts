@@ -31,13 +31,15 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const transfers = await db.transfer.findMany({
-      where, take: 50, orderBy: { requestedAt: 'desc' },
-      include: {
-        fromWarehouse: { select: { id: true, name: true, code: true } },
-        toWarehouse: { select: { id: true, name: true, code: true } },
-        _count: { select: { items: true } },
-      },
+    const transfers = await runInTenantContext(auth.ctx, async () => {
+      return db.transfer.findMany({
+        where, take: 50, orderBy: { requestedAt: 'desc' },
+        include: {
+          fromWarehouse: { select: { id: true, name: true, code: true } },
+          toWarehouse: { select: { id: true, name: true, code: true } },
+          _count: { select: { items: true } },
+        },
+      });
     });
 
     return NextResponse.json({

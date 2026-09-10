@@ -43,17 +43,19 @@ export async function GET(req: NextRequest) {
     if (supplierId) where.supplierId = supplierId;
     if (purchaseId) where.purchaseId = purchaseId;
 
-    const [items, total] = await Promise.all([
-      db.purchaseReturn.findMany({
-        where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
-        include: {
-          supplier: { select: { id: true, name: true } },
-          purchase: { select: { id: true, referenceNo: true } },
-          _count: { select: { items: true } },
-        },
-      }),
-      db.purchaseReturn.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.purchaseReturn.findMany({
+          where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
+          include: {
+            supplier: { select: { id: true, name: true } },
+            purchase: { select: { id: true, referenceNo: true } },
+            _count: { select: { items: true } },
+          },
+        }),
+        db.purchaseReturn.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(r => ({

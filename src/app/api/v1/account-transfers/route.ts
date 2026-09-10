@@ -37,16 +37,18 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const [items, total] = await Promise.all([
-      db.accountTransfer.findMany({
-        where, take: limit, skip: offset, orderBy: { businessDate: 'desc' },
-        include: {
-          fromFinancialAccount: { select: { id: true, name: true, currencyCode: true } },
-          toFinancialAccount: { select: { id: true, name: true, currencyCode: true } },
-        },
-      }),
-      db.accountTransfer.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.accountTransfer.findMany({
+          where, take: limit, skip: offset, orderBy: { businessDate: 'desc' },
+          include: {
+            fromFinancialAccount: { select: { id: true, name: true, currencyCode: true } },
+            toFinancialAccount: { select: { id: true, name: true, currencyCode: true } },
+          },
+        }),
+        db.accountTransfer.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(t => ({

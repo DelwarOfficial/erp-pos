@@ -25,13 +25,15 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'journal.post');
   await requirePermission(auth, 'journal.read');
-    const accounts = await db.financialAccount.findMany({
-      where: { companyId: auth.companyId },
-      orderBy: { name: 'asc' },
-      include: {
-        chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },
-        branch: { select: { id: true, name: true, code: true } },
-      },
+    const accounts = await runInTenantContext(auth.ctx, async () => {
+      return db.financialAccount.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: { name: 'asc' },
+        include: {
+          chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },
+          branch: { select: { id: true, name: true, code: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: accounts.map(a => ({

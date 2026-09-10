@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -12,16 +13,18 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10), 100);
 
-    const notifications = await db.notification.findMany({
-      where: {
-        companyId: auth.companyId,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: new Date() } },
-        ],
-      },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
+    const notifications = await runInTenantContext(auth.ctx, async () => {
+      return db.notification.findMany({
+        where: {
+          companyId: auth.companyId,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+          ],
+        },
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
     });
 
     return NextResponse.json({

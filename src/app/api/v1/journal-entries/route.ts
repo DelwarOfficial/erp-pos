@@ -50,18 +50,19 @@ export async function GET(req: NextRequest) {
       if (to) (where.entryDate as Record<string, unknown>).lte = new Date(to);
     }
 
-    const entries = await db.journalEntry.findMany({
-      where, take: limit, orderBy: { entryDate: 'desc' },
-      select: {
-        id: true,
-        entryNo: true,
-        status: true,
-        entryDate: true,
-        postingDate: true,
-        description: true,
-        currencyCode: true,
-        sourceType: true,
-        sourceId: true,
+    const entries = await runInTenantContext(auth.ctx, async () => {
+      return db.journalEntry.findMany({
+        where, take: limit, orderBy: { entryDate: 'desc' },
+        select: {
+          id: true,
+          entryNo: true,
+          status: true,
+          entryDate: true,
+          postingDate: true,
+          description: true,
+          currencyCode: true,
+          sourceType: true,
+          sourceId: true,
         reversalOfEntryId: true,
         createdBy: true,
         lines: {
@@ -74,7 +75,8 @@ export async function GET(req: NextRequest) {
         },
         creator: { select: { id: true, name: true } },
         _count: { select: { lines: true } },
-      },
+        },
+      });
     });
 
     return NextResponse.json({

@@ -33,9 +33,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   await requirePermission(auth, 'product.update');
   await requirePermission(auth, 'product.read');
     const { id } = await params;
-    const barcodes = await db.productBarcode.findMany({
-      where: { productId: id, companyId: auth.companyId },
-      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    const barcodes = await runInTenantContext(auth.ctx, async () => {
+      return db.productBarcode.findMany({
+        where: { productId: id, companyId: auth.companyId },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      });
     });
     return NextResponse.json({ items: barcodes });
   } catch (e) {

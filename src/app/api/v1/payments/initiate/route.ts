@@ -120,9 +120,11 @@ export async function POST(req: NextRequest) {
     const provider = providerRegistry.getPayment(body.provider_code);
     if (!provider) {
       // Provider was unregistered between phase 1 and 2 — mark payment as failed
-      await db.payment.update({
-        where: { id: paymentId },
-        data: { paymentStatus: 'failed', notes: `Provider '${body.provider_code}' not registered` },
+      await runInTenantContext(auth.ctx, async () => {
+        return db.payment.update({
+          where: { id: paymentId },
+          data: { paymentStatus: 'failed', notes: `Provider '${body.provider_code}' not registered` },
+        });
       }).catch(() => {});
       throw new DomainError('VALIDATION_FAILED', `Payment provider '${body.provider_code}' not registered`, {}, 400);
     }
@@ -136,21 +138,23 @@ export async function POST(req: NextRequest) {
       });
 
       // Update payment row with gateway details (separate short transaction)
-      await db.payment.update({
-        where: { id: paymentId },
-        data: {
-          methodReference: gateway.gatewayTxnId,
-          notes: `Gateway: ${body.provider_code}; gateway_txn_id=${gateway.gatewayTxnId}`,
-        },
-      });
+      await runInTenantContext(auth.ctx, async () => {
+        await db.payment.update({
+          where: { id: paymentId },
+          data: {
+            methodReference: gateway.gatewayTxnId,
+            notes: `Gateway: ${body.provider_code}; gateway_txn_id=${gateway.gatewayTxnId}`,
+          },
+        });
 
-      await db.auditLog.create({
-        data: { companyId: auth.companyId, userId: auth.userId, correlationId,
-          action: 'payment.initiate.success', entityType: 'payment', entityId: paymentId,
-          afterValue: JSON.stringify({
-            provider: body.provider_code, gateway_txn_id: gateway.gatewayTxnId,
-            gateway_url: gateway.gatewayUrl,
-          }) },
+        await db.auditLog.create({
+          data: { companyId: auth.companyId, userId: auth.userId, correlationId,
+            action: 'payment.initiate.success', entityType: 'payment', entityId: paymentId,
+            afterValue: JSON.stringify({
+              provider: body.provider_code, gateway_txn_id: gateway.gatewayTxnId,
+              gateway_url: gateway.gatewayUrl,
+            }) },
+        });
       });
 
       return NextResponse.json({
@@ -165,15 +169,19 @@ export async function POST(req: NextRequest) {
     } catch (gatewayError) {
       // Gateway call failed — mark payment as failed and record audit
       const errorMsg = gatewayError instanceof Error ? gatewayError.message : 'Unknown gateway error';
-      await db.payment.update({
-        where: { id: paymentId },
-        data: { paymentStatus: 'failed', notes: `Gateway error: ${errorMsg}` },
+      await runInTenantContext(auth.ctx, async () => {
+        await db.payment.update({
+          where: { id: paymentId },
+          data: { paymentStatus: 'failed', notes: `Gateway error: ${errorMsg}` },
+        });
       }).catch(() => {});
 
-      await db.auditLog.create({
-        data: { companyId: auth.companyId, userId: auth.userId, correlationId,
-          action: 'payment.initiate.failed', entityType: 'payment', entityId: paymentId,
-          afterValue: JSON.stringify({ provider: body.provider_code, error: errorMsg }) },
+      await runInTenantContext(auth.ctx, async () => {
+        return db.auditLog.create({
+          data: { companyId: auth.companyId, userId: auth.userId, correlationId,
+            action: 'payment.initiate.failed', entityType: 'payment', entityId: paymentId,
+            afterValue: JSON.stringify({ provider: body.provider_code, error: errorMsg }) },
+        });
       }).catch(() => {});
 
       throw new DomainError('EXTERNAL_PROVIDER_ERROR', `Payment gateway error: ${errorMsg}`, { provider: body.provider_code }, 502);

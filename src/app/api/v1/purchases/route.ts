@@ -63,11 +63,12 @@ export async function GET(req: NextRequest) {
     }
 
     // `select` keeps the payload small; `_count` avoids N+1 on items/receivings.
-    const purchases = await db.purchase.findMany({
-      where,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
+    const purchases = await runInTenantContext(auth.ctx, async () => {
+      return db.purchase.findMany({
+        where,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         referenceNo: true,
         orderStatus: true,
@@ -82,7 +83,8 @@ export async function GET(req: NextRequest) {
         branch: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
         _count: { select: { items: true, receivings: true } },
-      },
+        },
+      });
     });
 
     return NextResponse.json({

@@ -89,8 +89,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ),
     );
 
-    // Best-effort: log conversion outside of idempotency window
-    void (async () => {
+    // Best-effort: log conversion outside of idempotency window.
+    // Runs inside explicit tenant context (audit() is fail-closed).
+    void runInTenantContext(auth.ctx, async () => {
       try {
         await db.auditLog.create({
           data: { companyId: auth.companyId, userId: auth.userId, correlationId,
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             afterValue: JSON.stringify({ sale_id: (result.body as any).sale.saleId }) },
         });
       } catch { /* best-effort */ }
-    })();
+    });
 
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

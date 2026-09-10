@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -26,13 +27,15 @@ export async function GET(req: NextRequest) {
     if (userId) where.userId = userId;
     if (cursor) where.id = { lt: cursor };
 
-    const events = await db.securityEvent.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { occurredAt: 'desc' },
+    const events = await runInTenantContext(auth.ctx, async () => {
+      return db.securityEvent.findMany({
+        where,
+        take: limit + 1,
+        orderBy: { occurredAt: 'desc' },
       include: {
         user: { select: { id: true, name: true, email: true } },
       },
+      });
     });
 
     const hasMore = events.length > limit;

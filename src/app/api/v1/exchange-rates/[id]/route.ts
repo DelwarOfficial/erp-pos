@@ -22,8 +22,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'report.execute');
     const { id } = await params;
 
-    const r = await db.exchangeRate.findFirst({
-      where: { id, companyId: auth.companyId },
+    const r = await runInTenantContext(auth.ctx, async () => {
+      return db.exchangeRate.findFirst({
+        where: { id, companyId: auth.companyId },
+      });
     });
     if (!r) throw new DomainError('RESOURCE_NOT_FOUND', 'Exchange rate not found', {}, 404);
 

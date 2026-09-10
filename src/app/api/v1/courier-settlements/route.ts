@@ -31,10 +31,12 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'courier_cod.settle');
   await requirePermission(auth, 'inventory.read');
-    const settlements = await db.courierCodSettlement.findMany({
-      where: { companyId: auth.companyId },
-      take: 50, orderBy: { settlementDate: 'desc' },
-      include: { _count: { select: { items: true } } },
+    const settlements = await runInTenantContext(auth.ctx, async () => {
+      return db.courierCodSettlement.findMany({
+        where: { companyId: auth.companyId },
+        take: 50, orderBy: { settlementDate: 'desc' },
+        include: { _count: { select: { items: true } } },
+      });
     });
     return NextResponse.json({
       items: settlements.map(s => ({

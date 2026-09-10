@@ -25,12 +25,14 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'tax.manage');
   await requirePermission(auth, 'product.read');
-    const taxCodes = await db.taxCode.findMany({
-      where: { companyId: auth.companyId },
-      include: {
-        components: { include: { taxComponent: true } },
-      },
-      orderBy: { code: 'asc' },
+    const taxCodes = await runInTenantContext(auth.ctx, async () => {
+      return db.taxCode.findMany({
+        where: { companyId: auth.companyId },
+        include: {
+          components: { include: { taxComponent: true } },
+        },
+        orderBy: { code: 'asc' },
+      });
     });
     return NextResponse.json({
       items: taxCodes.map(tc => ({

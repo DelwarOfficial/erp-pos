@@ -48,16 +48,18 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const [items, total] = await Promise.all([
-      db.quotation.findMany({
-        where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
-        include: {
-          customer: { select: { id: true, name: true } },
-          _count: { select: { items: true } },
-        },
-      }),
-      db.quotation.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.quotation.findMany({
+          where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { id: true, name: true } },
+            _count: { select: { items: true } },
+          },
+        }),
+        db.quotation.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(q => ({

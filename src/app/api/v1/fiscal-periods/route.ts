@@ -22,9 +22,11 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'fiscal_period.lock');
   await requirePermission(auth, 'journal.read');
-    const periods = await db.fiscalPeriod.findMany({
-      where: { companyId: auth.companyId },
-      orderBy: { periodStart: 'desc' },
+    const periods = await runInTenantContext(auth.ctx, async () => {
+      return db.fiscalPeriod.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: { periodStart: 'desc' },
+      });
     });
     return NextResponse.json({
       items: periods.map(p => ({
@@ -51,8 +53,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check for overlapping periods (SQLite: check in app code)
-    const existing = await db.fiscalPeriod.findMany({
-      where: { companyId: auth.companyId },
+    const existing = await runInTenantContext(auth.ctx, async () => {
+      return db.fiscalPeriod.findMany({
+        where: { companyId: auth.companyId },
+      });
     });
     for (const p of existing) {
       const pStart = new Date(p.periodStart);

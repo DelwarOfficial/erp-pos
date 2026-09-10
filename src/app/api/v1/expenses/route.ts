@@ -39,15 +39,17 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
-    const [items, total] = await Promise.all([
-      db.expense.findMany({
-        where: { companyId: auth.companyId },
-        orderBy: { createdAt: 'desc' },
-        take: limit, skip: offset,
-        select: { id: true, referenceNo: true, status: true, expenseDate: true, grandTotal: true, description: true, createdAt: true },
-      }),
-      db.expense.count({ where: { companyId: auth.companyId } }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.expense.findMany({
+          where: { companyId: auth.companyId },
+          orderBy: { createdAt: 'desc' },
+          take: limit, skip: offset,
+          select: { id: true, referenceNo: true, status: true, expenseDate: true, grandTotal: true, description: true, createdAt: true },
+        }),
+        db.expense.count({ where: { companyId: auth.companyId } }),
+      ]);
+    });
     return NextResponse.json({ items, total, limit, offset });
   } catch (e) { return errorResponse(e, correlationId); }
 }

@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'tax.manage');
   await requirePermission(auth, 'product.read');
-    const components = await db.taxComponent.findMany({
-      where: { companyId: auth.companyId },
-      orderBy: [{ componentType: 'asc' }, { calculationOrder: 'asc' }],
+    const components = await runInTenantContext(auth.ctx, async () => {
+      return db.taxComponent.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: [{ componentType: 'asc' }, { calculationOrder: 'asc' }],
+      });
     });
     return NextResponse.json({
       items: components.map(c => ({

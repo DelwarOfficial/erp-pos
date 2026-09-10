@@ -44,14 +44,16 @@ export async function GET(req: NextRequest) {
       where.nextActionAt = { gte: start, lte: end };
     }
 
-    const leads = await db.lead.findMany({
-      where, take: 100, orderBy: { nextActionAt: 'asc' },
-      include: {
-        status: { select: { id: true, name: true, isWon: true, isLost: true, position: true } },
-        subject: { select: { id: true, name: true } },
-        source: { select: { id: true, name: true } },
-        assignee: { select: { id: true, name: true } },
-      },
+    const leads = await runInTenantContext(auth.ctx, async () => {
+      return db.lead.findMany({
+        where, take: 100, orderBy: { nextActionAt: 'asc' },
+        include: {
+          status: { select: { id: true, name: true, isWon: true, isLost: true, position: true } },
+          subject: { select: { id: true, name: true } },
+          source: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true } },
+        },
+      });
     });
 
     return NextResponse.json({

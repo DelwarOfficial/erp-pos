@@ -23,14 +23,16 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
-    const [items, total] = await Promise.all([
-      db.approvalRequest.findMany({
-        where: { companyId: auth.companyId, status },
-        orderBy: { requestedAt: 'desc' },
-        take: limit, skip: offset,
-      }),
-      db.approvalRequest.count({ where: { companyId: auth.companyId, status } }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.approvalRequest.findMany({
+          where: { companyId: auth.companyId, status },
+          orderBy: { requestedAt: 'desc' },
+          take: limit, skip: offset,
+        }),
+        db.approvalRequest.count({ where: { companyId: auth.companyId, status } }),
+      ]);
+    });
     return NextResponse.json({ items, total, limit, offset });
   } catch (e) { return errorResponse(e, correlationId); }
 }

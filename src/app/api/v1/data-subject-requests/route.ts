@@ -26,10 +26,12 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const [items, total] = await Promise.all([
-      db.dataSubjectRequest.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
-      db.dataSubjectRequest.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.dataSubjectRequest.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+        db.dataSubjectRequest.count({ where }),
+      ]);
+    });
     return NextResponse.json({ items, total, limit, offset });
   } catch (e) { return errorResponse(e, correlationId); }
 }

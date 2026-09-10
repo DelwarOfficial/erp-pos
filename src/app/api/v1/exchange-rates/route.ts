@@ -30,12 +30,14 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (currencyCode) where.currencyCode = currencyCode;
 
-    const [items, total] = await Promise.all([
-      db.exchangeRate.findMany({
-        where, take: limit, skip: offset, orderBy: { rateDate: 'desc' },
-      }),
-      db.exchangeRate.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.exchangeRate.findMany({
+          where, take: limit, skip: offset, orderBy: { rateDate: 'desc' },
+        }),
+        db.exchangeRate.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(r => ({

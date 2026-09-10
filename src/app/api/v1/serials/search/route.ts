@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -28,12 +29,14 @@ export async function GET(req: NextRequest) {
     if (warehouseId) where.currentWarehouseId = warehouseId;
     if (status) where.status = status;
 
-    const serials = await db.productSerial.findMany({
-      where, take: limit, orderBy: { updatedAt: 'desc' },
-      include: {
-        product: { select: { id: true, code: true, name: true, productType: true } },
-        currentWarehouse: { select: { id: true, code: true, name: true } },
-      },
+    const serials = await runInTenantContext(auth.ctx, async () => {
+      return db.productSerial.findMany({
+        where, take: limit, orderBy: { updatedAt: 'desc' },
+        include: {
+          product: { select: { id: true, code: true, name: true, productType: true } },
+          currentWarehouse: { select: { id: true, code: true, name: true } },
+        },
+      });
     });
 
     return NextResponse.json({

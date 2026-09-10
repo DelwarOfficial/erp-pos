@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -40,25 +41,27 @@ export async function GET(req: NextRequest) {
     if (cursor) where.id = { lt: cursor };
 
     // Use `select` (not include-all) to keep payload small.
-    const logs = await db.auditLog.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { occurredAt: 'desc' },
-      select: {
-        id: true,
-        action: true,
-        entityType: true,
-        entityId: true,
-        userId: true,
-        correlationId: true,
-        beforeValue: true,
-        afterValue: true,
-        clientIp: true,
-        userAgent: true,
-        occurredAt: true,
-        user: { select: { id: true, name: true, email: true } },
-        device: { select: { id: true, label: true } },
-      },
+    const logs = await runInTenantContext(auth.ctx, async () => {
+      return db.auditLog.findMany({
+        where,
+        take: limit + 1,
+        orderBy: { occurredAt: 'desc' },
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          userId: true,
+          correlationId: true,
+          beforeValue: true,
+          afterValue: true,
+          clientIp: true,
+          userAgent: true,
+          occurredAt: true,
+          user: { select: { id: true, name: true, email: true } },
+          device: { select: { id: true, label: true } },
+        },
+      });
     });
 
     const hasMore = logs.length > limit;

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -20,16 +21,18 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const shifts = await db.cashierShift.findMany({
-      where,
-      take: limit,
-      orderBy: { openedAt: 'desc' },
-      include: {
+    const shifts = await runInTenantContext(auth.ctx, async () => {
+      return db.cashierShift.findMany({
+        where,
+        take: limit,
+        orderBy: { openedAt: 'desc' },
+        include: {
         cashier: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
         _count: { select: { sales: true, payments: true } },
-      },
+        },
+      });
     });
 
     return NextResponse.json({

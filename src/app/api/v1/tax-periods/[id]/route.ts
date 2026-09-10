@@ -23,8 +23,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'report.execute');
     const { id } = await params;
 
-    const p = await db.taxReturnPeriod.findFirst({
-      where: { id, companyId: auth.companyId },
+    const p = await runInTenantContext(auth.ctx, async () => {
+      return db.taxReturnPeriod.findFirst({
+        where: { id, companyId: auth.companyId },
+      });
     });
     if (!p) throw new DomainError('RESOURCE_NOT_FOUND', 'Tax return period not found', {}, 404);
 

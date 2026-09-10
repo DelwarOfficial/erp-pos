@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -21,8 +22,9 @@ export async function GET(req: NextRequest) {
     if (refundStatus) where.refundStatus = refundStatus;
     if (saleId) where.saleId = saleId;
 
-    const [items, total] = await Promise.all([
-      db.saleReturn.findMany({
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.saleReturn.findMany({
         where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
         include: {
           sale: {
@@ -43,8 +45,9 @@ export async function GET(req: NextRequest) {
           _count: { select: { items: true } },
         },
       }),
-      db.saleReturn.count({ where }),
-    ]);
+        db.saleReturn.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(r => {

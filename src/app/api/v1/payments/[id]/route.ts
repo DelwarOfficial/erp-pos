@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -13,9 +14,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'sale.read');
     const { id } = await params;
 
-    const p = await db.payment.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    const p = await runInTenantContext(auth.ctx, async () => {
+      return db.payment.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         customer: { select: { id: true, name: true } },
         supplier: { select: { id: true, name: true } },
         financialAccount: { select: { id: true, name: true, accountType: true } },
@@ -24,7 +26,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         refundAllocations: true,
         reversedPayment: { select: { id: true, referenceNo: true } },
         reversingPayment: { select: { id: true, referenceNo: true } },
-      },
+        },
+      });
     });
     if (!p) throw new DomainError('RESOURCE_NOT_FOUND', 'Payment not found', {}, 404);
 

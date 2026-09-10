@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -29,16 +30,18 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    const [items, total] = await Promise.all([
-      db.installment.findMany({
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.installment.findMany({
         where, take: limit, skip: offset, orderBy: { dueDate: 'asc' },
         include: {
           sale: { select: { id: true, referenceNo: true, customer: { select: { id: true, name: true } } } },
           allocations: { include: { paymentAllocation: { select: { id: true, payment: { select: { id: true, referenceNo: true } } } } } },
         },
       }),
-      db.installment.count({ where }),
-    ]);
+        db.installment.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(i => {

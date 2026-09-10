@@ -30,14 +30,16 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'stock_adjustment.post');
   await requirePermission(auth, 'inventory.read');
-    const adjustments = await db.stockAdjustment.findMany({
-      where: { companyId: auth.companyId },
-      take: 50, orderBy: { createdAt: 'desc' },
-      include: {
-        warehouse: { select: { name: true, code: true } },
-        reasonCode: { select: { code: true, name: true } },
-        _count: { select: { items: true } },
-      },
+    const adjustments = await runInTenantContext(auth.ctx, async () => {
+      return db.stockAdjustment.findMany({
+        where: { companyId: auth.companyId },
+        take: 50, orderBy: { createdAt: 'desc' },
+        include: {
+          warehouse: { select: { name: true, code: true } },
+          reasonCode: { select: { code: true, name: true } },
+          _count: { select: { items: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: adjustments.map(a => ({

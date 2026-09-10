@@ -23,10 +23,12 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'company.update');
   await requirePermission(auth, 'company.read');
-    const endpoints = await db.webhookEndpoint.findMany({
-      where: { companyId: auth.companyId },
-      orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { deliveries: true } } },
+    const endpoints = await runInTenantContext(auth.ctx, async () => {
+      return db.webhookEndpoint.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: { createdAt: 'desc' },
+        include: { _count: { select: { deliveries: true } } },
+      });
     });
     return NextResponse.json({
       items: endpoints.map(e => ({

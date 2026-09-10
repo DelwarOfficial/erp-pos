@@ -39,20 +39,22 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const customers = await db.customer.findMany({
-      where,
-      take: limit,
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        taxIdentifier: true,
-        creditLimit: true,
-        isActive: true,
-        customerGroup: { select: { id: true, name: true } },
-      },
+    const customers = await runInTenantContext(auth.ctx, async () => {
+      return db.customer.findMany({
+        where,
+        take: limit,
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          taxIdentifier: true,
+          creditLimit: true,
+          isActive: true,
+          customerGroup: { select: { id: true, name: true } },
+        },
+      });
     });
 
     return NextResponse.json({

@@ -34,12 +34,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   await requirePermission(auth, 'purchase.receive');
   await requirePermission(auth, 'inventory.read');
     const { id } = await params;
-    const receivings = await db.purchaseReceiving.findMany({
-      where: { purchaseId: id, companyId: auth.companyId },
-      orderBy: { receivedAt: 'desc' },
-      include: {
-        _count: { select: { items: true } },
-      },
+    const receivings = await runInTenantContext(auth.ctx, async () => {
+      return db.purchaseReceiving.findMany({
+        where: { purchaseId: id, companyId: auth.companyId },
+        orderBy: { receivedAt: 'desc' },
+        include: {
+          _count: { select: { items: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: receivings.map(r => ({

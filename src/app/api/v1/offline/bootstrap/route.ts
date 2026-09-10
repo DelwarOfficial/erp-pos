@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { hmacSha256 } from '@/lib/crypto';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -22,24 +23,28 @@ export async function POST(req: NextRequest) {
   await requirePermission(auth, 'device.read');
     const body = BootstrapSchema.parse(await req.json());
 
-    // Validate device belongs to this company + branch + is active
-    const device = await db.device.findFirst({
-      where: { id: body.device_id, companyId: auth.companyId, branchId: body.branch_id, status: 'active' },
-    });
-    if (!device) {
-      throw new DomainError('VALIDATION_FAILED', 'Device not found or not active', {}, 404);
-    }
+    // Validate device belongs to this company + branch + is active.
+    // All tenant-scoped reads run inside explicit context (no ambient ALS).
+    const { device, products } = await runInTenantContext(auth.ctx, async () => {
+      const device = await db.device.findFirst({
+        where: { id: body.device_id, companyId: auth.companyId, branchId: body.branch_id, status: 'active' },
+      });
+      if (!device) {
+        throw new DomainError('VALIDATION_FAILED', 'Device not found or not active', {}, 404);
+      }
 
-    // Build snapshot: active products with prices + tax codes
-    const products = await db.product.findMany({
-      where: { companyId: auth.companyId, isActive: true, deletedAt: null, productType: { in: ['standard', 'combo'] } },
-      select: {
-        id: true, name: true, code: true,
-        defaultPrice: true, isSerialized: true,
-        unit: { select: { code: true } },
-        barcodes: { where: { isPrimary: true }, select: { code: true, symbology: true } },
-      },
-      take: 200, // offline.stock_budget_max_products default
+      // Build snapshot: active products with prices + tax codes
+      const products = await db.product.findMany({
+        where: { companyId: auth.companyId, isActive: true, deletedAt: null, productType: { in: ['standard', 'combo'] } },
+        select: {
+          id: true, name: true, code: true,
+          defaultPrice: true, isSerialized: true,
+          unit: { select: { code: true } },
+          barcodes: { where: { isPrimary: true }, select: { code: true, symbology: true } },
+        },
+        take: 200, // offline.stock_budget_max_products default
+      });
+      return { device, products };
     });
 
     const snapshot = {
@@ -64,17 +69,19 @@ export async function POST(req: NextRequest) {
     const signature = hmacSha256(signingKey, snapshotJson);
 
     // Update device last_bootstrap_at
-    await db.device.update({
-      where: { id: device.id },
-      data: { lastBootstrapAt: new Date(), lastSeenAt: new Date(), schemaVersion: '1.0' },
-    });
+    await runInTenantContext(auth.ctx, async () => {
+      await db.device.update({
+        where: { id: device.id },
+        data: { lastBootstrapAt: new Date(), lastSeenAt: new Date(), schemaVersion: '1.0' },
+      });
 
-    await db.auditLog.create({
-      data: {
-        companyId: auth.companyId, userId: auth.userId, correlationId,
-        action: 'offline.bootstrap', entityType: 'device', entityId: device.id,
-        afterValue: JSON.stringify({ product_count: products.length, schema_version: '1.0' }),
-      },
+      await db.auditLog.create({
+        data: {
+          companyId: auth.companyId, userId: auth.userId, correlationId,
+          action: 'offline.bootstrap', entityType: 'device', entityId: device.id,
+          afterValue: JSON.stringify({ product_count: products.length, schema_version: '1.0' }),
+        },
+      });
     });
 
     return NextResponse.json({

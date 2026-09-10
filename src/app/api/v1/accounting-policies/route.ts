@@ -72,8 +72,10 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'journal.post');
   await requirePermission(auth, 'journal.read');
-    const policy = await db.accountingPolicy.findUnique({
-      where: { companyId: auth.companyId },
+    const policy = await runInTenantContext(auth.ctx, async () => {
+      return db.accountingPolicy.findUnique({
+        where: { companyId: auth.companyId },
+      });
     });
     if (!policy) {
       return NextResponse.json({ error: { code: 'RESOURCE_NOT_FOUND', message: 'Accounting policies not configured — run onboarding or seed default CoA' } }, { status: 404 });
@@ -81,9 +83,11 @@ export async function GET(req: NextRequest) {
 
     // Resolve account names
     const accountIds = POLICY_FIELDS.map(f => policy[f]).filter(Boolean) as string[];
-    const accounts = await db.chartOfAccount.findMany({
-      where: { id: { in: accountIds } },
-      select: { id: true, code: true, name: true, accountClass: true },
+    const accounts = await runInTenantContext(auth.ctx, async () => {
+      return db.chartOfAccount.findMany({
+        where: { id: { in: accountIds } },
+        select: { id: true, code: true, name: true, accountClass: true },
+      });
     });
     const accountMap = new Map(accounts.map(a => [a.id, a]));
 

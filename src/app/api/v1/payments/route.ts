@@ -50,17 +50,19 @@ export async function GET(req: NextRequest) {
     if (paymentType) where.paymentType = paymentType;
     if (method) where.paymentMethod = method;
 
-    const [items, total] = await Promise.all([
-      db.payment.findMany({
-        where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
-        include: {
-          customer: { select: { id: true, name: true } },
-          supplier: { select: { id: true, name: true } },
-          financialAccount: { select: { id: true, name: true } },
-        },
-      }),
-      db.payment.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.payment.findMany({
+          where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
+          include: {
+            customer: { select: { id: true, name: true } },
+            supplier: { select: { id: true, name: true } },
+            financialAccount: { select: { id: true, name: true } },
+          },
+        }),
+        db.payment.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(p => ({

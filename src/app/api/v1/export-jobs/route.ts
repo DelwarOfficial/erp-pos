@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { generateCsv, escapeFormulaCell } from '@/lib/import-export/csv';
@@ -25,15 +26,17 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = { companyId: auth.companyId };
   if (status) where.status = status;
 
-  const [jobs, total] = await Promise.all([
-    db.reportExportJob.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    }),
-    db.reportExportJob.count({ where }),
-  ]);
+  const [jobs, total] = await runInTenantContext(auth.ctx, async () => {
+    return Promise.all([
+      db.reportExportJob.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      db.reportExportJob.count({ where }),
+    ]);
+  });
 
   return NextResponse.json({
     jobs: jobs.map(j => ({
@@ -94,61 +97,64 @@ export async function POST(req: NextRequest) {
     }, { status: 403 });
   }
 
-  // Create export job
-  const job = await db.reportExportJob.create({
-    data: {
-      companyId: auth.companyId,
-      requestedBy: auth.userId ?? 'unknown',
-      reportCode: report_code,
-      format,
-      filterJson: JSON.stringify(filter_json ?? {}),
-      dataCutoffAt: new Date(),
-      status: 'running',
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7-day retention
-    },
-  });
-
-  try {
-    // Generate the export data based on report code
-    const exportData = await generateExportData(auth.companyId, report_code, filter_json ?? {}, include_sensitive && canExportSensitive);
-
-    // Generate CSV (xlsx/pdf would use a library in production)
-    const csv = generateCsv([exportData.headers, ...exportData.rows]);
-
-    // Record control totals
-    await db.reportExportJob.update({
-      where: { id: job.id },
+  // Create export job + run all tenant-scoped export work inside explicit
+  // context. Export generators query tenant models via the shared client.
+  return runInTenantContext(auth.ctx, async () => {
+    const job = await db.reportExportJob.create({
       data: {
-        status: 'completed',
-        errorSummary: `Exported ${exportData.rows.length} rows`,
-      },
-    });
-
-    // Store the CSV content temporarily (in production: upload to S3 + create media_asset)
-    // For sandbox: return directly in the response
-    return NextResponse.json({
-      job: {
-        id: job.id,
+        companyId: auth.companyId,
+        requestedBy: auth.userId ?? 'unknown',
         reportCode: report_code,
         format,
-        status: 'completed',
-        rowCount: exportData.rows.length,
-        controlTotals: exportData.controlTotals,
-        dataCutoffAt: job.dataCutoffAt,
-        expiresAt: job.expiresAt,
-      },
-      downloadUrl: `/api/v1/export-jobs/${job.id}/download`,
-    }, { status: 201 });
-  } catch (e) {
-    await db.reportExportJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'failed',
-        errorSummary: e instanceof Error ? e.message : 'Unknown error',
+        filterJson: JSON.stringify(filter_json ?? {}),
+        dataCutoffAt: new Date(),
+        status: 'running',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7-day retention
       },
     });
-    return NextResponse.json({ error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } }, { status: 500 });
-  }
+
+    try {
+      // Generate the export data based on report code
+      const exportData = await generateExportData(auth.companyId, report_code, filter_json ?? {}, include_sensitive && canExportSensitive);
+
+      // Generate CSV (xlsx/pdf would use a library in production)
+      const csv = generateCsv([exportData.headers, ...exportData.rows]);
+
+      // Record control totals
+      await db.reportExportJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'completed',
+          errorSummary: `Exported ${exportData.rows.length} rows`,
+        },
+      });
+
+      // Store the CSV content temporarily (in production: upload to S3 + create media_asset)
+      // For sandbox: return directly in the response
+      return NextResponse.json({
+        job: {
+          id: job.id,
+          reportCode: report_code,
+          format,
+          status: 'completed',
+          rowCount: exportData.rows.length,
+          controlTotals: exportData.controlTotals,
+          dataCutoffAt: job.dataCutoffAt,
+          expiresAt: job.expiresAt,
+        },
+        downloadUrl: `/api/v1/export-jobs/${job.id}/download`,
+      }, { status: 201 });
+    } catch (e) {
+      await db.reportExportJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          errorSummary: e instanceof Error ? e.message : 'Unknown error',
+        },
+      });
+      return NextResponse.json({ error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } }, { status: 500 });
+    }
+  });
 }
 
 // ── Export data generators ──

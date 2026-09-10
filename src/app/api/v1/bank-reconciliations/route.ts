@@ -43,13 +43,15 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status;
     if (financialAccountId) where.financialAccountId = financialAccountId;
 
-    const items = await db.bankReconciliation.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
+    const items = await runInTenantContext(auth.ctx, async () => {
+      return db.bankReconciliation.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
         financialAccount: { select: { id: true, name: true, accountType: true } },
-      },
+        },
+      });
     });
 
     return NextResponse.json({

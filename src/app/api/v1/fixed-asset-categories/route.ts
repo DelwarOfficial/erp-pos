@@ -26,9 +26,11 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, 'asset.view.branch');
-    const items = await db.fixedAssetCategory.findMany({
-      where: { companyId: auth.companyId },
-      orderBy: { code: 'asc' },
+    const items = await runInTenantContext(auth.ctx, async () => {
+      return db.fixedAssetCategory.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: { code: 'asc' },
+      });
     });
     return NextResponse.json({
       items: items.map(c => ({

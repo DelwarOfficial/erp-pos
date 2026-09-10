@@ -89,10 +89,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       throw new DomainError('VALIDATION_FAILED', `Payment provider '${body.provider_code}' not registered`, {}, 400);
     }
 
-    // Fetch the payment row (for field reads in phase 3). Use unrestricted db
-    // since we already validated ownership in phase 1 and the idempotency key
-    // prevents replays.
-    const payment = await db.payment.findFirst({ where: { id, companyId: auth.companyId } });
+    // Fetch the payment row (for field reads in phase 3). Tenant-scoped read
+    // inside explicit context — ownership was validated in phase 1 and the
+    // idempotency key prevents replays.
+    const payment = await runInTenantContext(auth.ctx, async () => {
+      return db.payment.findFirst({ where: { id, companyId: auth.companyId } });
+    });
     if (!payment) throw new DomainError('RESOURCE_NOT_FOUND', 'Payment not found', {}, 404);
 
     try {
@@ -102,55 +104,60 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
 
       // ── Phase 3: Record refund result in a new short transaction ──
-      // Create a reversal payment record + audit log
-      const reversalPayment = await db.payment.create({
-        data: {
-          companyId: auth.companyId, branchId: payment.branchId,
-          referenceNo: `REFUND-${payment.referenceNo}`, clientTxnId: randomUUID(),
-          paymentType: 'sale_refund', direction: 'outgoing',
-          customerId: payment.customerId ?? null,
-          saleReturnId: payment.saleReturnId ?? null,
-          financialAccountId: payment.financialAccountId,
-          cashierShiftId: payment.cashierShiftId ?? null,
-          currencyCode: payment.currencyCode, exchangeRate: payment.exchangeRate,
-          amount: body.amount, baseAmount: body.amount,
-          paymentMethod: body.provider_code, methodReference: refundResult.refundId,
-          chequeStatus: 'not_applicable',
-          paymentStatus: refundResult.status === 'completed' ? 'posted' : 'failed',
-          businessDate: new Date(), receivedOrPaidAt: new Date(),
-          reversedPaymentId: payment.id,
-          createdBy: auth.userId!, notes: `Refund: ${body.reason ?? 'customer request'}`,
-        },
-      });
+      // Create a reversal payment record + audit log (explicit tenant context;
+      // gateway I/O above stays outside any DB transaction by design).
+      return runInTenantContext(auth.ctx, async () => {
+        const reversalPayment = await db.payment.create({
+          data: {
+            companyId: auth.companyId, branchId: payment.branchId,
+            referenceNo: `REFUND-${payment.referenceNo}`, clientTxnId: randomUUID(),
+            paymentType: 'sale_refund', direction: 'outgoing',
+            customerId: payment.customerId ?? null,
+            saleReturnId: payment.saleReturnId ?? null,
+            financialAccountId: payment.financialAccountId,
+            cashierShiftId: payment.cashierShiftId ?? null,
+            currencyCode: payment.currencyCode, exchangeRate: payment.exchangeRate,
+            amount: body.amount, baseAmount: body.amount,
+            paymentMethod: body.provider_code, methodReference: refundResult.refundId,
+            chequeStatus: 'not_applicable',
+            paymentStatus: refundResult.status === 'completed' ? 'posted' : 'failed',
+            businessDate: new Date(), receivedOrPaidAt: new Date(),
+            reversedPaymentId: payment.id,
+            createdBy: auth.userId!, notes: `Refund: ${body.reason ?? 'customer request'}`,
+          },
+        });
 
-      await db.auditLog.create({
-        data: { companyId: auth.companyId, userId: auth.userId, correlationId,
-          action: 'payment.refund.completed', entityType: 'payment', entityId: payment.id,
-          afterValue: JSON.stringify({
-            refund_id: refundResult.refundId, refund_status: refundResult.status,
-            reversal_payment_id: reversalPayment.id,
-            amount: body.amount, gateway_txn_id: body.gateway_txn_id,
-            reason: body.reason,
-          }) },
-      });
+        await db.auditLog.create({
+          data: { companyId: auth.companyId, userId: auth.userId, correlationId,
+            action: 'payment.refund.completed', entityType: 'payment', entityId: payment.id,
+            afterValue: JSON.stringify({
+              refund_id: refundResult.refundId, refund_status: refundResult.status,
+              reversal_payment_id: reversalPayment.id,
+              amount: body.amount, gateway_txn_id: body.gateway_txn_id,
+              reason: body.reason,
+            }) },
+        });
 
-      return NextResponse.json({
-        payment_id: payment.id,
-        refund_id: refundResult.refundId,
-        refund_status: refundResult.status,
-        reversal_payment_id: reversalPayment.id,
-        amount: body.amount,
-      }, { status: 200 });
+        return NextResponse.json({
+          payment_id: payment.id,
+          refund_id: refundResult.refundId,
+          refund_status: refundResult.status,
+          reversal_payment_id: reversalPayment.id,
+          amount: body.amount,
+        }, { status: 200 });
+      });
     } catch (gatewayError) {
       // Gateway call failed — record audit with error
       const errorMsg = gatewayError instanceof Error ? gatewayError.message : 'Unknown gateway error';
-      await db.auditLog.create({
-        data: { companyId: auth.companyId, userId: auth.userId, correlationId,
-          action: 'payment.refund.failed', entityType: 'payment', entityId: payment.id,
-          afterValue: JSON.stringify({
-            provider: body.provider_code, error: errorMsg,
-            amount: body.amount, gateway_txn_id: body.gateway_txn_id,
-          }) },
+      await runInTenantContext(auth.ctx, async () => {
+        return db.auditLog.create({
+          data: { companyId: auth.companyId, userId: auth.userId, correlationId,
+            action: 'payment.refund.failed', entityType: 'payment', entityId: payment.id,
+            afterValue: JSON.stringify({
+              provider: body.provider_code, error: errorMsg,
+              amount: body.amount, gateway_txn_id: body.gateway_txn_id,
+            }) },
+        });
       }).catch(() => {});
 
       throw new DomainError('EXTERNAL_PROVIDER_ERROR', `Refund gateway error: ${errorMsg}`, { provider: body.provider_code }, 502);

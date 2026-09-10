@@ -65,11 +65,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Use `select` to limit payload (no full row dump). _count avoids per-sale item queries.
-    const sales = await db.sale.findMany({
-      where,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
+    const sales = await runInTenantContext(auth.ctx, async () => {
+      return db.sale.findMany({
+        where,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         referenceNo: true,
         saleStatus: true,
@@ -82,7 +83,8 @@ export async function GET(req: NextRequest) {
         customer: { select: { id: true, name: true } },
         biller: { select: { id: true, name: true, email: true } },
         _count: { select: { items: true, payments: true } },
-      },
+        },
+      });
     });
 
     return NextResponse.json({

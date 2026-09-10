@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'gift_card.issue');
   await requirePermission(auth, 'product.read');
-    const cards = await db.giftCard.findMany({
-      where: { companyId: auth.companyId },
-      take: 50, orderBy: { issuedAt: 'desc' },
+    const cards = await runInTenantContext(auth.ctx, async () => {
+      return db.giftCard.findMany({
+        where: { companyId: auth.companyId },
+        take: 50, orderBy: { issuedAt: 'desc' },
+      });
     });
     return NextResponse.json({
       items: cards.map(c => ({

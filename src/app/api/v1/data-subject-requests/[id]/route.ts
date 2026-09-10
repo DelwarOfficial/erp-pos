@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { requireIdempotencyKey } from '@/lib/idempotency';
@@ -18,7 +19,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'audit_logs:read');
 
     const { id } = await params;
-    const item = await db.dataSubjectRequest.findFirst({ where: { id, companyId: auth.companyId } });
+    const item = await runInTenantContext(auth.ctx, async () => {
+      return db.dataSubjectRequest.findFirst({ where: { id, companyId: auth.companyId } });
+    });
     if (!item) return NextResponse.json({ error: { code: 'RESOURCE_NOT_FOUND', message: 'DSR not found' } }, { status: 404 });
     return NextResponse.json({ item });
   } catch (e) { return errorResponse(e, correlationId); }
@@ -40,12 +43,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     const body = PatchSchema.parse(await req.json());
 
-    const item = await db.dataSubjectRequest.updateMany({
-      where: { id, companyId: auth.companyId },
-      data: {
-        ...(body.status && { status: body.status }),
-        ...(body.status === 'completed' || body.status === 'rejected' ? { resolvedBy: body.resolved_by ?? auth.userId, resolvedAt: new Date() } : {}),
-      },
+    const item = await runInTenantContext(auth.ctx, async () => {
+      return db.dataSubjectRequest.updateMany({
+        where: { id, companyId: auth.companyId },
+        data: {
+          ...(body.status && { status: body.status }),
+          ...(body.status === 'completed' || body.status === 'rejected' ? { resolvedBy: body.resolved_by ?? auth.userId, resolvedAt: new Date() } : {}),
+        },
+      });
     });
     if (item.count === 0) return NextResponse.json({ error: { code: 'RESOURCE_NOT_FOUND', message: 'DSR not found' } }, { status: 404 });
     return NextResponse.json({ item: { id, updated: true } });

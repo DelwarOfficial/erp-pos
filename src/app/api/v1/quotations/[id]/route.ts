@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -13,14 +14,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'sale.read');
     const { id } = await params;
 
-    const q = await db.quotation.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        branch: { select: { id: true, name: true } },
-        convertedSale: { select: { id: true, referenceNo: true } },
-        items: { include: { product: { select: { id: true, code: true, name: true } } }, orderBy: { lineNo: 'asc' } },
-      },
+    const q = await runInTenantContext(auth.ctx, async () => {
+      return db.quotation.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          branch: { select: { id: true, name: true } },
+          convertedSale: { select: { id: true, referenceNo: true } },
+          items: { include: { product: { select: { id: true, code: true, name: true } } }, orderBy: { lineNo: 'asc' } },
+        },
+      });
     });
     if (!q) throw new DomainError('RESOURCE_NOT_FOUND', 'Quotation not found', {}, 404);
 

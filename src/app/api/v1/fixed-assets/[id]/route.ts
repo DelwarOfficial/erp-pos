@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { DomainError } from '@/lib/errors/codes';
@@ -14,13 +15,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'asset.view.branch');
     const { id } = await params;
 
-    const asset = await db.fixedAsset.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
-        category: { select: { id: true, name: true, code: true } },
-        branch: { select: { id: true, name: true, code: true } },
-        depreciationRuns: { orderBy: { periodEnd: 'desc' }, take: 50 },
-      },
+    const asset = await runInTenantContext(auth.ctx, async () => {
+      return db.fixedAsset.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
+          category: { select: { id: true, name: true, code: true } },
+          branch: { select: { id: true, name: true, code: true } },
+          depreciationRuns: { orderBy: { periodEnd: 'desc' }, take: 50 },
+        },
+      });
     });
     if (!asset) throw new DomainError('RESOURCE_NOT_FOUND', 'Fixed asset not found', {}, 404);
 

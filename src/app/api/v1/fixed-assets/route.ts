@@ -55,14 +55,16 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const items = await db.fixedAsset.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: {
-        category: { select: { id: true, name: true, code: true } },
-        branch: { select: { id: true, name: true, code: true } },
-      },
+    const items = await runInTenantContext(auth.ctx, async () => {
+      return db.fixedAsset.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: {
+          category: { select: { id: true, name: true, code: true } },
+          branch: { select: { id: true, name: true, code: true } },
+        },
+      });
     });
 
     return NextResponse.json({

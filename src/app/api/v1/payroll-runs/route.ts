@@ -33,11 +33,15 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'payroll.post');
-    await requireFeatureFlag('hr_payroll_enabled');
   await requirePermission(auth, 'journal.read');
-    const runs = await db.payrollRun.findMany({
-      where: { companyId: auth.companyId },
-      take: 50, orderBy: { createdAt: 'desc' },
+    // requireFeatureFlag reads tenant-scoped flags internally, so it runs
+    // inside the same explicit context as the query below.
+    const runs = await runInTenantContext(auth.ctx, async () => {
+      await requireFeatureFlag('hr_payroll_enabled');
+      return db.payrollRun.findMany({
+        where: { companyId: auth.companyId },
+        take: 50, orderBy: { createdAt: 'desc' },
+      });
     });
     return NextResponse.json({
       items: runs.map(r => ({

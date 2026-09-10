@@ -19,9 +19,11 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'category.manage');
   await requirePermission(auth, 'product.read');
-    const brands = await db.brand.findMany({
-      where: { companyId: auth.companyId, deletedAt: null },
-      orderBy: { name: 'asc' },
+    const brands = await runInTenantContext(auth.ctx, async () => {
+      return db.brand.findMany({
+        where: { companyId: auth.companyId, deletedAt: null },
+        orderBy: { name: 'asc' },
+      });
     });
     return NextResponse.json({
       items: brands.map(b => ({ id: b.id, name: b.name, is_active: b.isActive })),

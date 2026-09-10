@@ -45,13 +45,15 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
-    const requests = await db.serviceRequest.findMany({
-      where, take: 50, orderBy: { receivedAt: 'desc' },
-      include: {
-        customer: { select: { id: true, name: true, phone: true } },
-        serial: { select: { id: true, serialNumber: true } },
-        _count: { select: { parts: true, events: true } },
-      },
+    const requests = await runInTenantContext(auth.ctx, async () => {
+      return db.serviceRequest.findMany({
+        where, take: 50, orderBy: { receivedAt: 'desc' },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          serial: { select: { id: true, serialNumber: true } },
+          _count: { select: { parts: true, events: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: requests.map(r => ({

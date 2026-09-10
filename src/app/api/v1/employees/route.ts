@@ -32,22 +32,24 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'user.create');
   await requirePermission(auth, 'user.read');
-    const employees = await db.employee.findMany({
-      where: { companyId: auth.companyId },
-      take: 100, orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        employeeNo: true,
-        name: true,
-        phone: true,
-        email: true,
-        employmentStatus: true,
-        baseSalary: true,
-        joinDate: true,
-        branch: { select: { id: true, name: true, code: true } },
-        department: { select: { id: true, name: true } },
-        designation: { select: { id: true, name: true } },
-      },
+    const employees = await runInTenantContext(auth.ctx, async () => {
+      return db.employee.findMany({
+        where: { companyId: auth.companyId },
+        take: 100, orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          employeeNo: true,
+          name: true,
+          phone: true,
+          email: true,
+          employmentStatus: true,
+          baseSalary: true,
+          joinDate: true,
+          branch: { select: { id: true, name: true, code: true } },
+          department: { select: { id: true, name: true } },
+          designation: { select: { id: true, name: true } },
+        },
+      });
     });
     return NextResponse.json({
       items: employees.map(e => ({

@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { DomainError } from '@/lib/errors/codes';
@@ -14,12 +15,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     await requirePermission(auth, 'bank.reconciliation.view.company');
     const { id } = await params;
 
-    const rec = await db.bankReconciliation.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
-        financialAccount: { select: { id: true, name: true, accountType: true, currencyCode: true } },
-        lines: { orderBy: [{ lineType: 'asc' }, { transactionDate: 'asc' }] },
-      },
+    const rec = await runInTenantContext(auth.ctx, async () => {
+      return db.bankReconciliation.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
+          financialAccount: { select: { id: true, name: true, accountType: true, currencyCode: true } },
+          lines: { orderBy: [{ lineType: 'asc' }, { transactionDate: 'asc' }] },
+        },
+      });
     });
     if (!rec) throw new DomainError('RESOURCE_NOT_FOUND', 'Reconciliation not found', {}, 404);
 

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -13,13 +14,15 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
     try { await requirePermission(auth, 'inventory.read'); } catch { /* optional */ }
 
-    const warehouses = await db.warehouse.findMany({
-      where: { companyId: auth.companyId, isActive: true },
-      orderBy: [{ code: 'asc' }, { name: 'asc' }],
-      select: {
-        id: true, name: true, code: true, warehouseType: true,
-        branch: { select: { id: true, name: true, code: true } },
-      },
+    const warehouses = await runInTenantContext(auth.ctx, async () => {
+      return db.warehouse.findMany({
+        where: { companyId: auth.companyId, isActive: true },
+        orderBy: [{ code: 'asc' }, { name: 'asc' }],
+        select: {
+          id: true, name: true, code: true, warehouseType: true,
+          branch: { select: { id: true, name: true, code: true } },
+        },
+      });
     });
 
     return NextResponse.json({

@@ -30,16 +30,18 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status;
     if (runType) where.runType = runType;
 
-    const [items, total] = await Promise.all([
-      db.reconciliationRun.findMany({
-        where, take: limit, skip: offset, orderBy: { startedAt: 'desc' },
-        include: {
-          initiatedByUser: { select: { id: true, name: true } },
-          _count: { select: { findings: true } },
-        },
-      }),
-      db.reconciliationRun.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.reconciliationRun.findMany({
+          where, take: limit, skip: offset, orderBy: { startedAt: 'desc' },
+          include: {
+            initiatedByUser: { select: { id: true, name: true } },
+            _count: { select: { findings: true } },
+          },
+        }),
+        db.reconciliationRun.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(r => ({

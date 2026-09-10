@@ -33,12 +33,14 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status;
     if (returnType) where.returnType = returnType;
 
-    const [items, total] = await Promise.all([
-      db.taxReturnPeriod.findMany({
-        where, take: limit, skip: offset, orderBy: { periodStart: 'desc' },
-      }),
-      db.taxReturnPeriod.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.taxReturnPeriod.findMany({
+          where, take: limit, skip: offset, orderBy: { periodStart: 'desc' },
+        }),
+        db.taxReturnPeriod.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(p => ({

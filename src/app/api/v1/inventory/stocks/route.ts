@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -22,10 +23,11 @@ export async function GET(req: NextRequest) {
     if (warehouseId) where.warehouseId = warehouseId;
     if (productId) where.productId = productId;
 
-    const stocks = await db.warehouseStock.findMany({
-      where,
-      take: limit,
-      select: {
+    const stocks = await runInTenantContext(auth.ctx, async () => {
+      return db.warehouseStock.findMany({
+        where,
+        take: limit,
+        select: {
         id: true,
         qtyOnHand: true,
         qtyReserved: true,
@@ -42,8 +44,9 @@ export async function GET(req: NextRequest) {
           },
         },
         warehouse: { select: { id: true, name: true, code: true } },
-      },
-      orderBy: { updatedAt: 'desc' },
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
     });
 
     let items = stocks.map(s => {

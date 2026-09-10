@@ -23,10 +23,12 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'category.manage');
   await requirePermission(auth, 'product.read');
-    const categories = await db.category.findMany({
-      where: { companyId: auth.companyId, deletedAt: null },
-      include: { parent: { select: { id: true, name: true, code: true } } },
-      orderBy: [{ name: 'asc' }],
+    const categories = await runInTenantContext(auth.ctx, async () => {
+      return db.category.findMany({
+        where: { companyId: auth.companyId, deletedAt: null },
+        include: { parent: { select: { id: true, name: true, code: true } } },
+        orderBy: [{ name: 'asc' }],
+      });
     });
     return NextResponse.json({
       items: categories.map(c => ({

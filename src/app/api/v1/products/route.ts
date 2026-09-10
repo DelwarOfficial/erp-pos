@@ -61,15 +61,17 @@ export async function GET(req: NextRequest) {
     if (isActive === 'false') where.isActive = false;
     if (cursor) where.id = { gt: cursor };
 
-    const products = await db.product.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { id: 'asc' },
-      include: {
-        category: { select: { id: true, name: true, code: true } },
-        brand: { select: { id: true, name: true } },
-        unit: { select: { id: true, name: true, code: true } },
-      },
+    const products = await runInTenantContext(auth.ctx, async () => {
+      return db.product.findMany({
+        where,
+        take: limit + 1,
+        orderBy: { id: 'asc' },
+        include: {
+          category: { select: { id: true, name: true, code: true } },
+          brand: { select: { id: true, name: true } },
+          unit: { select: { id: true, name: true, code: true } },
+        },
+      });
     });
 
     const hasMore = products.length > limit;

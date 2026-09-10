@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -33,11 +34,12 @@ export async function GET(req: NextRequest) {
     }
     if (cursor) where.id = { lt: cursor };
 
-    const movements = await db.stockMovement.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { effectiveAt: 'desc' },
-      select: {
+    const movements = await runInTenantContext(auth.ctx, async () => {
+      return db.stockMovement.findMany({
+        where,
+        take: limit + 1,
+        orderBy: { effectiveAt: 'desc' },
+        select: {
         id: true,
         eventId: true,
         eventLineNo: true,
@@ -56,7 +58,8 @@ export async function GET(req: NextRequest) {
         metadata: true,
         product: { select: { id: true, name: true, code: true } },
         warehouse: { select: { id: true, name: true, code: true } },
-      },
+        },
+      });
     });
 
     const hasMore = movements.length > limit;

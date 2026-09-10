@@ -50,17 +50,19 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status;
     if (warehouseId) where.warehouseId = warehouseId;
 
-    const [items, total] = await Promise.all([
-      db.stockCount.findMany({
-        where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
-        include: {
-          warehouse: { select: { id: true, name: true, code: true } },
-          branch: { select: { id: true, name: true } },
-          _count: { select: { items: true } },
-        },
-      }),
-      db.stockCount.count({ where }),
-    ]);
+    const [items, total] = await runInTenantContext(auth.ctx, async () => {
+      return Promise.all([
+        db.stockCount.findMany({
+          where, take: limit, skip: offset, orderBy: { createdAt: 'desc' },
+          include: {
+            warehouse: { select: { id: true, name: true, code: true } },
+            branch: { select: { id: true, name: true } },
+            _count: { select: { items: true } },
+          },
+        }),
+        db.stockCount.count({ where }),
+      ]);
+    });
 
     return NextResponse.json({
       items: items.map(sc => ({
