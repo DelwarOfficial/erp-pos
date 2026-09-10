@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError } from '@/lib/errors/codes';
 
 // GET /api/v1/admin/risk-assessments
@@ -37,18 +38,20 @@ export async function GET(req: NextRequest) {
   if (decision) where.decision = decision;
   if (subjectType) where.subjectType = subjectType;
 
-  const [assessments, total] = await Promise.all([
-    db.riskAssessment.findMany({
-      where,
-      orderBy: { assessedAt: 'desc' },
-      take: limit,
-      skip: offset,
-      include: {
-        outcomes: { select: { id: true, outcomeType: true, outcomeAmount: true, recordedAt: true } },
-      },
-    }),
-    db.riskAssessment.count({ where }),
-  ]);
+  const [assessments, total] = await runInTenantContext(auth.ctx, async () => {
+    return Promise.all([
+      db.riskAssessment.findMany({
+        where,
+        orderBy: { assessedAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          outcomes: { select: { id: true, outcomeType: true, outcomeAmount: true, recordedAt: true } },
+        },
+      }),
+      db.riskAssessment.count({ where }),
+    ]);
+  });
 
   return NextResponse.json({
     assessments: assessments.map((a) => ({

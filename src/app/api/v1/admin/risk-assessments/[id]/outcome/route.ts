@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 
@@ -44,23 +45,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Verify the assessment exists and belongs to the same tenant
-  const assessment = await db.riskAssessment.findFirst({
-    where: { id, companyId: auth.companyId },
+  const outcome = await runInTenantContext(auth.ctx, async () => {
+    const assessment = await db.riskAssessment.findFirst({
+      where: { id, companyId: auth.companyId },
+    });
+    if (!assessment) {
+      return null;
+    }
+
+    return db.riskAssessmentOutcome.create({
+      data: {
+        companyId: auth.companyId,
+        riskAssessmentId: id,
+        outcomeType,
+        outcomeNotes: outcomeNotes ?? null,
+        outcomeAmount: outcomeAmount ?? null,
+        recordedBy: auth.userId ?? 'unknown',
+      },
+    });
   });
-  if (!assessment) {
+  if (!outcome) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Risk assessment not found' } }, { status: 404 });
   }
-
-  const outcome = await db.riskAssessmentOutcome.create({
-    data: {
-      companyId: auth.companyId,
-      riskAssessmentId: id,
-      outcomeType,
-      outcomeNotes: outcomeNotes ?? null,
-      outcomeAmount: outcomeAmount ?? null,
-      recordedBy: auth.userId ?? 'unknown',
-    },
-  });
 
   return NextResponse.json({ outcome }, { status: 201 });
 }

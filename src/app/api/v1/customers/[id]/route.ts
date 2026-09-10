@@ -54,21 +54,23 @@ export async function GET(
 
     // findFirst (not findUnique) so RLS-equivalent filter applies. We do
     // NOT exclude soft-deleted rows — historical sale views may link to a
-    // since-archived customer and need to render its name.
-    const customer = await db.customer.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
-        customerGroup: {
-          select: {
-            id: true,
-            name: true,
-            defaultDiscountRate: true,
-            creditLimitDefault: true,
-            isActive: true,
+    // since-archived customer and need to render its name. Explicit context.
+    const customer = await runInTenantContext(auth.ctx, async () => {
+      return db.customer.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
+          customerGroup: {
+            select: {
+              id: true,
+              name: true,
+              defaultDiscountRate: true,
+              creditLimitDefault: true,
+              isActive: true,
+            },
           },
+          preferredBranch: { select: { id: true, name: true, code: true } },
         },
-        preferredBranch: { select: { id: true, name: true, code: true } },
-      },
+      });
     });
 
     if (!customer) {

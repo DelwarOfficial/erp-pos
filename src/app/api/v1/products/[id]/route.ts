@@ -58,10 +58,11 @@ export async function GET(
     // findFirst (not findUnique) so RLS-equivalent filter applies. We do
     // NOT exclude soft-deleted rows here — the caller may legitimately need
     // to view a soft-deleted product's details (e.g. from a historical
-    // sale's product snapshot link).
-    const product = await db.product.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    // sale's product snapshot link). Explicit context.
+    const product = await runInTenantContext(auth.ctx, async () => {
+      return db.product.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         category: { select: { id: true, name: true, code: true } },
         brand: { select: { id: true, name: true } },
         unit: { select: { id: true, name: true, code: true, allowFractional: true } },
@@ -89,8 +90,9 @@ export async function GET(
             currency: { select: { code: true, name: true } },
           },
           orderBy: { priority: 'desc' },
+          },
         },
-      },
+      });
     });
 
     if (!product) {

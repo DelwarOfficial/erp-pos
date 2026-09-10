@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { buildTenantContext, runInTenantContext } from '@/lib/db/transaction';
 import { cookies } from 'next/headers';
 import { verifyAccessToken } from '@/lib/auth/jwt';
 import { renderReceiptHtml, renderPdf, type ReceiptTemplateData } from '@/lib/pdf';
@@ -11,19 +12,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const token = cookieStore.get('erp_access')?.value;
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   let companyId: string;
-  try { const claims = await verifyAccessToken(token); companyId = claims.company_id; }
+  let userId: string;
+  try {
+    const claims = await verifyAccessToken(token);
+    companyId = claims.company_id;
+    userId = claims.sub;
+  }
   catch { return NextResponse.json({ error: 'Invalid token' }, { status: 401 }); }
 
-  const sale = await db.sale.findFirst({
-    where: { id, companyId },
-    include: {
-      items: { include: { product: { select: { name: true, code: true } } } },
-      branch: { select: { name: true, phone: true, address: true } },
-      company: { select: { displayName: true, bin: true, tin: true } },
-      payments: true,
-      biller: { select: { name: true } },
-      customer: { select: { name: true, phone: true } },
-    },
+  // Tenant-scoped read inside explicit context built from verified claims.
+  const ctx = buildTenantContext({ companyId, userId, branchIds: [] });
+  const sale = await runInTenantContext(ctx, async () => {
+    return db.sale.findFirst({
+      where: { id, companyId },
+      include: {
+        items: { include: { product: { select: { name: true, code: true } } } },
+        branch: { select: { name: true, phone: true, address: true } },
+        company: { select: { displayName: true, bin: true, tin: true } },
+        payments: true,
+        biller: { select: { name: true } },
+        customer: { select: { name: true, phone: true } },
+      },
+    });
   });
   if (!sale) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

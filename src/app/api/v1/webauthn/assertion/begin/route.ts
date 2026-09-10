@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { beginAuthentication } from '@/lib/auth/webauthn';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -13,9 +14,11 @@ export async function POST(req: NextRequest) {
     // This endpoint requires the user to be authenticated (via password +
     // MFA pending cookie) — they're adding a second factor.
     const auth = await authenticateRequest();
-    const result = await beginAuthentication({
-      companyId: auth.companyId,
-      userId: auth.userId,
+    const result = await runInTenantContext(auth.ctx, async () => {
+      return beginAuthentication({
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
     });
     return NextResponse.json(result);
   } catch (e) {

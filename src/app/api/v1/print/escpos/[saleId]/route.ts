@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest } from '@/lib/auth/middleware';
 import { buildReceiptBytes, sendToNetworkPrinter } from '@/lib/escpos';
 import { DomainError } from '@/lib/errors/codes';
@@ -18,15 +19,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
   
 
   const { saleId } = await params;
-  const sale = await db.sale.findFirst({
-    where: { id: saleId, companyId: auth.company_id },
+  // NOTE: auth.companyId (not company_id) — the latter is undefined and would
+  // silently drop the tenant scope. Explicit context + correct field.
+  const sale = await runInTenantContext(auth.ctx, async () => {
+    return db.sale.findFirst({
+      where: { id: saleId, companyId: auth.companyId },
     include: {
       items: { include: { product: { select: { name: true, code: true } } } },
       branch: { select: { name: true, phone: true, address: true } },
       payments: true,
       biller: { select: { name: true } },
       customer: { select: { name: true, phone: true } },
-    },
+      },
+    });
   });
   if (!sale) return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Sale not found' } }, { status: 404 });
 

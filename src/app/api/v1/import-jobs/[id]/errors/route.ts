@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { generateCsv } from '@/lib/import-export/csv';
@@ -16,17 +17,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   
 
   const { id } = await params;
-  const job = await db.importJob.findFirst({
-    where: { id, companyId: auth.companyId },
-    select: { id: true, fileName: true, jobType: true },
+  const job = await runInTenantContext(auth.ctx, async () => {
+    return db.importJob.findFirst({
+      where: { id, companyId: auth.companyId },
+      select: { id: true, fileName: true, jobType: true },
+    });
   });
   if (!job) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Import job not found' } }, { status: 404 });
   }
 
-  const errors = await db.importJobError.findMany({
-    where: { importJobId: id },
-    orderBy: { rowNumber: 'asc' },
+  const errors = await runInTenantContext(auth.ctx, async () => {
+    return db.importJobError.findMany({
+      where: { importJobId: id },
+      orderBy: { rowNumber: 'asc' },
+    });
   });
 
   // Generate CSV with error details

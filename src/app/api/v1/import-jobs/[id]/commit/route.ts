@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { getTemplate } from '@/lib/import-export/templates';
@@ -28,8 +29,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
-  const job = await db.importJob.findFirst({
-    where: { id, companyId: auth.companyId },
+  const job = await runInTenantContext(auth.ctx, async () => {
+    return db.importJob.findFirst({
+      where: { id, companyId: auth.companyId },
+    });
   });
   if (!job) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Import job not found' } }, { status: 404 });
@@ -60,14 +63,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }, { status: 400 });
   }
 
-  const result = await commitImport(
-    id,
-    auth.companyId,
-    auth.userId ?? 'unknown',
-    csvContent,
-    template,
-    job.duplicateStrategy ?? 'skip',
-  );
+  // commitImport performs tenant-scoped writes internally: explicit context.
+  const result = await runInTenantContext(auth.ctx, async () => {
+    return commitImport(
+      id,
+      auth.companyId,
+      auth.userId ?? 'unknown',
+      csvContent,
+      template,
+      job.duplicateStrategy ?? 'skip',
+    );
+  });
 
   return NextResponse.json({
     jobId: id,

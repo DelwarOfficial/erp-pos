@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { RISK_CONFIG } from '@/adapters/riskProvider';
@@ -36,15 +37,18 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {};
   if (thresholdKey) where.thresholdKey = thresholdKey;
 
-  const [changes, total] = await Promise.all([
-    db.riskThresholdChange.findMany({
-      where,
-      orderBy: { changedAt: 'desc' },
-      take: limit,
-      skip: offset,
-    }),
-    db.riskThresholdChange.count({ where }),
-  ]);
+  // Tenant scope is injected by the extension (no ambient context assumed).
+  const [changes, total] = await runInTenantContext(auth.ctx, async () => {
+    return Promise.all([
+      db.riskThresholdChange.findMany({
+        where,
+        orderBy: { changedAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      db.riskThresholdChange.count({ where }),
+    ]);
+  });
 
   return NextResponse.json({
     changes,
@@ -89,15 +93,17 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
-  const change = await db.riskThresholdChange.create({
-    data: {
-      companyId: auth.companyId,
-      thresholdKey,
-      oldValue: oldValue ?? null,
-      newValue: String(newValue),
-      reason: reason ?? null,
-      changedBy: auth.userId ?? 'unknown',
-    },
+  const change = await runInTenantContext(auth.ctx, async () => {
+    return db.riskThresholdChange.create({
+      data: {
+        companyId: auth.companyId,
+        thresholdKey,
+        oldValue: oldValue ?? null,
+        newValue: String(newValue),
+        reason: reason ?? null,
+        changedBy: auth.userId ?? 'unknown',
+      },
+    });
   });
 
   return NextResponse.json({ change }, { status: 201 });

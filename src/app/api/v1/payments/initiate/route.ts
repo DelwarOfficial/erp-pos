@@ -97,15 +97,17 @@ export async function POST(req: NextRequest) {
     );
 
     // Fetch the pending payment row (created in phase 1) by reference + branch.
-    // The idempotency wrapper already prevents replays, so this is safe.
-    const pendingPayment = await db.payment.findFirst({
-      where: {
-        companyId: auth.companyId,
-        referenceNo: body.reference,
-        paymentStatus: 'pending',
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 1,
+    // The idempotency wrapper already prevents replays; explicit context here.
+    const pendingPayment = await runInTenantContext(auth.ctx, async () => {
+      return db.payment.findFirst({
+        where: {
+          companyId: auth.companyId,
+          referenceNo: body.reference,
+          paymentStatus: 'pending',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      });
     });
     if (!pendingPayment) {
       throw new DomainError('INTERNAL_ERROR', 'Pending payment row not found after phase 1', {}, 500);

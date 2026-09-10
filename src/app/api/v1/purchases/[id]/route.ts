@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -23,10 +24,11 @@ export async function GET(
     const { id } = await params;
 
     // findFirst so the tenantClient extension can apply the company_id
-    // filter as RLS-equivalent defence-in-depth.
-    const purchase = await db.purchase.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    // filter as RLS-equivalent defence-in-depth (explicit context).
+    const purchase = await runInTenantContext(auth.ctx, async () => {
+      return db.purchase.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         supplier: {
           select: {
             id: true,
@@ -62,7 +64,8 @@ export async function GET(
             _count: { select: { items: true } },
           },
         },
-      },
+        },
+      });
     });
 
     if (!purchase) {

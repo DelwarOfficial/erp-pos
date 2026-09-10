@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { listFeatureFlags } from '@/lib/featureFlags';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -13,7 +14,10 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'company.read');
-    const flags = await listFeatureFlags(auth.companyId);
+    // listFeatureFlags queries tenant-scoped flags internally.
+    const flags = await runInTenantContext(auth.ctx, async () => {
+      return listFeatureFlags(auth.companyId);
+    });
     return NextResponse.json({ items: flags });
   } catch (e) {
     return errorResponse(e, correlationId);

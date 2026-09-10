@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 
@@ -30,28 +31,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
-  const originalChange = await db.riskThresholdChange.findUnique({ where: { id } });
-  if (!originalChange) {
-    return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Threshold change not found' } }, { status: 404 });
-  }
-  if (!originalChange.oldValue) {
-    return NextResponse.json({ error: { code: 'CANNOT_REVERT', message: 'Original change had no previous value' } }, { status: 400 });
-  }
+  // Statuses returned as data (no outer try/catch here) to preserve contracts.
+  const outcome = await runInTenantContext(auth.ctx, async () => {
+    const originalChange = await db.riskThresholdChange.findUnique({ where: { id } });
+    if (!originalChange) {
+      return { error: { code: 'NOT_FOUND', message: 'Threshold change not found' }, status: 404 } as const;
+    }
+    if (!originalChange.oldValue) {
+      return { error: { code: 'CANNOT_REVERT', message: 'Original change had no previous value' }, status: 400 } as const;
+    }
 
-  // Get current value from RISK_CONFIG
-  const { RISK_CONFIG } = await import('@/adapters/riskProvider');
-  const currentValue = (RISK_CONFIG as Record<string, unknown>)[originalChange.thresholdKey];
+    // Get current value from RISK_CONFIG
+    const { RISK_CONFIG } = await import('@/adapters/riskProvider');
+    const currentValue = (RISK_CONFIG as Record<string, unknown>)[originalChange.thresholdKey];
 
-  const revertChange = await db.riskThresholdChange.create({
-    data: {
-      companyId: auth.companyId,
-      thresholdKey: originalChange.thresholdKey,
-      oldValue: String(currentValue ?? ''),
-      newValue: originalChange.oldValue,
-      reason: `Revert of change ${originalChange.id}: ${originalChange.reason ?? 'no reason given'}`,
-      changedBy: auth.userId ?? 'unknown',
-    },
+    const revertChange = await db.riskThresholdChange.create({
+      data: {
+        companyId: auth.companyId,
+        thresholdKey: originalChange.thresholdKey,
+        oldValue: String(currentValue ?? ''),
+        newValue: originalChange.oldValue,
+        reason: `Revert of change ${originalChange.id}: ${originalChange.reason ?? 'no reason given'}`,
+        changedBy: auth.userId ?? 'unknown',
+      },
+    });
+    return { revertChange };
   });
+  if ('error' in outcome) {
+    return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+  }
 
-  return NextResponse.json({ change: revertChange, message: 'Revert recorded — update .env and restart to apply' }, { status: 201 });
+  return NextResponse.json({ change: outcome.revertChange, message: 'Revert recorded — update .env and restart to apply' }, { status: 201 });
 }

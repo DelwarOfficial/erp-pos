@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';
@@ -31,13 +32,15 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   // Fetch security events with type starting 'risk_alert_'
-  const alerts = await db.securityEvent.findMany({
-    where: {
-      occurredAt: { gte: since },
-      eventType: { startsWith: 'risk_alert_' },
-    },
-    orderBy: { occurredAt: 'desc' },
-    take: 100,
+  const alerts = await runInTenantContext(auth.ctx, async () => {
+    return db.securityEvent.findMany({
+      where: {
+        occurredAt: { gte: since },
+        eventType: { startsWith: 'risk_alert_' },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 100,
+    });
   }).catch(() => []);
 
   return NextResponse.json({

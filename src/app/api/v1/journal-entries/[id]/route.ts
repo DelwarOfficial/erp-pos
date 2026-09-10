@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -22,8 +23,9 @@ export async function GET(
     const { id } = await params;
 
     // findFirst (not findUnique) so the tenantClient extension can apply the
-    // company_id filter as RLS-equivalent defence-in-depth.
-    const entry = await db.journalEntry.findFirst({
+    // company_id filter as RLS-equivalent defence-in-depth. Explicit context.
+    const entry = await runInTenantContext(auth.ctx, async () => {
+      return db.journalEntry.findFirst({
       where: { id, companyId: auth.companyId },
       include: {
         lines: {
@@ -49,7 +51,8 @@ export async function GET(
         reversalOf: { select: { id: true, entryNo: true } },
         creator: { select: { id: true, name: true, email: true } },
         poster: { select: { id: true, name: true, email: true } },
-      },
+        },
+      });
     });
 
     if (!entry) {

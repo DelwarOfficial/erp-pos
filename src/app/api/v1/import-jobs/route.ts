@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { getTemplate } from '@/lib/import-export/templates';
@@ -37,16 +38,18 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status;
   if (jobType) where.jobType = jobType;
 
-  const [jobs, total] = await Promise.all([
-    db.importJob.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-      include: { _count: { select: { errors: true } } },
-    }),
-    db.importJob.count({ where }),
-  ]);
+  const [jobs, total] = await runInTenantContext(auth.ctx, async () => {
+    return Promise.all([
+      db.importJob.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: { _count: { select: { errors: true } } },
+      }),
+      db.importJob.count({ where }),
+    ]);
+  });
 
   return NextResponse.json({
     jobs: jobs.map(j => ({
@@ -117,23 +120,26 @@ export async function POST(req: NextRequest) {
     const csvContent = await file.text();
     const fileSha256 = crypto.createHash('sha256').update(csvContent).digest('hex');
 
-    // Create import job
-    const job = await db.importJob.create({
-      data: {
-        companyId: auth.companyId,
-        jobType,
-        fileName: file.name,
-        objectKey: `imports/${auth.companyId}/${Date.now()}-${file.name}`,
-        fileSha256,
-        status: 'validating',
-        dryRun,
-        duplicateStrategy,
-        createdBy: auth.userId ?? 'unknown',
-      },
-    });
+    // Create import job + run validation (tenant-scoped writes internally).
+    const { job, result } = await runInTenantContext(auth.ctx, async () => {
+      const job = await db.importJob.create({
+        data: {
+          companyId: auth.companyId,
+          jobType,
+          fileName: file.name,
+          objectKey: `imports/${auth.companyId}/${Date.now()}-${file.name}`,
+          fileSha256,
+          status: 'validating',
+          dryRun,
+          duplicateStrategy,
+          createdBy: auth.userId ?? 'unknown',
+        },
+      });
 
-    // Run validation
-    const result = await validateImport(job.id, auth.companyId, csvContent, template);
+      // Run validation
+      const result = await validateImport(job.id, auth.companyId, csvContent, template);
+      return { job, result };
+    });
 
     return NextResponse.json({
       job: {

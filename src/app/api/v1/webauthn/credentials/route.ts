@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { listCredentials, revokeCredential } from '@/lib/auth/webauthn';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -12,9 +13,11 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    const creds = await listCredentials({
-      companyId: auth.companyId,
-      userId: auth.userId,
+    const creds = await runInTenantContext(auth.ctx, async () => {
+      return listCredentials({
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
     });
     return NextResponse.json({ items: creds });
   } catch (e) {
@@ -30,17 +33,19 @@ export async function DELETE(req: NextRequest) {
     if (!credId) {
       return errorResponse(new Error('id query parameter required'), correlationId);
     }
-    await revokeCredential({
-      companyId: auth.companyId,
-      userId: auth.userId,
-      credentialId: credId,
-    });
-    await recordSecurityEvent({
-      eventType: 'webauthn_credential_revoked',
-      severity: 'warning',
-      metadata: { credential_internal_id: credId },
-      companyId: auth.companyId,
-      userId: auth.userId,
+    await runInTenantContext(auth.ctx, async () => {
+      await revokeCredential({
+        companyId: auth.companyId,
+        userId: auth.userId,
+        credentialId: credId,
+      });
+      await recordSecurityEvent({
+        eventType: 'webauthn_credential_revoked',
+        severity: 'warning',
+        metadata: { credential_internal_id: credId },
+        companyId: auth.companyId,
+        userId: auth.userId,
+      });
     });
     return NextResponse.json({ revoked: true });
   } catch (e) {

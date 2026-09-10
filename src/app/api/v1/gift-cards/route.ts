@@ -49,7 +49,9 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateRequest();
     const idempotencyKey = requireIdempotencyKey(req);
     const body = GiftCardSchema.parse(await req.json());
-    await requireFeatureFlag('loyalty_enabled');
+    await runInTenantContext(auth.ctx, async () => {
+      await requireFeatureFlag('loyalty_enabled');
+    });
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/gift-cards', body });
 
     const result = await runInTenantContext(auth.ctx, () =>

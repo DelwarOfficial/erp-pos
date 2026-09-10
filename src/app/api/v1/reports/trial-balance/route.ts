@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -16,17 +17,19 @@ export async function GET(req: NextRequest) {
     const asOf = url.searchParams.get('as_of') ? new Date(url.searchParams.get('as_of')!) : new Date();
 
     // Get all posted journal lines up to as_of
-    const lines = await db.journalLine.findMany({
-      where: {
-        companyId: auth.companyId,
-        journalEntry: {
-          status: 'posted',
-          entryDate: { lte: asOf },
+    const lines = await runInTenantContext(auth.ctx, async () => {
+      return db.journalLine.findMany({
+        where: {
+          companyId: auth.companyId,
+          journalEntry: {
+            status: 'posted',
+            entryDate: { lte: asOf },
+          },
         },
-      },
-      include: {
-        chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true, normalBalance: true } },
-      },
+        include: {
+          chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true, normalBalance: true } },
+        },
+      });
     });
 
     // Aggregate by account

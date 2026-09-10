@@ -20,7 +20,10 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requireFeatureFlag('multi_currency_enabled');
+    // requireFeatureFlag reads tenant-scoped flags: explicit context.
+    await runInTenantContext(auth.ctx, async () => {
+      await requireFeatureFlag('multi_currency_enabled');
+    });
     await requirePermission(auth, 'journal.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = RevaluateSchema.parse(await req.json());

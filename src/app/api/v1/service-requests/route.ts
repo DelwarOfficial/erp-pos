@@ -74,7 +74,9 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requireFeatureFlag('service_warranty_enabled');
+    await runInTenantContext(auth.ctx, async () => {
+      await requireFeatureFlag('service_warranty_enabled');
+    });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ServiceRequestSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/service-requests', body });

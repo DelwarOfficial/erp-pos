@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -23,10 +24,11 @@ export async function GET(
 
     // findFirst so the tenantClient extension can inject the company_id filter
     // as RLS-equivalent defence-in-depth (belt + braces with the explicit
-    // `companyId` predicate below).
-    const sale = await db.sale.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    // `companyId` predicate below). Explicit context (no ambient ALS).
+    const sale = await runInTenantContext(auth.ctx, async () => {
+      return db.sale.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         customer: { select: { id: true, name: true, phone: true, email: true } },
         biller: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true, code: true } },
@@ -53,8 +55,9 @@ export async function GET(
               },
             },
           },
+          },
         },
-      },
+      });
     });
 
     if (!sale) {

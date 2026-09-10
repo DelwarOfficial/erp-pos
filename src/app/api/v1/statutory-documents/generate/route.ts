@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError } from '@/lib/errors/codes';
 import { generateMushak61, generateMushak63, generateMushak91, generateWithholdingCertificate } from '@/lib/tax/statutoryDocuments';
 
@@ -36,34 +37,29 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let result;
+    // Statutory generators query tenant-scoped models internally.
+    const result = await runInTenantContext(auth.ctx, async () => {
+      switch (document_type) {
+        case 'VAT_6_1':
+          if (source_type !== 'sale') throw new DomainError('VALIDATION_FAILED', 'VAT_6_1 requires source_type=sale', {}, 400);
+          return generateMushak61(auth.companyId, source_id, auth.userId ?? 'system');
 
-    switch (document_type) {
-      case 'VAT_6_1':
-        if (source_type !== 'sale') throw new DomainError('VALIDATION_FAILED', 'VAT_6_1 requires source_type=sale', {}, 400);
-        result = await generateMushak61(auth.companyId, source_id, auth.userId ?? 'system');
-        break;
+        case 'VAT_6_3':
+          if (source_type !== 'sale_return') throw new DomainError('VALIDATION_FAILED', 'VAT_6_3 requires source_type=sale_return', {}, 400);
+          return generateMushak63(auth.companyId, source_id, auth.userId ?? 'system');
 
-      case 'VAT_6_3':
-        if (source_type !== 'sale_return') throw new DomainError('VALIDATION_FAILED', 'VAT_6_3 requires source_type=sale_return', {}, 400);
-        result = await generateMushak63(auth.companyId, source_id, auth.userId ?? 'system');
-        break;
+        case 'VAT_9_1':
+          if (!period_start || !period_end) throw new DomainError('VALIDATION_FAILED', 'VAT_9_1 requires period_start and period_end', {}, 400);
+          return generateMushak91(auth.companyId, new Date(period_start), new Date(period_end), auth.userId ?? 'system');
 
-      case 'VAT_9_1':
-        if (!period_start || !period_end) throw new DomainError('VALIDATION_FAILED', 'VAT_9_1 requires period_start and period_end', {}, 400);
-        result = await generateMushak91(auth.companyId, new Date(period_start), new Date(period_end), auth.userId ?? 'system');
-        break;
+        case 'withholding_certificate':
+          if (source_type !== 'payment') throw new DomainError('VALIDATION_FAILED', 'withholding_certificate requires source_type=payment', {}, 400);
+          return generateWithholdingCertificate(auth.companyId, source_id, auth.userId ?? 'system');
 
-      case 'withholding_certificate':
-        if (source_type !== 'payment') throw new DomainError('VALIDATION_FAILED', 'withholding_certificate requires source_type=payment', {}, 400);
-        result = await generateWithholdingCertificate(auth.companyId, source_id, auth.userId ?? 'system');
-        break;
-
-      default:
-        return NextResponse.json({
-          error: { code: 'VALIDATION_FAILED', message: `Unknown document_type: ${document_type}. Valid: VAT_6_1, VAT_6_3, VAT_9_1, withholding_certificate` },
-        }, { status: 400 });
-    }
+        default:
+          throw new DomainError('VALIDATION_FAILED', `Unknown document_type: ${document_type}. Valid: VAT_6_1, VAT_6_3, VAT_9_1, withholding_certificate`, {}, 400);
+      }
+    });
 
     return NextResponse.json({ document: result }, { status: 201 });
   } catch (e) {

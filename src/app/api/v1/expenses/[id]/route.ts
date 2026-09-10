@@ -51,9 +51,10 @@ export async function GET(
     await requirePermission(auth, 'expense.read');
     const { id } = await params;
 
-    const expense = await db.expense.findFirst({
-      where: { id, companyId: auth.companyId },
-      include: {
+    const expense = await runInTenantContext(auth.ctx, async () => {
+      return db.expense.findFirst({
+        where: { id, companyId: auth.companyId },
+        include: {
         branch: { select: { id: true, name: true, code: true } },
         supplier: { select: { id: true, name: true, phone: true } },
         currency: { select: { code: true, name: true, decimalPlaces: true } },
@@ -78,8 +79,9 @@ export async function GET(
             createdAt: true,
           },
           orderBy: { createdAt: 'asc' },
+          },
         },
-      },
+      });
     });
 
     if (!expense) {

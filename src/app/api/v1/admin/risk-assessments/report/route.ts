@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError } from '@/lib/errors/codes';
 
 // GET /api/v1/admin/risk-assessments/report?from=2026-01-01&to=2026-12-31
@@ -38,13 +39,15 @@ export async function GET(req: NextRequest) {
   const fromDate = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const toDate = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : new Date();
 
-  // Fetch all assessments with outcomes in the date range
-  const assessments = await db.riskAssessment.findMany({
-    where: {
-      companyId: auth.companyId,
-      assessedAt: { gte: fromDate, lte: toDate },
-    },
-    include: { outcomes: true },
+  // Fetch all assessments with outcomes in the date range (explicit context).
+  const assessments = await runInTenantContext(auth.ctx, async () => {
+    return db.riskAssessment.findMany({
+      where: {
+        companyId: auth.companyId,
+        assessedAt: { gte: fromDate, lte: toDate },
+      },
+      include: { outcomes: true },
+    });
   });
 
   // Categorize each assessment
@@ -105,20 +108,22 @@ export async function GET(req: NextRequest) {
 
   // Fetch threshold changes in the same date range — lets admins correlate
   // performance shifts with specific tuning actions
-  const thresholdChanges = await db.riskThresholdChange.findMany({
-    where: {
-      changedAt: { gte: fromDate, lte: toDate },
-    },
-    orderBy: { changedAt: 'asc' },
-    select: {
-      id: true,
-      thresholdKey: true,
-      oldValue: true,
-      newValue: true,
-      reason: true,
-      changedBy: true,
-      changedAt: true,
-    },
+  const thresholdChanges = await runInTenantContext(auth.ctx, async () => {
+    return db.riskThresholdChange.findMany({
+      where: {
+        changedAt: { gte: fromDate, lte: toDate },
+      },
+      orderBy: { changedAt: 'asc' },
+      select: {
+        id: true,
+        thresholdKey: true,
+        oldValue: true,
+        newValue: true,
+        reason: true,
+        changedBy: true,
+        changedAt: true,
+      },
+    });
   }).catch(() => []); // table may not exist in some environments
 
   return NextResponse.json({
