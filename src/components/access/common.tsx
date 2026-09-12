@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api/client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useDashboardSession } from '@/components/dashboard/session';
@@ -13,7 +14,7 @@ export type User = { id: string; name: string; email: string; companyId: string;
   roles: { role: Pick<Role, 'id' | 'name' | 'isSystemRole'> }[]; branchAccess: { branch: Branch }[] };
 export const control = 'rounded-md border bg-background px-3 py-2 min-h-10';
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } });
+  const response = await apiFetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } });
   const result = await response.json().catch(() => null);
   if (!response.ok || response.status === 202 || result?.error) throw new Error(result?.error?.message || 'Request failed. Please retry.');
   if (!result) throw new Error('Unexpected response. Please retry.');

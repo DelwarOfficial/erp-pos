@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Gift, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface GiftCard {
   id: string;
@@ -33,7 +34,7 @@ export default function GiftCardsPage() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/gift-cards');
+      const res = await apiFetch('/api/v1/gift-cards');
       const data = await res.json();
       setItems(data.items ?? []);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
@@ -45,7 +46,7 @@ export default function GiftCardsPage() {
     setPosting(true);
     try {
       const idempotencyKey = `gc-${Date.now()}`;
-      const res = await fetch('/api/v1/gift-cards', {
+      const res = await apiFetch('/api/v1/gift-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ face_value: Number(faceValue) }),

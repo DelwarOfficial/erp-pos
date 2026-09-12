@@ -18,6 +18,7 @@ import {
 import { Loader2, Wallet, Plus, CheckCircle2, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Expense {
   id: string;
@@ -89,7 +90,7 @@ export default function ExpensesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/expenses?limit=100');
+      const res = await apiFetch('/api/v1/expenses?limit=100');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load expenses');
       setExpenses(data.items ?? []);
@@ -118,7 +119,7 @@ export default function ExpensesPage() {
     setCreating(true);
     try {
       const idempotencyKey = `expense-create-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const res = await fetch('/api/v1/expenses', {
+      const res = await apiFetch('/api/v1/expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -157,7 +158,7 @@ export default function ExpensesPage() {
     setApprovingId(expenseId);
     try {
       const idempotencyKey = `expense-approve-${expenseId}-${Date.now()}`;
-      const res = await fetch(`/api/v1/expenses/${expenseId}/approve`, {
+      const res = await apiFetch(`/api/v1/expenses/${expenseId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ decision: 'approved' }),

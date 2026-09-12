@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Search, Package, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface ProductListItem {
   id: string;
@@ -49,7 +50,7 @@ export default function ProductsPage() {
       params.set('is_active', 'true');
       if (!reset && cursor) params.set('cursor', cursor);
       params.set('limit', '20');
-      const res = await fetch(`/api/v1/products?${params}`);
+      const res = await apiFetch(`/api/v1/products?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load');
       setItems(prev => reset ? data.items : [...prev, ...data.items]);

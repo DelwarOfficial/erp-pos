@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Clock, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Shift {
   id: string;
@@ -41,7 +42,7 @@ export default function CashierPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/cashier-shifts?limit=20');
+      const res = await apiFetch('/api/v1/cashier-shifts?limit=20');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load shifts');
       setShifts(data.items ?? []);
@@ -61,7 +62,7 @@ export default function CashierPage() {
     setOpening(true);
     try {
       const idempotencyKey = `shift-open-${Date.now()}`;
-      const res = await fetch('/api/v1/cashier-shifts/open', {
+      const res = await apiFetch('/api/v1/cashier-shifts/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -84,7 +85,7 @@ export default function CashierPage() {
     if (!counted) { toast.error('Enter counted cash'); return; }
     try {
       const idempotencyKey = `shift-close-${shiftId}-${Date.now()}`;
-      const res = await fetch(`/api/v1/cashier-shifts/${shiftId}/close`, {
+      const res = await apiFetch(`/api/v1/cashier-shifts/${shiftId}/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ counted_closing_cash: Number(counted) }),

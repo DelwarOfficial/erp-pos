@@ -27,13 +27,13 @@ async function fixture() {
   const b = await raw.branch.create({ data: { companyId: company.id, code: 'B', name: 'B' } });
   const adminRole = await raw.role.create({ data: { companyId: company.id, name: 'Access administrator', permissions: { create: grants.map(code => ({ permissionId: permissionIds[code] })) } } });
   const staffRole = await raw.role.create({ data: { companyId: company.id, name: 'Staff', permissions: { create: [{ permissionId: permissionIds['product.read'] }] } } });
-  async function administrator() {
+  async function administrator(accessScope = 'global', branchIds = [a.id, b.id]) {
     const user = await raw.user.create({ data: { companyId: company.id, name: 'Synthetic administrator', email: `${randomUUID()}@example.invalid`, passwordHash: 'unused-synthetic',
-      accessScope: 'global', mfaEnabled: true, mfaSecretCiphertext: Buffer.alloc(64), roles: { create: [{ roleId: adminRole.id }] }, branchAccess: { create: [{ branchId: a.id }, { branchId: b.id }] } } });
+      accessScope, mfaEnabled: true, mfaSecretCiphertext: Buffer.alloc(64), roles: { create: [{ roleId: adminRole.id }] }, branchAccess: { create: branchIds.map(branchId => ({ branchId })) } } });
     const familyId = randomUUID(), sessionId = randomUUID();
     await raw.refreshToken.create({ data: { companyId: company.id, userId: user.id, familyId, sessionId, tokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000), mfaVerified: true } });
-    const auth: AuthResult = { userId: user.id, companyId: company.id, accessScope: 'global', isGlobal: false, branchIds: [a.id, b.id], sessionId, familyId, mfaVerified: true,
-      ctx: buildTenantContext({ companyId: company.id, userId: user.id, branchIds: [a.id, b.id], allBranches: true }) };
+    const auth: AuthResult = { userId: user.id, companyId: company.id, accessScope, isGlobal: false, branchIds, sessionId, familyId, mfaVerified: true,
+      ctx: buildTenantContext({ companyId: company.id, userId: user.id, branchIds, allBranches: accessScope === 'global' }) };
     return auth;
   }
   const auth = await administrator();
@@ -75,6 +75,41 @@ describe('MariaDB administration security', () => {
   it('rejects platform and unowned permission grants', async () => {
     const f = await fixture();
     for (const code of ['platform.onboarding.execute', 'sale.post']) await expect(saveRole(f.auth, { company_id: f.company.id, name: randomUUID(), permission_ids: [permissionIds[code]] })).rejects.toMatchObject({ httpStatus: 403 });
+  });
+  it('branch-limited manager cannot read/edit/assign denied branch users', async () => {
+    const f = await fixture(), manager = await f.administrator('single_branch', [f.a.id]);
+    const denied = await saveUser(f.auth, { ...f.input(), branch_ids: [f.b.id] });
+    await expect(readUser(manager, f.company.id, denied.id)).rejects.toMatchObject({ httpStatus: 404 });
+    const list = await listUsers(manager, new URLSearchParams({ company_id: f.company.id }));
+    expect(list.data.some(user => user.id === denied.id)).toBe(false);
+    await expect(saveUser(manager, { ...f.input(), password: undefined }, denied.id)).rejects.toMatchObject({ httpStatus: 404 });
+    await expect(saveUser(manager, { ...f.input(), branch_ids: [f.b.id] })).rejects.toThrow('Branch assignment outside');
+    expect((await saveUser(manager, f.input())).branchAccess[0].branch.id).toBe(f.a.id);
+  });
+  it('multi-branch manager can manage either assigned branch', async () => {
+    const f = await fixture(), manager = await f.administrator('multi_branch', [f.a.id, f.b.id]);
+    expect((await saveUser(manager, { ...f.input(), branch_ids: [f.b.id] })).branchAccess[0].branch.id).toBe(f.b.id);
+  });
+  it('platform administrator selects target tenant explicitly and retains valid audit provenance', async () => {
+    const f = await fixture();
+    const company = await raw.company.upsert({ where: { code: 'PLATFORM' }, update: {}, create: { code: 'PLATFORM', legalName: 'Synthetic Platform', displayName: 'Synthetic Platform', baseCurrencyCode: 'BDT' } });
+    const user = await raw.user.create({ data: { companyId: company.id, name: 'Synthetic platform actor', email: `${randomUUID()}@example.invalid`, passwordHash: 'unused-synthetic', accessScope: 'global', mfaEnabled: true, mfaSecretCiphertext: Buffer.alloc(64) } });
+    const familyId = randomUUID();
+    await raw.refreshToken.create({ data: { companyId: company.id, userId: user.id, familyId, tokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
+    const auth: AuthResult = { ...f.auth, userId: user.id, companyId: company.id, familyId, isGlobal: true, branchIds: [],
+      ctx: buildTenantContext({ companyId: company.id, userId: user.id, branchIds: [], allBranches: true, isGlobal: true }) };
+    const created = await saveUser(auth, f.input());
+    const audit = await raw.auditLog.findFirstOrThrow({ where: { companyId: company.id, entityId: created.id } });
+    expect(audit.userId).toBe(user.id); expect(JSON.parse(audit.afterValue!).target_company_id).toBe(f.company.id);
+    const empty = await raw.company.create({ data: { code: randomUUID(), legalName: 'Bootstrap', displayName: 'Bootstrap', baseCurrencyCode: 'BDT' } });
+    const role = await saveRole(auth, { company_id: empty.id, name: 'Bootstrap administrator', permission_ids: grants.map(code => permissionIds[code]) });
+    const bootstrap = await saveUser(auth, { ...f.input(), company_id: empty.id, role_ids: [role.id], branch_ids: [], access_scope: 'global' });
+    expect(bootstrap.isActive).toBe(true); expect(bootstrap.mfaEnabled).toBe(false);
+  });
+  it('role permission removal cannot eliminate last administrator', async () => {
+    const f = await fixture();
+    await expect(saveRole(f.auth, { company_id: f.company.id, name: 'Access administrator', permission_ids: [] }, f.adminRole.id)).rejects.toThrow('no usable administrator');
+    expect(await raw.rolePermission.count({ where: { roleId: f.adminRole.id } })).toBe(grants.length);
   });
   it('creates/updates/deletes unassigned custom roles and audits changes', async () => {
     const f = await fixture(); const role = await saveRole(f.auth, { company_id: f.company.id, name: 'Custom', permission_ids: [] });
@@ -127,6 +162,6 @@ describe('MariaDB administration security', () => {
     expect(persisted.mfaEnabled).toBe(true); expect(await verifyPassword(persisted.passwordHash, fixturePassword + 'new')).toBe(true);
     expect(await raw.refreshToken.count({ where: { userId: user.id, revokedAt: null } })).toBe(0);
     const logs = await raw.auditLog.findMany({ where: { companyId: f.company.id, entityId: user.id } });
-    expect(JSON.stringify(logs)).not.toContain(payload.nonce); expect(JSON.stringify(logs)).not.toContain(fixturePassword);
+    expect(JSON.stringify(logs).includes(payload.nonce)).toBe(false); expect(JSON.stringify(logs).includes(fixturePassword)).toBe(false);
   });
 });

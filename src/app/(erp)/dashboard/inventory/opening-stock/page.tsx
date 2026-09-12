@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api/client';
 
 interface Warehouse { id: string; name: string; code: string }
 interface Product { id: string; name: string; code: string; isSerialized: boolean }
@@ -30,7 +31,7 @@ export default function OpeningStockPage() {
 
   useEffect(() => {
     // Fetch warehouses (via branches) + products
-    fetch('/api/v1/products?limit=200').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
+    apiFetch('/api/v1/products?limit=200').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
     // Warehouses: we need an endpoint. For now, use the products endpoint's category info.
     // TODO: add /api/v1/warehouses endpoint
   }, []);
@@ -50,7 +51,7 @@ export default function OpeningStockPage() {
     setLoading(true);
     try {
       const idempotencyKey = `opening-stock-${Date.now()}`;
-      const res = await fetch('/api/v1/inventory/opening-stock', {
+      const res = await apiFetch('/api/v1/inventory/opening-stock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

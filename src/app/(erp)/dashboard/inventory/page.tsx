@@ -11,6 +11,7 @@ import { Loader2, Package, AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface StockItem {
   id: string;
@@ -36,7 +37,7 @@ export default function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/inventory/stocks?${lowStockOnly ? 'low_stock=true' : ''}`);
+      const res = await apiFetch(`/api/v1/inventory/stocks?${lowStockOnly ? 'low_stock=true' : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load inventory');
       setItems(data.items ?? []);

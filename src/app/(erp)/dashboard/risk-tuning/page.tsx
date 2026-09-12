@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Loader2, ShieldAlert, TrendingUp, TrendingDown, Activity, Target, AlertCircle, Lightbulb, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -113,9 +114,9 @@ export default function RiskTuningPage() {
     setRefreshing(true);
     try {
       const [configRes, assessRes, reportRes] = await Promise.all([
-        fetch('/api/v1/admin/risk-config'),
-        fetch('/api/v1/admin/risk-assessments?limit=50'),
-        fetch('/api/v1/admin/risk-assessments/report'),
+        apiFetch('/api/v1/admin/risk-config'),
+        apiFetch('/api/v1/admin/risk-assessments?limit=50'),
+        apiFetch('/api/v1/admin/risk-assessments/report'),
       ]);
 
       if (configRes.ok) {
@@ -444,7 +445,7 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
   async function submitOutcome(assessmentId: string) {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/v1/admin/risk-assessments/${assessmentId}/outcome`, {
+      const res = await apiFetch(`/api/v1/admin/risk-assessments/${assessmentId}/outcome`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

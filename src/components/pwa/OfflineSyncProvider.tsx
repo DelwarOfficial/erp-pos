@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api/client';
 
 // src/components/pwa/OfflineSyncProvider.tsx
 // Provides a React context that:
@@ -128,7 +129,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
       const entries = await getAllOutbox();
       for (const entry of entries) {
         try {
-          const res = await fetch(entry.url, {
+          const res = await apiFetch(entry.url, {
             method: entry.method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(entry.body),

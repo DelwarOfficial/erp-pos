@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Plus, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface Purchase {
   id: string;
@@ -42,14 +43,14 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     loadPurchases();
-    fetch('/api/v1/suppliers').then(r => r.json()).then(d => setSuppliers(d.items ?? [])).catch(console.error);
+    apiFetch('/api/v1/suppliers').then(r => r.json()).then(d => setSuppliers(d.items ?? [])).catch(console.error);
     // Branches: we need an endpoint. For now use a simple approach.
   }, []);
 
   async function loadPurchases() {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/purchases?limit=50');
+      const res = await apiFetch('/api/v1/purchases?limit=50');
       const data = await res.json();
       setPurchases(data.items ?? []);
     } catch (e) {
@@ -145,7 +146,7 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
   const [products, setProducts] = useState<Array<{ id: string; name: string; code: string }>>([]);
 
   useEffect(() => {
-    fetch('/api/v1/products?limit=200&is_active=true').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
+    apiFetch('/api/v1/products?limit=200&is_active=true').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -153,7 +154,7 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
     setCreating(true);
     try {
       const idempotencyKey = `purchase-${Date.now()}`;
-      const res = await fetch('/api/v1/purchases', {
+      const res = await apiFetch('/api/v1/purchases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

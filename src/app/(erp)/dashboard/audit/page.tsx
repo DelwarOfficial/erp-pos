@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface AuditLog {
   id: string;
@@ -47,7 +48,7 @@ export default function AuditPage() {
       if (filters.entity_type) params.set('entity_type', filters.entity_type);
       if (filters.user_id) params.set('user_id', filters.user_id);
       if (!reset && cursor) params.set('cursor', cursor);
-      const res = await fetch(`/api/v1/audit-logs?${params}`);
+      const res = await apiFetch(`/api/v1/audit-logs?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load audit logs');
       setItems(prev => reset ? data.items : [...prev, ...data.items]);

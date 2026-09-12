@@ -4,6 +4,7 @@
 
 'use client';
 import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api/client';
 
 interface AuthUser {
   id: string;
@@ -21,7 +22,7 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/me')
+    apiFetch('/api/v1/me')
       .then(r => r.ok ? r.json() : null)
       .then(d => setUser(d?.user ?? null))
       .catch(() => setUser(null))

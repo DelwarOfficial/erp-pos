@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Landmark, Plus, RefreshCw, CheckCircle2, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Reconciliation {
   id: string;
@@ -83,7 +84,7 @@ export default function BankReconciliationPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/bank-reconciliations?limit=100');
+      const res = await apiFetch('/api/v1/bank-reconciliations?limit=100');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load reconciliations');
       setItems(data.items ?? []);
@@ -98,7 +99,7 @@ export default function BankReconciliationPage() {
 
   const loadFinancialAccounts = useCallback(async () => {
     try {
-      const res = await fetch('/api/v1/financial-accounts');
+      const res = await apiFetch('/api/v1/financial-accounts');
       const data = await res.json();
       if (res.ok) {
         setFinancialAccounts(data.items ?? []);
@@ -113,7 +114,7 @@ export default function BankReconciliationPage() {
     setDetailLoading(true);
     setSelectedId(id);
     try {
-      const res = await fetch(`/api/v1/bank-reconciliations/${id}`);
+      const res = await apiFetch(`/api/v1/bank-reconciliations/${id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load detail');
       setDetail(data);
@@ -129,7 +130,7 @@ export default function BankReconciliationPage() {
     setPosting(true);
     try {
       const idempotencyKey = `br-${Date.now()}`;
-      const res = await fetch('/api/v1/bank-reconciliations', {
+      const res = await apiFetch('/api/v1/bank-reconciliations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -153,7 +154,7 @@ export default function BankReconciliationPage() {
     if (!selectedId) return;
     try {
       const idempotencyKey = `am-${selectedId}-${Date.now()}`;
-      const res = await fetch(`/api/v1/bank-reconciliations/${selectedId}/auto-match`, {
+      const res = await apiFetch(`/api/v1/bank-reconciliations/${selectedId}/auto-match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({}),
@@ -173,7 +174,7 @@ export default function BankReconciliationPage() {
     }
     try {
       const idempotencyKey = `mm-${selectedId}-${systemLineSelected}-${statementLineId}`;
-      const res = await fetch(`/api/v1/bank-reconciliations/${selectedId}/manual-match`, {
+      const res = await apiFetch(`/api/v1/bank-reconciliations/${selectedId}/manual-match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -195,7 +196,7 @@ export default function BankReconciliationPage() {
     if (!window.confirm('Finalize this reconciliation? A variance journal entry will be posted if system ≠ statement closing balance.')) return;
     try {
       const idempotencyKey = `fn-${selectedId}-${Date.now()}`;
-      const res = await fetch(`/api/v1/bank-reconciliations/${selectedId}/finalize`, {
+      const res = await apiFetch(`/api/v1/bank-reconciliations/${selectedId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({}),

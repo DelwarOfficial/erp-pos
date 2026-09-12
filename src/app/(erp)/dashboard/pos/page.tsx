@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Loader2, PackageX, AlertCircle } from 'lucide-react';
+import { apiFetch } from '@/lib/api/client';
 
 interface Product {
   id: string;
@@ -98,21 +99,21 @@ export default function POSPage() {
     setOptionsLoading(true);
     setOptionsError(null);
     Promise.all([
-      fetch('/api/v1/warehouses').then(async r => {
+      apiFetch('/api/v1/warehouses').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
           throw new Error(d?.error?.message ?? `Failed to load warehouses (HTTP ${r.status})`);
         }
         return r.json();
       }),
-      fetch('/api/v1/financial-accounts').then(async r => {
+      apiFetch('/api/v1/financial-accounts').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
           throw new Error(d?.error?.message ?? `Failed to load financial accounts (HTTP ${r.status})`);
         }
         return r.json();
       }),
-      fetch('/api/v1/cashier-shifts?status=open').then(async r => {
+      apiFetch('/api/v1/cashier-shifts?status=open').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
           throw new Error(d?.error?.message ?? `Failed to load cashier shifts (HTTP ${r.status})`);
@@ -155,7 +156,7 @@ export default function POSPage() {
     setSearching(true);
     setSearchError(null);
     debounceRef.current = setTimeout(() => {
-      fetch(`/api/v1/products?search=${encodeURIComponent(search)}&limit=20&is_active=true`)
+      apiFetch(`/api/v1/products?search=${encodeURIComponent(search)}&limit=20&is_active=true`)
         .then(async r => {
           if (!r.ok) {
             const d = await r.json().catch(() => ({}));
@@ -220,7 +221,7 @@ export default function POSPage() {
     setPosting(true);
     try {
       const idempotencyKey = `sale-${Date.now()}`;
-      const res = await fetch('/api/v1/sales', {
+      const res = await apiFetch('/api/v1/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Building, Plus, RefreshCw, ArrowDownToLine, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Asset {
   id: string;
@@ -79,7 +80,7 @@ export default function FixedAssetsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/fixed-assets?limit=200');
+      const res = await apiFetch('/api/v1/fixed-assets?limit=200');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load assets');
       setItems(data.items ?? []);
@@ -95,8 +96,8 @@ export default function FixedAssetsPage() {
   const loadFormData = useCallback(async () => {
     try {
       const [coaRes, faRes] = await Promise.all([
-        fetch('/api/v1/chart-of-accounts'),
-        fetch('/api/v1/financial-accounts'),
+        apiFetch('/api/v1/chart-of-accounts'),
+        apiFetch('/api/v1/financial-accounts'),
       ]);
       const coaData = await coaRes.json();
       const faData = await faRes.json();
@@ -126,7 +127,7 @@ export default function FixedAssetsPage() {
     setPosting(true);
     try {
       const idempotencyKey = `fa-${Date.now()}`;
-      const res = await fetch('/api/v1/fixed-assets', {
+      const res = await apiFetch('/api/v1/fixed-assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -167,7 +168,7 @@ export default function FixedAssetsPage() {
     const periodStart = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 1);
     try {
       const idempotencyKey = `dep-${asset.id}-${Date.now()}`;
-      const res = await fetch(`/api/v1/fixed-assets/${asset.id}/depreciate`, {
+      const res = await apiFetch(`/api/v1/fixed-assets/${asset.id}/depreciate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
@@ -196,7 +197,7 @@ export default function FixedAssetsPage() {
 
     try {
       const idempotencyKey = `disp-${asset.id}-${Date.now()}`;
-      const res = await fetch(`/api/v1/fixed-assets/${asset.id}/dispose`, {
+      const res = await apiFetch(`/api/v1/fixed-assets/${asset.id}/dispose`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

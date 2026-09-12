@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Fingerprint, Key, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 import {
   startRegistration,
   startAuthentication,
@@ -41,7 +42,7 @@ export default function SettingsPage() {
   async function loadCreds() {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/webauthn/credentials');
+      const res = await apiFetch('/api/v1/webauthn/credentials');
       const data = await res.json();
       setCreds(data.items ?? []);
     } catch (e) {
@@ -55,7 +56,7 @@ export default function SettingsPage() {
     setRegistering(true);
     try {
       // 1. Begin registration
-      const beginRes = await fetch('/api/v1/webauthn/registration/begin', { method: 'POST' });
+      const beginRes = await apiFetch('/api/v1/webauthn/registration/begin', { method: 'POST' });
       const beginData = await beginRes.json();
       if (!beginRes.ok) throw new Error(beginData?.error?.message ?? 'Begin failed');
 
@@ -63,7 +64,7 @@ export default function SettingsPage() {
       const credential = await startRegistration(beginData.options as any);
 
       // 3. Finish registration
-      const finishRes = await fetch('/api/v1/webauthn/registration/finish', {
+      const finishRes = await apiFetch('/api/v1/webauthn/registration/finish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response: credential, name: 'Passkey ' + new Date().toLocaleDateString() }),
@@ -88,7 +89,7 @@ export default function SettingsPage() {
   async function handleRevoke(id: string) {
     if (!confirm('Revoke this passkey? You will need to use another MFA method.')) return;
     try {
-      const res = await fetch(`/api/v1/webauthn/credentials?id=${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/v1/webauthn/credentials?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Revoke failed');
       toast.success('Passkey revoked');

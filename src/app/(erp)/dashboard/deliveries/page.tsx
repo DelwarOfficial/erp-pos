@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Truck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Delivery {
   id: string;
@@ -50,7 +51,7 @@ export default function DeliveriesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/deliveries?limit=50');
+      const res = await apiFetch('/api/v1/deliveries?limit=50');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load deliveries');
       setItems(data.items ?? []);
@@ -69,7 +70,7 @@ export default function DeliveriesPage() {
     setTransitioning(id);
     try {
       const idempotencyKey = `del-${id}-${toStatus}-${Date.now()}`;
-      const res = await fetch(`/api/v1/deliveries/${id}/transition`, {
+      const res = await apiFetch(`/api/v1/deliveries/${id}/transition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ to_status: toStatus }),

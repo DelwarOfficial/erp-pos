@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, FileBarChart, Play, FileSpreadsheet, FileText, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 type Category = 'Sales' | 'Inventory' | 'Accounting' | 'Tax' | 'HR' | 'Service' | 'Delivery';
 
@@ -104,7 +105,7 @@ export default function ReportsPage() {
     setExportingKey(key);
     try {
       const idempotencyKey = `report-export-${key}-${Date.now()}`;
-      const res = await fetch('/api/v1/export-jobs', {
+      const res = await apiFetch('/api/v1/export-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ report_code: code, format, filter_json: {} }),

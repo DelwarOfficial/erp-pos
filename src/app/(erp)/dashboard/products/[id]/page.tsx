@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ArrowLeft, QrCode, CheckCircle2, Loader2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api/client';
 
 interface Product {
   id: string;
@@ -53,13 +54,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     // Fetch product (we use the list endpoint with id filter — no detail endpoint yet)
-    fetch(`/api/v1/products?limit=200`)
+    apiFetch(`/api/v1/products?limit=200`)
       .then(r => r.json())
       .then(d => {
         const p = d.items?.find((x: Product) => x.id === id);
         setProduct(p ?? null);
       });
-    fetch(`/api/v1/products/${id}/barcodes`)
+    apiFetch(`/api/v1/products/${id}/barcodes`)
       .then(r => r.json())
       .then(d => setBarcodes(d.items ?? []));
   }, [id]);
@@ -68,7 +69,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setActivating(true);
     try {
       const idempotencyKey = `activate-${id}-${Date.now()}`;
-      const res = await fetch(`/api/v1/products/${id}/activate`, {
+      const res = await apiFetch(`/api/v1/products/${id}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({}),
@@ -93,7 +94,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     setAddingBarcode(true);
     try {
       const idempotencyKey = `barcode-${id}-${Date.now()}`;
-      const res = await fetch(`/api/v1/products/${id}/barcodes`, {
+      const res = await apiFetch(`/api/v1/products/${id}/barcodes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

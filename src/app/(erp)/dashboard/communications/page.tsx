@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, MessageSquare, Bell, FileText, Megaphone, RefreshCw, CheckCheck, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Notification {
   id: string;
@@ -97,7 +98,7 @@ function InboxTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/notifications?limit=100');
+      const res = await apiFetch('/api/v1/notifications?limit=100');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load notifications');
       setNotifications(data.items ?? []);
@@ -130,7 +131,7 @@ function InboxTab() {
     setMarkingId(id);
     try {
       const idempotencyKey = `notif-read-${id}-${Date.now()}`;
-      const res = await fetch(`/api/v1/notifications/${id}/read`, {
+      const res = await apiFetch(`/api/v1/notifications/${id}/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({}),
@@ -268,7 +269,7 @@ function TemplatesTab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/translations?locale=en-BD');
+      const res = await apiFetch('/api/v1/translations?locale=en-BD');
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error?.message ?? 'Failed to load templates');
       setData(json);

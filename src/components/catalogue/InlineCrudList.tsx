@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 export interface FieldSpec {
   name: string;
@@ -47,7 +48,7 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(endpoint);
+      const res = await apiFetch(endpoint);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load');
       setItems(data.items ?? []);
@@ -65,7 +66,7 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
     setCreating(true);
     try {
       const idempotencyKey = `${idempotencyPrefix}-create-${Date.now()}`;
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(createForm),

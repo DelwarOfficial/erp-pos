@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Upload, Download, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface ImportJob {
   id: string;
@@ -61,8 +62,8 @@ export default function ImportExportPage() {
   const loadJobs = useCallback(async () => {
     try {
       const [importRes, exportRes] = await Promise.all([
-        fetch('/api/v1/import-jobs?limit=50'),
-        fetch('/api/v1/export-jobs?limit=50'),
+        apiFetch('/api/v1/import-jobs?limit=50'),
+        apiFetch('/api/v1/export-jobs?limit=50'),
       ]);
       if (importRes.ok) {
         const data = await importRes.json();
@@ -92,7 +93,7 @@ export default function ImportExportPage() {
       formData.append('dry_run', 'true');
       formData.append('duplicate_strategy', 'skip');
 
-      const res = await fetch('/api/v1/import-jobs', { method: 'POST', body: formData });
+      const res = await apiFetch('/api/v1/import-jobs', { method: 'POST', body: formData });
       const data = await res.json();
       if (res.ok) {
         toast.success(`Import validated: ${data.job.validRows} valid, ${data.job.invalidRows} invalid rows`);
@@ -217,7 +218,7 @@ export default function ImportExportPage() {
               <div className="flex flex-wrap gap-2">
                 {['inventory_valuation', 'sales_summary', 'customer_list', 'product_list'].map(code => (
                   <Button key={code} variant="outline" size="sm" onClick={async () => {
-                    const res = await fetch('/api/v1/export-jobs', {
+                    const res = await apiFetch('/api/v1/export-jobs', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ report_code: code, format: 'csv', filter_json: {} }),

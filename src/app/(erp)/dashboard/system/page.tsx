@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api/client';
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +18,7 @@ export default function SystemPage() {
     const controller = new AbortController();
     async function refresh() {
       try {
-        const response = await fetch('/api/v1/admin/health', { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
+        const response = await apiFetch('/api/v1/admin/health', { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
         if (response.status === 401 || response.status === 403) throw new Error('System Health access denied.');
         if (!response.ok && response.status !== 503) throw new Error('Health API unavailable. Dependency status is unknown.');
         const data = parseHealth(await response.json());

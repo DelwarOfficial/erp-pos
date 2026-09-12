@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, CreditCard, Plus, RefreshCw, ArrowUpRight, ArrowDownToLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Payment {
   id: string;
@@ -140,7 +141,7 @@ export default function PaymentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/payments?limit=100');
+      const res = await apiFetch('/api/v1/payments?limit=100');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load payments');
       setPayments(data.items ?? []);
@@ -156,8 +157,8 @@ export default function PaymentsPage() {
   const loadFormData = useCallback(async () => {
     try {
       const [faRes, brRes] = await Promise.all([
-        fetch('/api/v1/financial-accounts'),
-        fetch('/api/v1/branches'),
+        apiFetch('/api/v1/financial-accounts'),
+        apiFetch('/api/v1/branches'),
       ]);
       if (faRes.ok) {
         const faData = await faRes.json();
@@ -206,7 +207,7 @@ export default function PaymentsPage() {
     setCreating(true);
     try {
       const idempotencyKey = `payment-create-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const res = await fetch('/api/v1/payments', {
+      const res = await apiFetch('/api/v1/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Sale {
   id: string;
@@ -36,7 +37,7 @@ export default function SalesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/sales?limit=50');
+      const res = await apiFetch('/api/v1/sales?limit=50');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load sales');
       setSales(data.items ?? []);
@@ -56,7 +57,7 @@ export default function SalesPage() {
     if (!reason) return;
     try {
       const idempotencyKey = `void-${saleId}-${Date.now()}`;
-      const res = await fetch(`/api/v1/sales/${saleId}/void`, {
+      const res = await apiFetch(`/api/v1/sales/${saleId}/void`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ reason }),

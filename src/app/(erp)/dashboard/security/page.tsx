@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, Loader2, AlertCircle, AlertTriangle, Info, ShieldX } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface SecurityEvent {
   id: string;
@@ -42,7 +43,7 @@ export default function SecurityPage() {
       const params = new URLSearchParams({ limit: '30' });
       if (severity !== 'all') params.set('severity', severity);
       if (!reset && cursor) params.set('cursor', cursor);
-      const res = await fetch(`/api/v1/security-events?${params}`);
+      const res = await apiFetch(`/api/v1/security-events?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed');
       setItems(prev => reset ? data.items : [...prev, ...data.items]);

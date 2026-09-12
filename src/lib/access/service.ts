@@ -56,15 +56,20 @@ export async function accessMutation<T>(auth: AuthResult, companyId: string, gra
     if (platform !== auth.isGlobal || actor.accessScope !== auth.accessScope) forbidden('Access changed; sign in again');
     const authority = new Set(actor.roles.flatMap(item => item.role.permissions.map(value => value.permission.code)));
     if (!platform && grants.some(grant => !authority.has(grant))) forbidden('Required administration permission missing');
-    const result = await work(tx, authority);
-    // A role edit can lock out someone other than the actor, so check every mutation.
-    const usable = await tx.user.count({ where: { companyId, isActive: true, deletedAt: null, accessScope: 'global', mfaEnabled: true, mfaSecretCiphertext: { not: null },
+    const usableWhere: Prisma.UserWhereInput = { companyId, isActive: true, deletedAt: null, accessScope: 'global', mfaEnabled: true, mfaSecretCiphertext: { not: null },
       OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }],
       ...(company.code === 'PLATFORM' ? {} : { AND: ADMIN_GRANTS.map(code => ({ roles: { some: { role: {
         permissions: { some: { permission: { code } } },
       } } } })) }),
-    } });
-    if (!usable) forbidden('Change would leave no usable administrator with full access');
+    };
+    const before = await tx.user.count({ where: usableWhere });
+    const result = await work(tx, authority);
+    // A role edit can lock out someone other than the actor, so check every mutation.
+    const usable = await tx.user.count({ where: usableWhere });
+    // A platform actor may bootstrap an already-unconfigured tenant by creating
+    // users/roles. Never use this exception to update/delete remaining access.
+    const bootstrapCreation = platform && before === 0 && ['user.create', 'role.create'].includes(grants[0]);
+    if (!usable && !bootstrapCreation) forbidden('Change would leave no usable administrator with full access');
     return result;
   });
 }
@@ -140,7 +145,12 @@ export async function saveUser(auth: AuthResult, raw: unknown, userId?: string) 
       await tx.webAuthnChallenge.updateMany({ where: { userId: saved.id, companyId: input.company_id, consumedAt: null }, data: { consumedAt: new Date() } });
     }
     await accessAudit(tx, auth, input.company_id, existing ? 'access.user.updated' : 'access.user.created', saved.id,
-      { role_ids: input.role_ids, branch_ids: input.branch_ids, active: input.is_active, access_scope: input.access_scope });
+      { role_ids: input.role_ids, branch_ids: input.branch_ids, active: input.is_active, access_scope: input.access_scope,
+        roles_added: input.role_ids.filter(value => !previousRoleIds.has(value)),
+        roles_removed: [...previousRoleIds].filter(value => !input.role_ids.includes(value)),
+        branches_added: input.branch_ids.filter(value => !existing?.branchAccess.some(item => item.branch.id === value)),
+        branches_removed: existing?.branchAccess.filter(item => !input.branch_ids.includes(item.branch.id)).map(item => item.branch.id) ?? [],
+        previous_active: existing?.isActive ?? null, previous_scope: existing?.accessScope ?? null });
     return tx.user.findFirstOrThrow({ where: { id: saved.id, companyId: input.company_id }, select: safeUserSelect });
   });
 }
@@ -196,7 +206,14 @@ export async function saveRole(auth: AuthResult, raw: unknown, roleId?: string) 
     await tx.rolePermission.deleteMany({ where: { roleId: saved.id, role: { companyId: input.company_id } } });
     await tx.rolePermission.createMany({ data: input.permission_ids.map(permissionId => ({ roleId: saved.id, permissionId })) });
     await tx.refreshToken.updateMany({ where: { companyId: input.company_id, user: { roles: { some: { roleId: saved.id } } }, revokedAt: null }, data: { revokedAt: new Date() } });
-    await accessAudit(tx, auth, input.company_id, existing ? 'access.role.updated' : 'access.role.created', saved.id, { permission_ids: input.permission_ids });
+    await tx.webAuthnChallenge.updateMany({ where: { companyId: input.company_id, user: { roles: { some: { roleId: saved.id } } }, consumedAt: null }, data: { consumedAt: new Date() } });
+    const previousCodes = existing?.permissions.map(item => item.permission.code) ?? [];
+    const currentCodes = permissions.map(item => item.code);
+    await accessAudit(tx, auth, input.company_id, existing ? 'access.role.updated' : 'access.role.created', saved.id, {
+      name: input.name, permission_ids: input.permission_ids,
+      permissions_added: currentCodes.filter(code => !previousCodes.includes(code)),
+      permissions_removed: previousCodes.filter(code => !currentCodes.includes(code)),
+    });
     return saved;
   });
 }

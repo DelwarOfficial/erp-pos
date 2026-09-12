@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface Category { id: string; name: string; code: string }
 interface Brand { id: string; name: string }
@@ -34,9 +35,9 @@ export default function NewProductPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/categories').then(r => r.json()),
-      fetch('/api/v1/brands').then(r => r.json()),
-      fetch('/api/v1/units').then(r => r.json()),
+      apiFetch('/api/v1/categories').then(r => r.json()),
+      apiFetch('/api/v1/brands').then(r => r.json()),
+      apiFetch('/api/v1/units').then(r => r.json()),
     ]).then(([c, b, u]) => {
       setCategories(c.items ?? []);
       setBrands(b.items ?? []);
@@ -49,7 +50,7 @@ export default function NewProductPage() {
     setLoading(true);
     try {
       const idempotencyKey = `product-create-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const res = await fetch('/api/v1/products', {
+      const res = await apiFetch('/api/v1/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

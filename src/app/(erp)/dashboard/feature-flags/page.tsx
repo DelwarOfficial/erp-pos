@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Flag } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface FeatureFlag {
   flagKey: string;
@@ -25,7 +26,7 @@ export default function FeatureFlagsPage() {
   const [toggling, setToggling] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/v1/feature-flags')
+    apiFetch('/api/v1/feature-flags')
       .then(r => r.json())
       .then(d => setFlags(d.items ?? []))
       .catch(e => toast.error(e.message))
@@ -36,7 +37,7 @@ export default function FeatureFlagsPage() {
     setToggling(flag.flagKey);
     try {
       const idempotencyKey = `flag-${flag.flagKey}-${Date.now()}`;
-      const res = await fetch(`/api/v1/feature-flags/${flag.flagKey}`, {
+      const res = await apiFetch(`/api/v1/feature-flags/${flag.flagKey}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ enabled: newEnabled, reason: 'manual_toggle' }),

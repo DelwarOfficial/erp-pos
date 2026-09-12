@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Scale } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface TrialBalanceAccount {
   account_id: string; code: string; name: string;
@@ -21,7 +22,7 @@ export default function TrialBalancePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/v1/reports/trial-balance')
+    apiFetch('/api/v1/reports/trial-balance')
       .then(r => r.json())
       .then(d => {
         setAccounts(d.accounts ?? []);

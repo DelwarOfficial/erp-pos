@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Building2, CheckCircle2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api/client';
 
 export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
@@ -46,7 +47,7 @@ export default function OnboardingPage() {
     setResult(null);
     try {
       const idempotencyKey = `onboard-${form.code}-${form.admin_email}-${Date.now()}`;
-      const res = await fetch('/api/v1/onboarding', {
+      const res = await apiFetch('/api/v1/onboarding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

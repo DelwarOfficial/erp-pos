@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, Users, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Customer { id: string; name: string; phone: string | null; email: string | null; credit_limit: string; is_active: boolean }
 interface Supplier { id: string; name: string; phone: string | null; email: string | null; currency_code: string; payment_terms_days: number; is_active: boolean }
@@ -29,8 +30,8 @@ export default function PartiesPage() {
     setError(null);
     try {
       const [cRes, sRes] = await Promise.all([
-        fetch('/api/v1/customers?limit=50'),
-        fetch('/api/v1/suppliers?limit=50'),
+        apiFetch('/api/v1/customers?limit=50'),
+        apiFetch('/api/v1/suppliers?limit=50'),
       ]);
       const [c, s] = await Promise.all([cRes.json(), sRes.json()]);
       if (!cRes.ok) throw new Error(c?.error?.message ?? 'Failed to load customers');
@@ -144,7 +145,7 @@ function CustomerForm({ onCreated }: { onCreated: () => void }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/customers', {
+      const res = await apiFetch('/api/v1/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `cust-${Date.now()}` },
         body: JSON.stringify({ name, phone: phone || undefined, email: email || undefined, credit_limit: Number(creditLimit) }),
@@ -181,7 +182,7 @@ function SupplierForm({ onCreated }: { onCreated: () => void }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/suppliers', {
+      const res = await apiFetch('/api/v1/suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `sup-${Date.now()}` },
         body: JSON.stringify({ name, phone: phone || undefined, email: email || undefined, currency_code: currency, payment_terms_days: Number(termsDays) }),

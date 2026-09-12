@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Users, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Lead {
   id: string;
@@ -35,7 +36,7 @@ export default function CRMPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/leads?${todayOnly ? 'today=true' : ''}`);
+      const res = await apiFetch(`/api/v1/leads?${todayOnly ? 'today=true' : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load leads');
       setLeads(data.items ?? []);

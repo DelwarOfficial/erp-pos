@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Plus, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface JournalEntry {
   id: string; entry_no: string; status: string;
@@ -43,14 +44,14 @@ export default function JournalPage() {
 
   useEffect(() => {
     loadEntries();
-    fetch('/api/v1/chart-of-accounts?limit=200').then(r => r.json()).then(d => setCoa(d.items ?? [])).catch(console.error);
+    apiFetch('/api/v1/chart-of-accounts?limit=200').then(r => r.json()).then(d => setCoa(d.items ?? [])).catch(console.error);
   }, []);
 
   async function loadEntries() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/journal-entries?limit=20');
+      const res = await apiFetch('/api/v1/journal-entries?limit=20');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load journal entries');
       setEntries(data.items ?? []);
@@ -84,7 +85,7 @@ export default function JournalPage() {
     setPosting(true);
     try {
       const idempotencyKey = `je-${Date.now()}`;
-      const res = await fetch('/api/v1/journal-entries', {
+      const res = await apiFetch('/api/v1/journal-entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

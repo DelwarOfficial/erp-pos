@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Wrench, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface ServiceRequest {
   id: string;
@@ -51,7 +52,7 @@ export default function ServicePage() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/service-requests?limit=50');
+      const res = await apiFetch('/api/v1/service-requests?limit=50');
       const data = await res.json();
       setItems(data.items ?? []);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
@@ -63,7 +64,7 @@ export default function ServicePage() {
     setPosting(true);
     try {
       const idempotencyKey = `sr-${Date.now()}`;
-      const res = await fetch('/api/v1/service-requests', {
+      const res = await apiFetch('/api/v1/service-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

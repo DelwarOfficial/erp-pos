@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { UserCog } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
+import { apiFetch } from '@/lib/api/client';
 
 interface Employee {
   id: string;
@@ -34,7 +35,7 @@ export default function HRPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/employees');
+      const res = await apiFetch('/api/v1/employees');
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load employees');
       setItems(data.items ?? []);

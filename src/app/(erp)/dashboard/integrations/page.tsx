@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, Webhook, Upload, RefreshCw, Plus, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api/client';
 
 interface WebhookEndpoint {
   id: string; url: string; status: string;
@@ -37,8 +38,8 @@ export default function IntegrationsPage() {
     setLoading(true);
     try {
       const [wh, sync] = await Promise.all([
-        fetch('/api/v1/webhook-endpoints').then(r => r.json()),
-        fetch('/api/v1/offline/sync', { method: 'GET' }).then(r => r.json()).catch(() => ({ items: [] })),
+        apiFetch('/api/v1/webhook-endpoints').then(r => r.json()),
+        apiFetch('/api/v1/offline/sync', { method: 'GET' }).then(r => r.json()).catch(() => ({ items: [] })),
       ]);
       setWebhooks(wh.items ?? []);
       // Offline sync batches aren't exposed via GET — show placeholder
@@ -51,7 +52,7 @@ export default function IntegrationsPage() {
     setPosting(true);
     try {
       const idempotencyKey = `wh-${Date.now()}`;
-      const res = await fetch('/api/v1/webhook-endpoints', {
+      const res = await apiFetch('/api/v1/webhook-endpoints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({

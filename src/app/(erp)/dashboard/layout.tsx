@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTitle, SheetHeader } from '@/components/ui/sheet';
 import { DashboardSession, type DashboardUser } from '@/components/dashboard/session';
+import { apiFetch } from '@/lib/api/client';
 
 const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: string }>; label: string; requiresPermission?: string }> = [
   { href: '/dashboard', icon: Activity, label: 'Overview' },
@@ -77,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/v1/me')
+    apiFetch('/api/v1/me')
       .then(async r => {
         if (cancelled) return;
         if (r.status === 401 || r.status === 403) {
@@ -107,7 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const handleLogout = useCallback(async () => {
-    try { await fetch('/api/v1/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
+    try { await apiFetch('/api/v1/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     router.push('/login');
   }, [router]);
 
