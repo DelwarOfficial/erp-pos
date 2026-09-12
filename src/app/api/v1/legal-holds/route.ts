@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'legal_hold.manage.company');
 
     const idempotencyKey = requireIdempotencyKey(req);
     const body = HoldSchema.parse(await req.json());

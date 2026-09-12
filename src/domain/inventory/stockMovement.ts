@@ -3,6 +3,7 @@
 
 import { Prisma } from '@prisma/client';
 import { DomainError } from '@/lib/errors/codes';
+import { projectStockValue } from './valuation';
 
 export type StockBucket = 'on_hand' | 'in_transit' | 'damaged';
 export type MovementType =
@@ -67,10 +68,10 @@ export async function postStockMovement(
   const qtyDelta = typeof params.qtyDelta === 'string' ? parseFloat(params.qtyDelta) : params.qtyDelta;
   const unitCost = typeof params.unitCost === 'string' ? parseFloat(params.unitCost) : params.unitCost;
 
-  if (qtyDelta === 0) {
+  if (!Number.isFinite(qtyDelta) || qtyDelta === 0) {
     throw new DomainError('VALIDATION_FAILED', 'qty_delta must be non-zero', {}, 400);
   }
-  if (unitCost < 0) {
+  if (!Number.isFinite(unitCost) || unitCost < 0) {
     throw new DomainError('VALIDATION_FAILED', 'unit_cost must be >= 0', {}, 400);
   }
 
@@ -146,6 +147,11 @@ export async function postStockMovement(
   }
 
   const totalCostDelta = qtyDelta * (isOutbound ? macBefore : unitCost);
+  const projection = stockBucket === 'on_hand' ? projectStockValue({
+    quantity: stock.qtyOnHand.toString(), averageCost: stock.movingAverageCost.toString(),
+    quantityDelta: String(params.qtyDelta),
+    movementUnitCost: isOutbound ? stock.movingAverageCost.toString() : String(params.unitCost),
+  }) : null;
 
   const movement = await tx.stockMovement.create({
     data: {
@@ -157,8 +163,8 @@ export async function postStockMovement(
       stockBucket,
       movementType: params.movementType,
       qtyDelta,
-      unitCost: isOutbound ? macBefore : unitCost,
-      totalCostDelta,
+      unitCost: isOutbound ? stock.movingAverageCost : params.unitCost,
+      totalCostDelta: projection?.valueDelta ?? totalCostDelta,
       referenceType: params.referenceType,
       referenceId: params.referenceId,
       sourceLineId: params.sourceLineId ?? null,
@@ -170,24 +176,25 @@ export async function postStockMovement(
     },
   });
 
-  await tx.warehouseStock.update({
-    where: { id: stock.id },
+  const updated = await tx.warehouseStock.updateMany({
+    where: { id: stock.id, companyId: params.companyId, version: stock.version },
     data: {
-      qtyOnHand: newQtyOnHand,
+      qtyOnHand: projection?.quantity ?? newQtyOnHand,
       qtyDamaged: newQtyDamaged,
       qtyInTransitOut: newQtyInTransit,
-      movingAverageCost: macAfter,
+      movingAverageCost: projection?.averageCost ?? macAfter,
       version: { increment: 1 },
       updatedAt: new Date(),
     },
   });
+  if (updated.count !== 1) throw new DomainError('CONCURRENT_MODIFICATION', 'Stock changed during posting; retry the transaction', {}, 409);
 
   return {
     movementId: movement.id,
     qtyOnHandBefore: qtyOnHandBefore.toString(),
-    qtyOnHandAfter: newQtyOnHand.toString(),
+    qtyOnHandAfter: projection?.quantity ?? newQtyOnHand.toString(),
     movingAverageCostBefore: macBefore.toString(),
-    movingAverageCostAfter: macAfter.toString(),
+    movingAverageCostAfter: projection?.averageCost ?? macAfter.toString(),
   };
 }
 
@@ -231,8 +238,8 @@ export async function reverseStockMovement(
       productId: original.productId,
       stockBucket: original.stockBucket as StockBucket,
       movementType: 'reversal',
-      qtyDelta: -parseFloat(original.qtyDelta.toString()),
-      unitCost: parseFloat(original.unitCost.toString()),
+      qtyDelta: original.qtyDelta.negated().toString(),
+      unitCost: original.unitCost.toString(),
       referenceType: 'reversal',
       referenceId: params.originalMovementId,
       reversalOfMovementId: params.originalMovementId,

@@ -25,8 +25,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'gift_card.issue');
-    await requirePermission(auth, 'gift_card.read');
+    await requirePermission(auth, "gift_card.read");
     const cards = await runInTenantContext(auth.ctx, async () => {
       return db.giftCard.findMany({
         where: { companyId: auth.companyId },
@@ -47,6 +46,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "gift_card.issue");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = GiftCardSchema.parse(await req.json());
     await runInTenantContext(auth.ctx, async () => {

@@ -25,8 +25,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'journal.post');
-    await requirePermission(auth, 'journal.read');
+    await requirePermission(auth, "journal.read");
     const accounts = await runInTenantContext(auth.ctx, async () => {
       return db.chartOfAccount.findMany({
         where: { companyId: auth.companyId },
@@ -50,6 +49,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "journal.post");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CoaSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/chart-of-accounts', body });

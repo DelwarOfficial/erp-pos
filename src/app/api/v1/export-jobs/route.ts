@@ -9,9 +9,9 @@ import { generateCsv, escapeFormulaCell } from '@/lib/import-export/csv';
 // GET /api/v1/export-jobs — list export jobs
 export async function GET(req: NextRequest) {
   let auth;
-    const idempotencyKey = requireIdempotencyKey(req);
   try {
     auth = await authenticateRequest();
+    await requirePermission(auth, 'export.data.branch');
   } catch (e) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });

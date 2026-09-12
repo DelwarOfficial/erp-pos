@@ -23,8 +23,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'tax.manage');
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, "product.read");
     const taxCodes = await runInTenantContext(auth.ctx, async () => {
       return db.taxCode.findMany({
         where: { companyId: auth.companyId },
@@ -63,6 +62,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "tax.manage");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = TaxCodeCreateSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/tax-codes', body });

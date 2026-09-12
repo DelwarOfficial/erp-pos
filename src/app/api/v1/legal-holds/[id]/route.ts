@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const auth = await authenticateRequest();
     const idempotencyKey = requireIdempotencyKey(req);
     
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'legal_hold.manage.company');
 
     const { id } = await params;
     const item = await runInTenantContext(auth.ctx, async () => {

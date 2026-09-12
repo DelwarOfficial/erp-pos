@@ -22,12 +22,59 @@ function harness(parentFound = true) {
     },
     user: { findFirst: parentLookup },
     role: { findFirst: parentLookup },
+    warehouse: { findFirst: parentLookup },
   } as unknown as PrismaClient;
   applyTenantIsolation(raw);
   return { operation: (input: any) => operation(input), parentLookup };
 }
 
 describe('tenant Prisma extension', () => {
+  it('fails closed for an unclassified future model', async () => {
+    const { operation } = harness();
+    await expect(operation({ model: 'FutureBusinessModel', operation: 'findMany', args: {}, query: vi.fn() }))
+      .rejects.toThrow('TENANT_MODEL_UNCLASSIFIED');
+  });
+
+  it('preserves caller AND predicates while adding mandatory tenant predicates', async () => {
+    const { operation } = harness();
+    const result = await tenantStorage.run(ctx, () => operation({ model: 'Product', operation: 'findMany',
+      args: { where: { AND: { isActive: true } } }, query: async (args: unknown) => args }));
+    expect(result.where.AND).toEqual([{ isActive: true }, { companyId: 'company-a' }]);
+  });
+
+  it('rejects a direct branch assignment outside current access', async () => {
+    const { operation } = harness(); const query = vi.fn();
+    await expect(tenantStorage.run({ ...ctx, branchIds: ['branch-a'] }, () => operation({
+      model: 'Sale', operation: 'create', args: { data: { companyId: ctx.companyId, branchId: 'branch-b' } }, query,
+    }))).rejects.toThrow('Branch access denied');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects a foreign warehouse before a stock write', async () => {
+    const { operation } = harness(false); const query = vi.fn();
+    await expect(tenantStorage.run({ ...ctx, branchIds: ['branch-a'] }, () => operation({
+      model: 'StockMovement', operation: 'create', args: { data: { companyId: ctx.companyId, warehouseId: 'foreign-warehouse' } }, query,
+    }))).rejects.toThrow('outside authorized tenant/branch scope');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('validates parents through the current transaction, not an outside connection', async () => {
+    const { operation, parentLookup } = harness(false);
+    const transactionLookup = vi.fn(async () => ({ id: 'local-warehouse' }));
+    await tenantStorage.run({ ...ctx, branchIds: ['branch-a'], transactionClient: {
+      warehouse: { findFirst: transactionLookup },
+    } as any }, () => operation({ model: 'StockMovement', operation: 'create',
+      args: { data: { companyId: ctx.companyId, warehouseId: 'local-warehouse' } }, query: vi.fn() }));
+    expect(transactionLookup).toHaveBeenCalledTimes(1);
+    expect(parentLookup).not.toHaveBeenCalled();
+  });
+
+  it('rejects nested branch-owned mutations that would bypass extension hooks', async () => {
+    const { operation } = harness();
+    await expect(tenantStorage.run(ctx, () => operation({ model: 'Sale', operation: 'update',
+      args: { where: { id: 'sale-a' }, data: { items: { updateMany: { where: {}, data: {} } } } }, query: vi.fn() })))
+      .rejects.toThrow('Nested branch-owned writes');
+  });
   it('fails closed for tenant models when context is missing', async () => {
     const { operation } = harness();
     await expect(operation({ model: 'Product', operation: 'findMany', args: {}, query: vi.fn() }))

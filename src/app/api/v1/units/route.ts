@@ -24,8 +24,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'category.manage');
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, "product.read");
     const units = await runInTenantContext(auth.ctx, async () => {
       return db.unit.findMany({
         where: { companyId: auth.companyId },
@@ -52,6 +51,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "category.manage");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = UnitCreateSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/units', body });

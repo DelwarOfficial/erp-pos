@@ -1,0 +1,1554 @@
+[
+  {
+    "file": "route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Public API discovery; no tenant data."
+  },
+  {
+    "file": "v1/account-transfers/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payment.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/account-transfers/route.ts",
+    "method": "POST",
+    "permissions": [
+      "account_transfer.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/accounting-policies/route.ts",
+    "method": "GET",
+    "permissions": [
+      "journal.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/accounting-policies/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "journal.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/advances/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payment.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/advances/route.ts",
+    "method": "POST",
+    "permissions": [
+      "advance.receive.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/approvals/route.ts",
+    "method": "GET",
+    "permissions": [
+      "approval.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/approvals/route.ts",
+    "method": "POST",
+    "permissions": [
+      "approval.read",
+      "approval.request"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/audit-logs/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/bank-reconciliations/route.ts",
+    "method": "GET",
+    "permissions": [
+      "bank.reconciliation.view.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/bank-reconciliations/route.ts",
+    "method": "POST",
+    "permissions": [
+      "bank.reconciliation.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/branches/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/brands/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/brands/route.ts",
+    "method": "POST",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/cashier-shifts/route.ts",
+    "method": "GET",
+    "permissions": [
+      "shift.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/categories/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/categories/route.ts",
+    "method": "POST",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/chart-of-accounts/route.ts",
+    "method": "GET",
+    "permissions": [
+      "journal.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/chart-of-accounts/route.ts",
+    "method": "POST",
+    "permissions": [
+      "journal.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/courier-settlements/route.ts",
+    "method": "GET",
+    "permissions": [
+      "delivery.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/courier-settlements/route.ts",
+    "method": "POST",
+    "permissions": [
+      "courier_cod.settle"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/route.ts",
+    "method": "GET",
+    "permissions": [
+      "customer.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/route.ts",
+    "method": "POST",
+    "permissions": [
+      "customer.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/data-subject-requests/route.ts",
+    "method": "GET",
+    "permissions": [
+      "dsr.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/data-subject-requests/route.ts",
+    "method": "POST",
+    "permissions": [
+      "dsr.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/deliveries/route.ts",
+    "method": "GET",
+    "permissions": [
+      "delivery.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/deliveries/route.ts",
+    "method": "POST",
+    "permissions": [
+      "delivery.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/employees/route.ts",
+    "method": "GET",
+    "permissions": [
+      "employee.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/employees/route.ts",
+    "method": "POST",
+    "permissions": [
+      "employee.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/exchange-rates/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/exchange-rates/route.ts",
+    "method": "POST",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expenses/route.ts",
+    "method": "GET",
+    "permissions": [
+      "expense.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expenses/route.ts",
+    "method": "POST",
+    "permissions": [
+      "expense.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/export-jobs/route.ts",
+    "method": "GET",
+    "permissions": [
+      "export.data.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/export-jobs/route.ts",
+    "method": "POST",
+    "permissions": [
+      "export.data.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/feature-flags/route.ts",
+    "method": "GET",
+    "permissions": [
+      "company.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/financial-accounts/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payment.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/financial-accounts/route.ts",
+    "method": "POST",
+    "permissions": [
+      "journal.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fiscal-periods/route.ts",
+    "method": "GET",
+    "permissions": [
+      "journal.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fiscal-periods/route.ts",
+    "method": "POST",
+    "permissions": [
+      "fiscal_period.lock"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-asset-categories/route.ts",
+    "method": "GET",
+    "permissions": [
+      "asset.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-asset-categories/route.ts",
+    "method": "POST",
+    "permissions": [
+      "asset.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-assets/route.ts",
+    "method": "GET",
+    "permissions": [
+      "asset.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-assets/route.ts",
+    "method": "POST",
+    "permissions": [
+      "asset.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/gift-cards/route.ts",
+    "method": "GET",
+    "permissions": [
+      "gift_card.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/gift-cards/route.ts",
+    "method": "POST",
+    "permissions": [
+      "gift_card.issue"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/health/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Public minimal readiness status and service only; no tenant data or detailed diagnostics."
+  },
+  {
+    "file": "v1/import-jobs/route.ts",
+    "method": "GET",
+    "permissions": [
+      "import.execute.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/import-jobs/route.ts",
+    "method": "POST",
+    "permissions": [
+      "import.execute.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/installments/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/journal-entries/route.ts",
+    "method": "GET",
+    "permissions": [
+      "journal.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/journal-entries/route.ts",
+    "method": "POST",
+    "permissions": [
+      "journal.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/landed-costs/route.ts",
+    "method": "POST",
+    "permissions": [
+      "landed_cost.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/leads/route.ts",
+    "method": "GET",
+    "permissions": [
+      "crm.lead.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/leads/route.ts",
+    "method": "POST",
+    "permissions": [
+      "crm.lead.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/legal-holds/route.ts",
+    "method": "GET",
+    "permissions": [
+      "legal_hold.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/legal-holds/route.ts",
+    "method": "POST",
+    "permissions": [
+      "legal_hold.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/me/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Self profile inside withAuthenticatedTenant."
+  },
+  {
+    "file": "v1/notifications/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Authenticated current-user inbox only."
+  },
+  {
+    "file": "v1/onboarding/route.ts",
+    "method": "POST",
+    "permissions": [
+      "platform.onboarding.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payment.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payment.pay.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payroll-runs/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payroll.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payroll-runs/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payroll.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/route.ts",
+    "method": "POST",
+    "permissions": [
+      "product.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchase-returns/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchase-returns/route.ts",
+    "method": "POST",
+    "permissions": [
+      "purchase_return.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchases/route.ts",
+    "method": "GET",
+    "permissions": [
+      "purchase.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchases/route.ts",
+    "method": "POST",
+    "permissions": [
+      "purchase.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/quotations/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/quotations/route.ts",
+    "method": "POST",
+    "permissions": [
+      "quotation.create.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/reconciliations/route.ts",
+    "method": "GET",
+    "permissions": [
+      "reconciliation.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/reconciliations/route.ts",
+    "method": "POST",
+    "permissions": [
+      "reconciliation.run"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/refunds/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sale-returns/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sale-returns/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale_return.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/security-events/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/service-requests/route.ts",
+    "method": "GET",
+    "permissions": [
+      "service.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/service-requests/route.ts",
+    "method": "POST",
+    "permissions": [
+      "service.intake"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-adjustments/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-adjustments/route.ts",
+    "method": "POST",
+    "permissions": [
+      "stock_adjustment.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-counts/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-counts/route.ts",
+    "method": "POST",
+    "permissions": [
+      "stock_count.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/suppliers/route.ts",
+    "method": "GET",
+    "permissions": [
+      "supplier.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/suppliers/route.ts",
+    "method": "POST",
+    "permissions": [
+      "supplier.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-codes/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-codes/route.ts",
+    "method": "POST",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-components/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-components/route.ts",
+    "method": "POST",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-periods/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-periods/route.ts",
+    "method": "POST",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/route.ts",
+    "method": "POST",
+    "permissions": [
+      "transfer.dispatch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/translations/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Authenticated shared translations."
+  },
+  {
+    "file": "v1/units/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/units/route.ts",
+    "method": "POST",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/warehouses/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/warranty-claims/route.ts",
+    "method": "POST",
+    "permissions": [
+      "warranty.fulfill"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/webhook-endpoints/route.ts",
+    "method": "GET",
+    "permissions": [
+      "company.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/webhook-endpoints/route.ts",
+    "method": "POST",
+    "permissions": [
+      "company.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/accounting/revaluate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "journal.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-alerts/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-assessments/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-config/route.ts",
+    "method": "GET",
+    "permissions": [
+      "system.config.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-threshold-changes/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-threshold-changes/route.ts",
+    "method": "POST",
+    "permissions": [
+      "audit.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/auth/login/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/auth/logout/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/auth/refresh/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/bank-reconciliations/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "bank.reconciliation.view.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/cashier-shifts/open/route.ts",
+    "method": "POST",
+    "permissions": [
+      "shift.open"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/cron/risk-alerts/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "CRON_SECRET bearer authentication."
+  },
+  {
+    "file": "v1/customers/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "customer.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "customer.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "customer.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/data-subject-requests/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "dsr.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/data-subject-requests/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "dsr.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/exchange-rates/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/exchange-rates/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expenses/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "expense.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expenses/[id]/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "expense.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/feature-flags/[key]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "company.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-assets/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "asset.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/import-jobs/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "import.execute.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/inventory/movements/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/inventory/opening-stock/route.ts",
+    "method": "POST",
+    "permissions": [
+      "opening_stock.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/inventory/stocks/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/journal-entries/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "journal.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/legal-holds/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "legal_hold.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/offline/bootstrap/route.ts",
+    "method": "POST",
+    "permissions": [
+      "device.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/offline/sync/route.ts",
+    "method": "POST",
+    "permissions": [
+      "device.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/initiate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "payment.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "product.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "product.archive.company",
+      "product.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchases/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "purchase.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/quotations/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/reconciliations/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "reconciliation.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/reports/trial-balance/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/reports/[code]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/serials/search/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/statutory-documents/generate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "tax.generate.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-counts/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-periods/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "report.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-periods/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/webauthn/credentials/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/webauthn/credentials/route.ts",
+    "method": "DELETE",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/accounting/period-close/[id]/route.ts",
+    "method": "POST",
+    "permissions": [
+      "fiscal_period.lock"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-alerts/evaluate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "audit.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-assessments/report/route.ts",
+    "method": "GET",
+    "permissions": [
+      "audit.view"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/approvals/[id]/resolve/route.ts",
+    "method": "POST",
+    "permissions": [
+      "approval.resolve"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/auth/mfa/setup/route.ts",
+    "method": "GET",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/auth/mfa/verify/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/bank-reconciliations/[id]/auto-match/route.ts",
+    "method": "POST",
+    "permissions": [
+      "bank.reconciliation.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/bank-reconciliations/[id]/finalize/route.ts",
+    "method": "POST",
+    "permissions": [
+      "bank.reconciliation.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/bank-reconciliations/[id]/manual-match/route.ts",
+    "method": "POST",
+    "permissions": [
+      "bank.reconciliation.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/bank-reconciliations/[id]/statement-lines/route.ts",
+    "method": "POST",
+    "permissions": [
+      "bank.reconciliation.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/cashier-shifts/[id]/close/route.ts",
+    "method": "POST",
+    "permissions": [
+      "shift.close"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/deliveries/[id]/transition/route.ts",
+    "method": "POST",
+    "permissions": [
+      "delivery.dispatch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expenses/[id]/approve/route.ts",
+    "method": "POST",
+    "permissions": [
+      "expense.approve"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/export-jobs/[id]/download/route.ts",
+    "method": "GET",
+    "permissions": [
+      "export.data.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-assets/[id]/depreciate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "asset.depreciate.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/fixed-assets/[id]/dispose/route.ts",
+    "method": "POST",
+    "permissions": [
+      "asset.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/import-jobs/[id]/commit/route.ts",
+    "method": "POST",
+    "permissions": [
+      "import.approve.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/import-jobs/[id]/errors/route.ts",
+    "method": "GET",
+    "permissions": [
+      "import.execute.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/notifications/[id]/read/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authenticated current-user notification acknowledgement."
+  },
+  {
+    "file": "v1/onboarding/[id]/activate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "platform.onboarding.execute"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/[id]/refund/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payment.refund.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/[id]/reverse/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payment.reverse.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/print/escpos/[saleId]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/activate/route.ts",
+    "method": "POST",
+    "permissions": [
+      "product.activate"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/barcodes/route.ts",
+    "method": "GET",
+    "permissions": [
+      "product.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/products/[id]/barcodes/route.ts",
+    "method": "POST",
+    "permissions": [
+      "product.update"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchases/[id]/receivings/route.ts",
+    "method": "GET",
+    "permissions": [
+      "purchase.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/purchases/[id]/receivings/route.ts",
+    "method": "POST",
+    "permissions": [
+      "purchase.receive"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/quotations/[id]/convert/route.ts",
+    "method": "POST",
+    "permissions": [
+      "quotation.convert.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/[id]/void/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.void"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/service-requests/[id]/parts/route.ts",
+    "method": "POST",
+    "permissions": [
+      "service.complete"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/[id]/cancel/route.ts",
+    "method": "POST",
+    "permissions": [
+      "transfer.dispatch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/[id]/dispatch/route.ts",
+    "method": "POST",
+    "permissions": [
+      "transfer.dispatch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/[id]/receive/route.ts",
+    "method": "POST",
+    "permissions": [
+      "transfer.receive"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/webauthn/assertion/begin/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/webauthn/assertion/finish/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/webauthn/registration/begin/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/webauthn/registration/finish/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authenticated self-owned WebAuthn credential ceremony."
+  },
+  {
+    "file": "v1/webhooks/courier/[provider]/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Provider HMAC verification and explicit tenant context."
+  },
+  {
+    "file": "v1/webhooks/payment/[provider]/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Provider HMAC verification and explicit tenant context."
+  },
+  {
+    "file": "v1/accounting/period-close/[id]/lock/route.ts",
+    "method": "POST",
+    "permissions": [
+      "fiscal_period.lock"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/accounting/period-close/[id]/unlock/route.ts",
+    "method": "POST",
+    "permissions": [
+      "fiscal_period.unlock"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-assessments/[id]/outcome/route.ts",
+    "method": "POST",
+    "permissions": [
+      "audit.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/admin/risk-threshold-changes/[id]/revert/route.ts",
+    "method": "POST",
+    "permissions": [
+      "audit.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/auth/mfa/setup/activate/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; dedicated credential/challenge validation."
+  },
+  {
+    "file": "v1/admin/health/route.ts",
+    "method": "GET",
+    "permissions": [
+      "system.config.view"
+    ],
+    "exception": null
+  }
+]

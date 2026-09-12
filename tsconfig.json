@@ -37,6 +37,7 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
+    ".local",
     "node_modules",
     "examples",
     "tests/e2e",

@@ -25,8 +25,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'customer.create');
-    await requirePermission(auth, 'customer.read');
+    await requirePermission(auth, "customer.read");
     const search = req.nextUrl.searchParams.get('search') ?? undefined;
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '100', 10), 500);
 
@@ -78,6 +77,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "customer.create");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CustomerSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/customers', body });

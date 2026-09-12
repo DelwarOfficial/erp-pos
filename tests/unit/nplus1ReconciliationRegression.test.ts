@@ -25,12 +25,12 @@ describe('reconciliation and journal N+1 regression', () => {
         movingAverageCost: decimal(10),
         qtyReserved: decimal(1),
       }));
-      const movementGroupBy = vi.fn(async () => stocks.map(s => ({
+      const movementGroupBy = vi.fn(async (_args: { where: { companyId: string } }) => stocks.map(s => ({
         warehouseId: s.warehouseId,
         productId: s.productId,
         _sum: { qtyDelta: decimal(1), totalCostDelta: decimal(10) },
       })));
-      const reservationGroupBy = vi.fn(async () => stocks.map(s => ({
+      const reservationGroupBy = vi.fn(async (_args: { where: { companyId: string } }) => stocks.map(s => ({
         warehouseId: s.warehouseId,
         productId: s.productId,
         _sum: { qty: decimal(1) },
@@ -78,7 +78,7 @@ describe('reconciliation and journal N+1 regression', () => {
         allowManualPosting: true,
       })));
       const tx = {
-        fiscalPeriod: { findFirst: vi.fn(async () => null) },
+        fiscalPeriod: { findFirst: vi.fn(async () => ({ status: 'open' })) },
         chartOfAccount: { findMany: accountRead },
         businessEvent: { create: vi.fn(async () => ({})) },
         journalEntry: { create: vi.fn(async () => ({ id: 'journal-1' })) },
@@ -113,7 +113,7 @@ describe('reconciliation and journal N+1 regression', () => {
   it('rejects a cross-tenant chart-of-account ID without weakening database scope', async () => {
     const accountRead = vi.fn(async ({ where }: any) => [{ id: where.id.in[0], code: 'A', allowManualPosting: true }]);
     const tx = {
-      fiscalPeriod: { findFirst: vi.fn(async () => null) },
+      fiscalPeriod: { findFirst: vi.fn(async () => ({ status: 'open' })) },
       chartOfAccount: { findMany: accountRead },
     } as any;
 

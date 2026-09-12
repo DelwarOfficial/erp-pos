@@ -17,7 +17,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
-import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
+import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 
@@ -72,6 +72,14 @@ export async function postSale(
   input: PostSaleInput,
   correlationId: string,
 ): Promise<PostSaleResult> {
+  // Stored-value consumption is not implemented atomically in this command.
+  // Reject at the domain boundary too (offline/import callers bypass HTTP Zod).
+  if (input.payments.some(payment => ['gift_card', 'store_credit'].includes(payment.paymentMethod))) {
+    throw new DomainError('FEATURE_NOT_ENABLED', 'Gift-card and store-credit POS tenders are unavailable until atomic redemption is enabled', {}, 409);
+  }
+  if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0) {
+    throw new DomainError('VALIDATION_FAILED', 'Exchange rate must be positive and finite', {}, 400);
+  }
   let cashierShiftId: string | null = input.cashierShiftId ?? null;
   if (cashierShiftId) {
     const shift = await tx.cashierShift.findFirst({
@@ -110,9 +118,9 @@ export async function postSale(
     },
   });
 
-  let subtotal = 0;
-  let discountTotal = 0;
-  let taxTotal = 0;
+  let subtotal = new Prisma.Decimal(0);
+  let discountTotal = new Prisma.Decimal(0);
+  let taxTotal = new Prisma.Decimal(0);
   const saleItemsData: Array<{
     lineNo: number;
     productId: string;
@@ -120,13 +128,13 @@ export async function postSale(
     productCodeSnapshot: string;
     unitCodeSnapshot: string;
     qty: number;
-    unitCostSnapshot: number;
+    unitCostSnapshot: Prisma.Decimal;
     unitPriceSnapshot: number;
-    grossAmount: number;
-    discountAmount: number;
-    taxableAmount: number;
-    taxAmount: number;
-    lineTotal: number;
+    grossAmount: Prisma.Decimal;
+    discountAmount: Prisma.Decimal;
+    taxableAmount: Prisma.Decimal;
+    taxAmount: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
     serials: string[];
     productType: string;
     warrantyPeriodMonths: number | null;
@@ -166,13 +174,14 @@ export async function postSale(
     }));
   }
   const serialByNumber = new Map(availableSerials.map(serial => [serial.serialNumber, serial]));
+  const claimedSerialIds = new Set<string>();
 
   let lineNo = 1;
   for (const item of input.items) {
-    if (item.qty <= 0) {
+    if (!Number.isFinite(item.qty) || item.qty <= 0) {
       throw new DomainError('VALIDATION_FAILED', `Line ${lineNo}: quantity must be > 0`, {}, 400);
     }
-    if (item.unitPrice < 0) {
+    if (!Number.isFinite(item.unitPrice) || item.unitPrice < 0) {
       throw new DomainError('VALIDATION_FAILED', `Line ${lineNo}: unit price must be >= 0`, {}, 400);
     }
 
@@ -181,24 +190,30 @@ export async function postSale(
       throw new DomainError('RESOURCE_NOT_FOUND', `Product ${item.productId} not found or inactive`, {}, 404);
     }
 
+    if (product.productType === 'combo' || product.trackBatches) {
+      throw new DomainError('FEATURE_NOT_ENABLED', 'Combo and batch-tracked POS sales require component/batch allocation and are currently unavailable', {}, 409);
+    }
+
     const isStockProduct = product.productType === 'standard' || product.productType === 'combo';
 
     const stock = stockByProductId.get(item.productId);
-    const unitCost = stock ? parseFloat(stock.movingAverageCost.toString()) : 0;
+    const unitCost = new Prisma.Decimal(stock?.movingAverageCost.toString() ?? '0');
 
-    const grossAmount = item.qty * item.unitPrice;
-    const discountAmount = item.discountAmount ?? 0;
-    const taxableAmount = grossAmount - discountAmount;
+    const grossAmount = new Prisma.Decimal(item.qty).mul(item.unitPrice);
+    const discountAmount = new Prisma.Decimal(item.discountAmount ?? 0);
+    if (!discountAmount.isFinite() || discountAmount.lt(0) || discountAmount.gt(grossAmount)) {
+      throw new DomainError('VALIDATION_FAILED', 'Discount must be between zero and line gross amount', {}, 400);
+    }
+    const taxableAmount = grossAmount.minus(discountAmount);
 
-    let lineTaxAmount = 0;
-    if (product.defaultTaxCode && taxableAmount > 0) {
+    let lineTaxAmount = new Prisma.Decimal(0);
+    if (product.defaultTaxCode && taxableAmount.gt(0)) {
       for (const tc of product.defaultTaxCode.components) {
-        const rate = parseFloat(tc.taxComponent.rate.toString());
-        lineTaxAmount += taxableAmount * rate / 100;
+        lineTaxAmount = lineTaxAmount.plus(taxableAmount.mul(tc.taxComponent.rate).div(100));
       }
     }
 
-    const lineTotal = taxableAmount + lineTaxAmount;
+    const lineTotal = taxableAmount.plus(lineTaxAmount);
 
     let serialIds: string[] = [];
     if (product.isSerialized && isStockProduct) {
@@ -212,12 +227,16 @@ export async function postSale(
       }
       for (const serialNumber of item.serials) {
         const serial = serialByNumber.get(serialNumber);
-        if (!serial) {
+        if (!serial || serial.productId !== item.productId) {
           throw new DomainError('SERIAL_NOT_AVAILABLE', `Serial ${serialNumber} not found in this warehouse`, { serial: serialNumber }, 409);
         }
         if (serial.status !== 'in_stock') {
           throw new DomainError('SERIAL_NOT_AVAILABLE', `Serial ${serialNumber} is not in_stock (status: ${serial.status})`, { serial: serialNumber, status: serial.status }, 409);
         }
+        if (claimedSerialIds.has(serial.id)) {
+          throw new DomainError('SERIAL_NOT_AVAILABLE', 'A serial cannot be sold twice in the same sale', {}, 409);
+        }
+        claimedSerialIds.add(serial.id);
         serialIds.push(serial.id);
       }
     }
@@ -239,14 +258,14 @@ export async function postSale(
       })) ?? [],
     });
 
-    subtotal += grossAmount;
-    discountTotal += discountAmount;
-    taxTotal += lineTaxAmount;
+    subtotal = subtotal.plus(grossAmount);
+    discountTotal = discountTotal.plus(discountAmount);
+    taxTotal = taxTotal.plus(lineTaxAmount);
     lineNo++;
   }
 
-  const grandTotal = subtotal - discountTotal + taxTotal;
-  const baseGrandTotal = grandTotal * input.exchangeRate;
+  const grandTotal = subtotal.minus(discountTotal).plus(taxTotal);
+  const baseGrandTotal = grandTotal.mul(input.exchangeRate);
 
   // ── D05: Credit sale validation (§20.D05) ──
   // Credit sale = payments don't cover the full grand total.
@@ -254,9 +273,10 @@ export async function postSale(
   // When enabled: customer must exist, have credit limit > 0, not be overdue,
   // and the new exposure (existing AR + this sale's unpaid amount) must not exceed credit limit.
   // Walk-in customers cannot make credit sales.
-  const totalPaid = input.payments.reduce((sum, p) => sum + p.amount, 0);
-  const isCreditSale = totalPaid < grandTotal;
-  const unpaidAmount = grandTotal - totalPaid;
+  const totalPaid = input.payments.reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
+  if (totalPaid.gt(grandTotal)) throw new DomainError('VALIDATION_FAILED', 'Record only the applied payment amount; return cash change separately', {}, 400);
+  const isCreditSale = totalPaid.lt(grandTotal);
+  const unpaidAmount = grandTotal.minus(totalPaid);
 
   if (isCreditSale) {
     // Check feature flag
@@ -344,8 +364,8 @@ export async function postSale(
     }
 
     // Check credit limit: current AR + new unpaid amount must not exceed credit limit
-    const newExposure = currentAR + unpaidAmount;
-    if (newExposure > creditLimit) {
+    const newExposure = unpaidAmount.plus(currentAR);
+    if (newExposure.gt(creditLimit)) {
       throw new DomainError(
         'CREDIT_LIMIT_EXCEEDED',
         `Credit limit exceeded for customer ${customer.name}: current AR = ৳${currentAR.toFixed(2)}, this sale unpaid = ৳${unpaidAmount.toFixed(2)}, total exposure = ৳${newExposure.toFixed(2)}, credit limit = ৳${creditLimit.toFixed(2)}`,
@@ -391,10 +411,9 @@ export async function postSale(
       },
     });
 
-    if (itemData.taxComponents.length > 0 && itemData.taxAmount > 0) {
+    if (itemData.taxComponents.length > 0 && itemData.taxAmount.gt(0)) {
       for (const tc of itemData.taxComponents) {
-        const rate = parseFloat(tc.rate.toString());
-        const componentTax = itemData.taxableAmount * rate / 100;
+        const componentTax = itemData.taxableAmount.mul(tc.rate).div(100);
         await tx.saleItemTax.create({
           data: {
             companyId: input.companyId, saleItemId: saleItem.id, taxComponentId: tc.taxComponentId,
@@ -414,7 +433,7 @@ export async function postSale(
         companyId: input.companyId, eventId, eventLineNo,
         warehouseId: input.warehouseId, productId: itemData.productId,
         movementType: 'sale_issue', qtyDelta: -itemData.qty,
-        unitCost: itemData.unitCostSnapshot,
+        unitCost: itemData.unitCostSnapshot.toString(),
         referenceType: 'sale', referenceId: sale.id, sourceLineId: saleItem.id,
         effectiveAt: input.businessDate, createdBy: input.cashierId,
         metadata: { sale_reference: referenceNo, sale_item_id: saleItem.id },
@@ -453,7 +472,7 @@ export async function postSale(
 
   let paymentCount = 0;
   for (const payment of input.payments) {
-    if (payment.amount <= 0) {
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
       throw new DomainError('VALIDATION_FAILED', 'Payment amount must be > 0', {}, 400);
     }
     const paymentRef = await nextDocumentNumber(tx, {
@@ -468,7 +487,7 @@ export async function postSale(
         customerId: input.customerId ?? null,
         financialAccountId: payment.financialAccountId, cashierShiftId,
         currencyCode: input.currencyCode, exchangeRate: input.exchangeRate,
-        amount: payment.amount, baseAmount: payment.amount * input.exchangeRate,
+        amount: payment.amount, baseAmount: new Prisma.Decimal(payment.amount).mul(input.exchangeRate),
         paymentMethod: payment.paymentMethod, methodReference: payment.methodReference ?? null,
         chequeStatus: payment.paymentMethod === 'cheque' ? 'pending_clearance' : 'not_applicable',
         paymentStatus: 'posted', businessDate: input.businessDate,
@@ -479,7 +498,7 @@ export async function postSale(
       data: {
         companyId: input.companyId, paymentId: paymentRecord.id, eventId, eventLineNo,
         saleId: sale.id, allocationSource: 'direct',
-        allocatedAmount: payment.amount, allocatedBaseAmount: payment.amount * input.exchangeRate,
+        allocatedAmount: payment.amount, allocatedBaseAmount: new Prisma.Decimal(payment.amount).mul(input.exchangeRate),
         createdBy: input.cashierId,
       },
     });
@@ -491,6 +510,9 @@ export async function postSale(
   //    Revenue JE: Dr AR/Cash (grand_total), Cr Sales Revenue (subtotal - discount), Cr Tax Payable (tax_total)
   //    COGS JE: Dr COGS (qty × unit_cost_snapshot), Cr Inventory (qty × unit_cost_snapshot)
   const policies = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
+  if (!policies) {
+    throw new DomainError('VALIDATION_FAILED', 'Accounting policies must be configured before completing a sale', {}, 409);
+  }
   if (policies) {
     const financialAccountIds = [...new Set(input.payments.map(payment => payment.financialAccountId))];
     const financialAccounts: Prisma.FinancialAccountGetPayload<object>[] = [];
@@ -505,12 +527,12 @@ export async function postSale(
     const financialAccountById = new Map(financialAccounts.map(account => [account.id, account]));
 
     // Revenue journal
-    const revenueJournalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string; branchId?: string }> = [];
+    const revenueJournalLines: JournalLineInput[] = [];
 
     // Dr AR or Cash for grand_total
-    const totalPayments = input.payments.reduce((s, p) => s + p.amount, 0);
-    const arAmount = grandTotal - totalPayments;  // unpaid portion → AR
-    if (arAmount > 0.01) {
+    const totalPayments = totalPaid;
+    const arAmount = grandTotal.minus(totalPayments);  // unpaid portion → AR
+    if (arAmount.gt(0)) {
       revenueJournalLines.push({
         chartOfAccountId: policies.arAccountId,
         debit: arAmount, credit: 0,
@@ -521,6 +543,9 @@ export async function postSale(
     // Dr Cash/Bank for payments received
     for (const payment of input.payments) {
       const fa = financialAccountById.get(payment.financialAccountId);
+      if (!fa || !fa.isActive || fa.currencyCode !== input.currencyCode) {
+        throw new DomainError('VALIDATION_FAILED', 'Payment account must be active, tenant-owned and in the sale currency', {}, 409);
+      }
       if (fa) {
         revenueJournalLines.push({
           chartOfAccountId: fa.chartOfAccountId,
@@ -531,8 +556,8 @@ export async function postSale(
       }
     }
     // Cr Sales Revenue (subtotal - discount = taxable + non-taxable)
-    const netRevenue = subtotal - discountTotal;
-    if (netRevenue > 0) {
+    const netRevenue = subtotal.minus(discountTotal);
+    if (netRevenue.gt(0)) {
       revenueJournalLines.push({
         chartOfAccountId: policies.salesRevenueAccountId,
         debit: 0, credit: netRevenue,
@@ -540,21 +565,22 @@ export async function postSale(
         branchId: input.branchId,
       });
     }
-    // Cr Tax Payable (use the first tax component's output account, or skip if not configured)
-    if (taxTotal > 0) {
-      // Find the VAT output account from tax components
-      const firstTaxLine = saleItemsData.find(si => si.taxAmount > 0);
-      if (firstTaxLine) {
-        const vatAccount = firstTaxLine.taxComponents[0]?.outputAccountId;
-        if (vatAccount) {
-          revenueJournalLines.push({
-            chartOfAccountId: vatAccount,
-            debit: 0, credit: taxTotal,
-            memo: `VAT output for ${referenceNo}`,
-            branchId: input.branchId,
-          });
+    // Each tax component posts to its own configured account.
+    const taxByAccount = new Map<string, Prisma.Decimal>();
+    for (const item of saleItemsData) {
+      for (const component of item.taxComponents) {
+        const amount = item.taxableAmount.mul(component.rate).div(100);
+        if (amount.isZero()) continue;
+        if (!component.outputAccountId) {
+          throw new DomainError('VALIDATION_FAILED', 'Every charged tax component requires an output account', {}, 409);
         }
+        taxByAccount.set(component.outputAccountId,
+          (taxByAccount.get(component.outputAccountId) ?? new Prisma.Decimal(0)).plus(amount));
       }
+    }
+    for (const [chartOfAccountId, amount] of taxByAccount) {
+      revenueJournalLines.push({ chartOfAccountId, debit: 0, credit: amount,
+        branchId: input.branchId, memo: `Tax output for ${referenceNo}` });
     }
 
     if (revenueJournalLines.length >= 2) {
@@ -570,22 +596,25 @@ export async function postSale(
         lines: revenueJournalLines.map(l => ({
           chartOfAccountId: l.chartOfAccountId,
           branchId: l.branchId,
-          debit: l.debit, credit: l.credit,
+          // Revenue/receipts originate in transaction currency. COGS below
+          // already originates in base currency and MUST NOT be converted again.
+          debit: new Prisma.Decimal(l.debit).mul(input.exchangeRate),
+          credit: new Prisma.Decimal(l.credit).mul(input.exchangeRate),
           memo: l.memo,
         })),
       }, correlationId);
     }
 
     // COGS journal: Dr COGS, Cr Inventory (for each stock product line)
-    const cogsJournalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string; branchId?: string }> = [];
-    let totalCogs = 0;
+    const cogsJournalLines: JournalLineInput[] = [];
+    let totalCogs = new Prisma.Decimal(0);
     for (const itemData of saleItemsData) {
       if (itemData.productType === 'standard' || itemData.productType === 'combo') {
-        const cogs = itemData.qty * itemData.unitCostSnapshot;
-        totalCogs += cogs;
+        const cogs = itemData.unitCostSnapshot.mul(itemData.qty);
+        totalCogs = totalCogs.plus(cogs);
       }
     }
-    if (totalCogs > 0) {
+    if (totalCogs.gt(0)) {
       cogsJournalLines.push({
         chartOfAccountId: policies.cogsAccountId,
         debit: totalCogs, credit: 0,

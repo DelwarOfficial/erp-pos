@@ -15,7 +15,10 @@ const cookieStore = new Map<string, string>();
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
     get: (n: string) => (cookieStore.has(n) ? { value: cookieStore.get(n) } : undefined),
-    set: (n: string, v: string) => { cookieStore.set(n, v); },
+    set: (n: string, v: string, options?: { maxAge?: number }) => {
+      if (options?.maxAge === 0) cookieStore.delete(n);
+      else cookieStore.set(n, v);
+    },
     delete: (n: string) => { cookieStore.delete(n); },
   })),
 }));

@@ -122,7 +122,7 @@ describe('postStockMovement — moving-average cost', () => {
     const stockBefore = await db.warehouseStock.findFirst({
       where: { companyId, warehouseId, productId },
     });
-    const macBefore = parseFloat(stockBefore!.movingAverageCost.toString());
+    const macBefore = stockBefore!.movingAverageCost.toString();
 
     const result = await db.$transaction(async (tx) => {
       return postStockMovement(tx, {

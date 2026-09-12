@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     // Issue a new access token
     const branchIds = user.branchAccess.map(b => b.branchId);
-    const sessionId = randomUUID();
+    const sessionId = newToken.sessionId ?? randomUUID();
     const refreshResult = await setAuthCookies({
       userId: user.id,
       companyId: user.companyId,
@@ -60,8 +60,9 @@ export async function POST(req: NextRequest) {
       isGlobal: user.accessScope === 'global' && user.company.code === 'PLATFORM',
       branchIds,
       familyId: newToken.familyId,
+      rotatedRefreshToken: newToken,
       sessionId,
-      mfaVerified: true, // refresh after MFA completes keeps verification
+      mfaVerified: newToken.mfaVerified,
     });
 
     const refreshResponse = NextResponse.json({

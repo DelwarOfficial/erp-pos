@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
         lines: {
           // Cap lines per entry to keep payload bounded on large journals.
           take: 200,
+          orderBy: { lineNo: 'asc' },
           include: {
             chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },
             branch: { select: { id: true, name: true, code: true } },
@@ -79,6 +80,17 @@ export async function GET(req: NextRequest) {
       });
     });
 
+    // Totals must cover the complete immutable journal, not the 200-line preview.
+    // IDs are bounded by the header page size and remain tenant/branch scoped.
+    const totals = entries.length ? await runInTenantContext(auth.ctx, async () => {
+      return db.journalLine.groupBy({
+        by: ['journalEntryId'],
+        where: { companyId: auth.companyId, journalEntryId: { in: entries.map(entry => entry.id) } },
+        _sum: { debitBase: true, creditBase: true },
+      });
+    }) : [];
+    const totalsByEntry = new Map(totals.map(total => [total.journalEntryId, total._sum]));
+
     return NextResponse.json({
       items: entries.map(e => ({
         id: e.id, entry_no: e.entryNo, status: e.status,
@@ -88,8 +100,9 @@ export async function GET(req: NextRequest) {
         reversal_of_entry_id: e.reversalOfEntryId,
         line_count: e._count.lines,
         creator: e.creator,
-        total_debit: e.lines.reduce((s, l) => s + parseFloat(l.debitBase.toString()), 0).toFixed(2),
-        total_credit: e.lines.reduce((s, l) => s + parseFloat(l.creditBase.toString()), 0).toFixed(2),
+        total_debit: totalsByEntry.get(e.id)?.debitBase?.toString() ?? '0',
+        total_credit: totalsByEntry.get(e.id)?.creditBase?.toString() ?? '0',
+        lines_truncated: e._count.lines > e.lines.length,
         lines: e.lines.map(l => ({
           line_no: l.lineNo,
           account: l.chartOfAccount,

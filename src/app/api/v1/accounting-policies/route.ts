@@ -70,8 +70,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'journal.post');
-    await requirePermission(auth, 'journal.read');
+    await requirePermission(auth, "journal.read");
     const policy = await runInTenantContext(auth.ctx, async () => {
       return db.accountingPolicy.findUnique({
         where: { companyId: auth.companyId },
@@ -105,6 +104,7 @@ export async function PUT(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "journal.post");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = UpdatePolicySchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'PUT', path: '/api/v1/accounting-policies', body });

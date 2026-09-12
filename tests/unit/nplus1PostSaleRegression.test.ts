@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 vi.mock('@/lib/numbering', () => ({
   nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
@@ -12,10 +13,13 @@ vi.mock('@/domain/commands/m4/PostJournalEntry', () => ({
 }));
 
 import { postSale } from '@/domain/commands/m3/PostSale';
+import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 
 describe('sale-posting N+1 regression', () => {
+  beforeEach(() => vi.clearAllMocks());
+  for (const [currencyCode, exchangeRate] of [['BDT', 1], ['USD', 120]] as const) {
   for (const size of [1, 10, 100]) {
-    it(`measures repeated sale reads for N=${size}`, async () => {
+    it(`measures reads and base-currency posting for ${currencyCode}, N=${size}`, async () => {
       const productRead = vi.fn(async ({ where }: any) => where.id.in.map((id: string) => ({
         id,
         name: 'Safe product',
@@ -33,6 +37,8 @@ describe('sale-posting N+1 regression', () => {
       const financialAccountRead = vi.fn(async ({ where }: any) => where.id.in.map((id: string) => ({
         id,
         chartOfAccountId: 'cash-account',
+        isActive: true,
+        currencyCode,
       })));
       let saleItemSequence = 0;
       const tx = {
@@ -69,13 +75,13 @@ describe('sale-posting N+1 regression', () => {
         financialAccountId: `financial-account-${i}`,
       }));
 
-      await postSale(tx, {
+      const result = await postSale(tx, {
         companyId: 'tenant-a',
         branchId: 'branch-a',
         warehouseId: 'warehouse-a',
         cashierId: 'user-a',
-        currencyCode: 'BDT',
-        exchangeRate: 1,
+        currencyCode,
+        exchangeRate,
         businessDate: new Date('2026-01-01T00:00:00Z'),
         items,
         payments,
@@ -93,11 +99,19 @@ describe('sale-posting N+1 regression', () => {
       expect(productRead.mock.calls[0][0].where.companyId).toBe('tenant-a');
       expect(stockRead.mock.calls[0][0].where.companyId).toBe('tenant-a');
       expect(financialAccountRead.mock.calls[0][0].where.companyId).toBe('tenant-a');
+      expect(result.baseGrandTotal).toBe(String(size * 10 * exchangeRate));
+      const journals = vi.mocked(postJournalEntry).mock.calls.map(call => call[1]);
+      const revenue = journals.find(journal => journal.postingKind === 'sale_revenue')!;
+      const cogs = journals.find(journal => journal.postingKind === 'sale_cogs')!;
+      const totalDebit = (journal: typeof revenue) => journal.lines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0)).toString();
+      expect(totalDebit(revenue)).toBe(result.baseGrandTotal);
+      expect(totalDebit(cogs)).toBe(String(size * 10)); // Never convert base COGS twice.
     });
+  }
   }
 
   it('rejects a product ID that the tenant-scoped preload cannot resolve', async () => {
-    const productRead = vi.fn(async () => []);
+    const productRead = vi.fn(async (_args: { where: { companyId: string } }) => []);
     const tx = {
       warehouse: { findFirst: vi.fn(async () => ({ id: 'warehouse-a' })) },
       businessEvent: { create: vi.fn(async () => ({})) },

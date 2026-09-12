@@ -18,6 +18,7 @@ vi.mock('next/headers', () => ({
 
 import { db } from '@/lib/db';
 import { issueAccessToken } from '@/lib/auth/jwt';
+import { issueRefreshToken } from '@/lib/auth/refreshToken';
 import { getAccessCookieName } from '@/lib/auth/sessions';
 import { withAuthenticatedTenant, requirePermission } from '@/lib/auth/middleware';
 import {
@@ -40,7 +41,8 @@ function ctxFor(companyId: string, userId: string, isGlobal = false) {
   return buildTenantContext({ companyId, userId, branchIds: [], isGlobal });
 }
 
-function tokenFor(userId: string, companyId: string, isGlobal = false) {
+async function tokenFor(userId: string, companyId: string, isGlobal = false) {
+  const refresh = await issueRefreshToken({ userId, companyId, sessionId: 'test-session', mfaVerified: false });
   return issueAccessToken({
     sub: userId,
     company_id: companyId,
@@ -48,7 +50,7 @@ function tokenFor(userId: string, companyId: string, isGlobal = false) {
     is_global: isGlobal,
     branch_ids: [],
     session_id: 'test-session',
-    family_id: 'test-family',
+    family_id: refresh.familyId,
     mfa_verified: false,
   });
 }
@@ -113,6 +115,7 @@ afterAll(async () => {
     await raw.permission.deleteMany({ where: { code: permCode } }).catch(() => undefined);
   }
   for (const id of [userA, userB]) {
+    if (id) await raw.refreshToken.deleteMany({ where: { userId: id } });
     if (id) await raw.user.deleteMany({ where: { id } }).catch(() => undefined);
   }
   for (const id of [companyA, companyB]) {
@@ -129,15 +132,12 @@ describe('tenant isolation stays fail-closed', () => {
     );
   });
 
-  it('a sync arrow returning a bare PrismaPromise escapes the context (fail-closed)', async () => {
-    // Prisma 6 runs extension hooks lazily on first await. Awaiting the
-    // promise returned by run() happens after run() exits, so the hook sees
-    // no context and MUST throw rather than run unscoped.
-    await expect(
-      runInTenantContext(ctxFor(companyA, userA), () =>
-        db.user.findFirst({ where: { id: userA } }),
-      ),
-    ).rejects.toThrow('TENANT_CONTEXT_REQUIRED:User');
+  it('awaits a lazy PrismaPromise inside context even for a synchronous callback', async () => {
+    const found = await runInTenantContext(ctxFor(companyA, userA), () =>
+      db.user.findFirst({ where: { id: userA }, select: { id: true } }),
+    );
+    expect(found?.id).toBe(userA);
+    expect(getTenantContext()).toBeUndefined();
   });
 
   // NOTE: work callbacks MUST be `async` and return the query promise from

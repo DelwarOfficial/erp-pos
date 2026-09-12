@@ -40,7 +40,7 @@ async function loadEnrollableUser(payload: MfaSetupPayload) {
     include: { company: true, branchAccess: true },
   });
   // Re-check at USE time: already-enrolled users can never (re-)enroll here.
-  if (!user || !user.isActive || user.mfaEnabled || user.mfaSecretCiphertext) {
+  if (!user || !user.isActive || user.company.status !== 'active' || user.mfaEnabled || user.mfaSecretCiphertext) {
     return null;
   }
   return user;
@@ -179,13 +179,18 @@ export async function activateEnrollment(
 
   // Persist encrypted secret + enable, atomically guarded by the re-check above
   // (a replayed request finds mfaEnabled=true and is rejected before writing).
-  await db.user.update({
-    where: { id: user.id },
+  const activation = await db.user.updateMany({
+    where: { id: user.id, companyId: user.companyId, isActive: true, deletedAt: null,
+      mfaEnabled: false, mfaSecretCiphertext: null },
     data: {
       mfaSecretCiphertext: Buffer.from(payload.enc, 'hex'),
       mfaEnabled: true,
     },
   });
+
+  if (activation.count !== 1) {
+    throw new DomainError('UNAUTHORIZED', 'MFA enrollment was already consumed or user is inactive', {}, 401);
+  }
 
   const branchIds = user.branchAccess.map((b) => b.branchId);
   const sessionId = randomUUID();

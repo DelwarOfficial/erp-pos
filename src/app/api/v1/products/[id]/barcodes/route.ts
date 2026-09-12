@@ -30,8 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'product.update');
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, "product.read");
     const { id } = await params;
     const barcodes = await runInTenantContext(auth.ctx, async () => {
       return db.productBarcode.findMany({
@@ -49,6 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "product.update");
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = BarcodeCreateSchema.parse(await req.json());

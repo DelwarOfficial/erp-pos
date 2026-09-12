@@ -21,7 +21,7 @@ const SaleItemSchema = z.object({
 });
 
 const PaymentSchema = z.object({
-  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'gift_card', 'store_credit', 'other']),
+  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'other']),
   amount: z.number().positive(),
   financial_account_id: z.string().uuid(),
   method_reference: z.string().max(120).optional(),

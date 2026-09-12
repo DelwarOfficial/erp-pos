@@ -47,6 +47,7 @@ export async function GET(
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "customer.read");
     // `customer.read` is not in the catalogue; fall back to `product.read`
     // (the same permission used by the sibling list endpoint) for parity.
     await requirePermission(auth, 'customer.read');
@@ -109,6 +110,7 @@ export async function PUT(
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "customer.update");
     // `customer.manage` is not in the catalogue; the closest mutation
     // permission used by the sibling list endpoint is `user.create`.
     // global_admin / owner / branch_manager roles already cover the
@@ -290,6 +292,7 @@ export async function DELETE(
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "customer.update");
     // `customer.manage` is not in the catalogue; fall back to `user.create`
     // (the closest mutation permission, used by the sibling POST endpoint).
     await requirePermission(auth, 'customer.update');

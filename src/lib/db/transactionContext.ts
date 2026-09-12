@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { Prisma } from '@prisma/client';
 
 export interface TenantContext {
   companyId: string;
@@ -12,6 +13,8 @@ export interface TenantContext {
   requestId: string;
   ip?: string;
   userAgent?: string;
+  /** Internal only: parent validation must see writes in this same transaction. */
+  transactionClient?: Prisma.TransactionClient;
 }
 
 export const tenantStorage = new AsyncLocalStorage<TenantContext>();

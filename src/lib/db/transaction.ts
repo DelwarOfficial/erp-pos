@@ -58,7 +58,7 @@ export async function withTenant<T>(
       //   await tx.$executeRaw`SELECT set_config('app.is_global', ${ctx.isGlobal ? 'true' : 'false'}, true)`;
       // SQLite sandbox skips this — isolation is enforced via the Prisma
       // client extension in `tenantClient.ts` and via in-app filters.
-      return work(tx);
+      return tenantStorage.run({ ...ctx, transactionClient: tx }, async () => await work(tx));
     }, {
       isolationLevel: 'Serializable',
       timeout: 30_000,
@@ -89,7 +89,9 @@ export async function runInTenantContext<T>(
   // body (or chains them before returning). A sync arrow that merely returns
   // a bare PrismaPromise (e.g. `() => db.user.findFirst(...)`) lets the hook
   // fire after run() has exited, losing the context (fail-closed throw).
-  return tenantStorage.run(ctx, work);
+  // Await inside the scope: PrismaPromise is lazy, so even a caller returning
+  // a bare query must execute its extension hooks before leaving this context.
+  return tenantStorage.run(ctx, async () => await work());
 }
 
 /**

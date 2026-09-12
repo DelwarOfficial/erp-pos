@@ -9,6 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let auth;
   try {
     auth = await authenticateRequest();
+    await requirePermission(auth, 'import.execute.company');
   } catch (e) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });

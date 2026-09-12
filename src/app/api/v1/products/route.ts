@@ -35,8 +35,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'product.create');
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, "product.read");
     const url = req.nextUrl;
     const search = url.searchParams.get('search') ?? undefined;
     const productType = url.searchParams.get('product_type') ?? undefined;
@@ -108,6 +107,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "product.create");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ProductCreateSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/products', body });

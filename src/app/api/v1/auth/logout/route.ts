@@ -3,7 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { systemDb as db } from '@/lib/db';
-import { clearAuthCookies, getRefreshCookieName } from '@/lib/auth/sessions';
+import { clearAuthCookies, getRefreshCookieName, getAccessCookieName } from '@/lib/auth/sessions';
+import { verifyLogoutIdentity } from '@/lib/auth/jwt';
 import { revokeFamily } from '@/lib/auth/refreshToken';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -12,6 +13,13 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
 
   try {
+    const access = req.cookies.get(getAccessCookieName())?.value;
+    if (access) {
+      const identity = await verifyLogoutIdentity(access);
+      if (identity) {
+        await revokeFamily({ ...identity, reason: 'user_logout' });
+      }
+    }
     const cookie = req.cookies.get(getRefreshCookieName())?.value;
     if (cookie) {
       const sha256 = (await import('node:crypto')).createHash('sha256');

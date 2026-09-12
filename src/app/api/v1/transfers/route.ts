@@ -25,8 +25,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'transfer.dispatch');
-    await requirePermission(auth, 'inventory.read');
+    await requirePermission(auth, "inventory.read");
     const status = req.nextUrl.searchParams.get('status') ?? undefined;
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
@@ -57,6 +56,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "transfer.dispatch");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreateTransferSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/transfers', body });

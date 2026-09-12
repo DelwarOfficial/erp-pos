@@ -3,6 +3,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getTenantContext } from './transactionContext';
 import { assertBranchAccess } from './branchScope';
+import { branchScopeFor, modelByName } from './modelBranchScope';
+import { DomainError } from '@/lib/errors/codes';
 
 const GLOBAL_MODELS = new Set([
   'Currency',
@@ -77,7 +79,7 @@ function enforceCompanyId(data: Record<string, any>, companyId: string) {
 }
 
 async function validateIndirectCreate(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   model: string,
   data: Record<string, any>,
   companyId: string,
@@ -99,7 +101,8 @@ export function applyTenantIsolation(prisma: PrismaClient) {
     query: {
       $allModels: {
         async $allOperations({ args, query, operation, model }) {
-          if (!model || GLOBAL_MODELS.has(model) || !isScopedModel(model)) return query(args);
+          if (!model || GLOBAL_MODELS.has(model)) return query(args);
+          if (!isScopedModel(model)) throw new Error(`TENANT_MODEL_UNCLASSIFIED:${model}`);
 
           const ctx = getTenantContext();
           if (!ctx) throw new Error(`TENANT_CONTEXT_REQUIRED:${model}`);
@@ -107,16 +110,11 @@ export function applyTenantIsolation(prisma: PrismaClient) {
 
           const mutableArgs = args as Record<string, any>;
           const scope = scopeFor(model, ctx.companyId);
-          const branchField = Prisma.dmmf.datamodel.models.find(m => m.name === model)
+          const branchField = modelByName.get(model)
             ?.fields.find(f => f.name === 'branchId');
           if (!ctx.allBranches) {
-            if (model === 'Branch') Object.assign(scope, { id: { in: ctx.branchIds } });
-            else if (branchField) Object.assign(scope, branchField.isRequired
-              ? { branchId: { in: ctx.branchIds } }
-              : { OR: [{ branchId: null }, { branchId: { in: ctx.branchIds } }] });
-            else if (['WarehouseStock', 'StockMovement', 'StockBatch', 'StockReservation'].includes(model)) {
-              Object.assign(scope, { warehouse: { branchId: { in: ctx.branchIds } } });
-            }
+            const branchScope = branchScopeFor(model, ctx.branchIds);
+            if (branchScope) Object.assign(scope, branchScope);
           }
           // Widen for forward-compatible matching: this Prisma version's
           // extension operation union lags bulk-returning operations, but the
@@ -131,6 +129,29 @@ export function applyTenantIsolation(prisma: PrismaClient) {
               const branchId = typeof data.branchId === 'string' ? data.branchId : data.branchId.set;
               if (typeof branchId === 'string') assertBranchAccess(branchId, ctx);
             }
+            if (data && !ctx.allBranches) {
+              const client = ctx.transactionClient ?? prisma;
+              for (const relation of modelByName.get(model)?.fields ?? []) {
+                if (relation.kind !== 'object' || !branchScopeFor(relation.type, ctx.branchIds)) continue;
+                const nested = data[relation.name];
+                if (nested && Object.keys(nested).some(key => key !== 'connect')) {
+                  throw new DomainError('FORBIDDEN_SCOPE', 'Nested branch-owned writes require explicit scoped commands', {}, 403);
+                }
+                const scalar = relation.relationFromFields?.length === 1 ? data[relation.relationFromFields[0]] : undefined;
+                const scalarId = typeof scalar === 'string' ? scalar : scalar?.set;
+                const connects = nested?.connect == null ? [] : Array.isArray(nested.connect) ? nested.connect : [nested.connect];
+                const ids = [...(scalarId ? [scalarId] : []), ...connects.map((value: { id?: string }) => value.id)];
+                for (const id of new Set(ids)) {
+                  if (typeof id !== 'string') throw new DomainError('FORBIDDEN_SCOPE', 'Explicit parent ID required', {}, 403);
+                  const delegate = relation.type[0].toLowerCase() + relation.type.slice(1);
+                  const parent = await (client as any)[delegate].findFirst({
+                    where: { id, AND: [scopeFor(relation.type, ctx.companyId), branchScopeFor(relation.type, ctx.branchIds)] },
+                    select: { id: true },
+                  });
+                  if (!parent) throw new DomainError('FORBIDDEN_SCOPE', 'Parent is outside authorized tenant/branch scope', {}, 403);
+                }
+              }
+            }
           }
 
           if (FILTERED_OPERATIONS.has(op)) addScope(mutableArgs, scope);
@@ -138,7 +159,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
           if (operation === 'create') {
             if (model === 'Company') throw new Error('SYSTEM_DB_REQUIRED:Company.create');
             if (DIRECT_TENANT_MODELS.has(model)) enforceCompanyId(mutableArgs.data, ctx.companyId);
-            else await validateIndirectCreate(prisma, model, mutableArgs.data, ctx.companyId);
+            else await validateIndirectCreate(ctx.transactionClient ?? prisma, model, mutableArgs.data, ctx.companyId);
           }
 
           if (op === 'createMany' || op === 'createManyAndReturn') {
@@ -146,7 +167,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
             const rows = Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
             for (const row of rows) {
               if (DIRECT_TENANT_MODELS.has(model)) enforceCompanyId(row, ctx.companyId);
-              else await validateIndirectCreate(prisma, model, row, ctx.companyId);
+              else await validateIndirectCreate(ctx.transactionClient ?? prisma, model, row, ctx.companyId);
             }
           }
 
@@ -157,7 +178,7 @@ export function applyTenantIsolation(prisma: PrismaClient) {
               enforceCompanyId(mutableArgs.create, ctx.companyId);
               if (mutableArgs.update?.companyId && mutableArgs.update.companyId !== ctx.companyId) throw new Error('TENANT_VIOLATION');
             } else {
-              await validateIndirectCreate(prisma, model, mutableArgs.create, ctx.companyId);
+              await validateIndirectCreate(ctx.transactionClient ?? prisma, model, mutableArgs.create, ctx.companyId);
             }
           }
 

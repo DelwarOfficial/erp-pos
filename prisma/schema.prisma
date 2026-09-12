@@ -614,6 +614,8 @@ model RefreshToken {
   userId        String   @map("user_id")
   tokenHash     String   @unique @map("token_hash")
   familyId      String   @map("family_id")
+  sessionId     String?  @map("session_id")
+  mfaVerified   Boolean  @default(false) @map("mfa_verified")
   deviceId      String?  @map("device_id")
   expiresAt     DateTime @map("expires_at")
   rotatedFromId String?  @map("rotated_from_id")

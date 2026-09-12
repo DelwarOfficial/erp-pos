@@ -31,8 +31,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale_return.post');
-    await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, "sale.read");
     const returns = await runInTenantContext(auth.ctx, async () => {
       return db.saleReturn.findMany({
         where: { companyId: auth.companyId },
@@ -59,6 +58,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "sale_return.post");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostSaleReturnSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/sale-returns', body });

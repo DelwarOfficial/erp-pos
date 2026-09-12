@@ -28,8 +28,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'stock_adjustment.post');
-    await requirePermission(auth, 'inventory.read');
+    await requirePermission(auth, "inventory.read");
     const adjustments = await runInTenantContext(auth.ctx, async () => {
       return db.stockAdjustment.findMany({
         where: { companyId: auth.companyId },
@@ -56,6 +55,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "stock_adjustment.post");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = AdjustmentSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/stock-adjustments', body });

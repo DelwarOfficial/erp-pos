@@ -14,21 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTitle, SheetHeader } from '@/components/ui/sheet';
-
-interface MeUser {
-  id: string;
-  name: string;
-  email: string;
-  company_code: string;
-  company_name: string;
-  access_scope: string;
-  is_global: boolean;
-  mfa_enabled: boolean;
-  mfa_verified: boolean;
-  branch_ids: string[];
-  roles: { id: string; name: string; is_system: boolean }[];
-  permissions: string[];
-}
+import { DashboardSession, type DashboardUser } from '@/components/dashboard/session';
 
 const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: string }>; label: string; requiresPermission?: string }> = [
   { href: '/dashboard', icon: Activity, label: 'Overview' },
@@ -56,7 +42,7 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/risk-tuning', icon: ShieldAlert, label: 'Risk Tuning' },
   { href: '/dashboard/audit', icon: BookOpen, label: 'Audit Log' },
   { href: '/dashboard/onboarding', icon: Building2, label: 'Onboard Tenant', requiresPermission: 'platform.onboarding.execute' },
-  { href: '/dashboard/system', icon: Server, label: 'System Health' },
+  { href: '/dashboard/system', icon: Server, label: 'System Health', requiresPermission: 'system.config.view' },
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
   { href: '/dashboard/expenses', icon: Wallet, label: 'Expenses' },
   { href: '/dashboard/communications', icon: MessageSquare, label: 'Communications' },
@@ -67,7 +53,7 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<MeUser | null>(null);
+  const [user, setUser] = useState<DashboardUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -145,7 +131,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const SidebarContent = (
     <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary">
       {NAV_ITEMS.map(item => {
-        if (item.requiresPermission && !user.permissions.includes(item.requiresPermission)) return null;
+        if (item.requiresPermission && !user.is_global && !user.permissions.includes(item.requiresPermission)) return null;
         const active = pathname === item.href || pathname.startsWith(item.href + '/');
         const Icon = item.icon;
         return (
@@ -229,7 +215,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </Sheet>
 
         <main className="flex-1 p-4 md:p-6 overflow-auto min-w-0">
-          {children}
+          <DashboardSession.Provider value={user}>{children}</DashboardSession.Provider>
         </main>
       </div>
     </div>

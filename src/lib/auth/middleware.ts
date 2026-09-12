@@ -36,6 +36,13 @@ export async function authenticateRequest(): Promise<AuthResult> {
   }
 
   // Re-validate the user still exists and is active
+  const activeFamily = claims.family_id ? await systemDb.refreshToken.findFirst({
+    where: { familyId: claims.family_id, userId: claims.sub, companyId: claims.company_id,
+      revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true },
+  }) : null;
+  if (!activeFamily) throw new DomainError('UNAUTHORIZED', 'Session expired or revoked', {}, 401);
+
   const user = await systemDb.user.findFirst({
     where: { id: claims.sub, companyId: claims.company_id, isActive: true, deletedAt: null },
     include: {

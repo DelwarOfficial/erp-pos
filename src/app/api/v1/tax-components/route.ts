@@ -25,8 +25,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'tax.manage');
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, "product.read");
     const components = await runInTenantContext(auth.ctx, async () => {
       return db.taxComponent.findMany({
         where: { companyId: auth.companyId },
@@ -55,6 +54,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    await requirePermission(auth, "tax.manage");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = TaxComponentCreateSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/tax-components', body });

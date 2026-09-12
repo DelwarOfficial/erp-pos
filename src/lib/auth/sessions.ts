@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { issueAccessToken, AccessClaims } from './jwt';
 import { issueRefreshToken, IssuedRefreshToken } from './refreshToken';
+import { issueMfaChallenge, readMfaChallenge, type MfaLoginChallenge } from './mfaChallenge';
 
 const ACCESS_COOKIE = 'erp_access';
 const REFRESH_COOKIE = 'erp_refresh';
@@ -48,7 +49,14 @@ export async function setAuthCookies(params: {
   deviceId?: string;
   sessionId: string;
   mfaVerified: boolean;
+  /** Token already issued atomically by refresh rotation; do not issue a sibling. */
+  rotatedRefreshToken?: IssuedRefreshToken;
 }): Promise<CookieAuthResult> {
+  const refreshToken = params.rotatedRefreshToken ?? await issueRefreshToken({
+    companyId: params.companyId, userId: params.userId,
+    deviceId: params.deviceId, familyId: params.familyId,
+    sessionId: params.sessionId, mfaVerified: params.mfaVerified,
+  });
   const accessClaims: AccessClaims = {
     sub: params.userId,
     company_id: params.companyId,
@@ -56,16 +64,10 @@ export async function setAuthCookies(params: {
     is_global: params.isGlobal,
     branch_ids: params.branchIds,
     session_id: params.sessionId,
-    family_id: params.familyId ?? '',
+    family_id: refreshToken.familyId,
     mfa_verified: params.mfaVerified,
   };
   const accessToken = await issueAccessToken(accessClaims);
-  const refreshToken = await issueRefreshToken({
-    companyId: params.companyId,
-    userId: params.userId,
-    deviceId: params.deviceId,
-    familyId: params.familyId,
-  });
 
   const cookieDefs = [
     {
@@ -117,9 +119,13 @@ export function applyCookiesToResponse(
 
 export async function clearAuthCookies(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(ACCESS_COOKIE);
-  cookieStore.delete(REFRESH_COOKIE);
-  cookieStore.delete(MFA_PENDING_COOKIE);
+  for (const [name, path] of [
+    [ACCESS_COOKIE, '/'], [REFRESH_COOKIE, '/api/v1/auth/refresh'],
+    [MFA_PENDING_COOKIE, '/'], ['erp_mfa_setup', '/api/v1/auth/mfa'],
+  ]) {
+    cookieStore.set(name, '', { path, maxAge: 0, expires: new Date(0),
+      httpOnly: true, secure: isProd(), sameSite: sameSiteMode() });
+  }
 }
 
 export async function setMfaPendingCookie(payload: {
@@ -131,7 +137,8 @@ export async function setMfaPendingCookie(payload: {
   userAgent?: string;
 }): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(MFA_PENDING_COOKIE, JSON.stringify(payload), {
+  const challenge = await issueMfaChallenge({ userId: payload.userId, companyId: payload.companyId, familyId: payload.familyId });
+  cookieStore.set(MFA_PENDING_COOKIE, challenge, {
     httpOnly: true,
     secure: isProd(),
     sameSite: sameSiteMode(),
@@ -140,22 +147,10 @@ export async function setMfaPendingCookie(payload: {
   });
 }
 
-export async function getMfaPendingCookie(): Promise<{
-  userId: string;
-  companyId: string;
-  familyId: string;
-  deviceId?: string;
-  ip?: string;
-  userAgent?: string;
-} | null> {
+export async function getMfaPendingCookie(): Promise<MfaLoginChallenge | null> {
   const cookieStore = await cookies();
   const raw = cookieStore.get(MFA_PENDING_COOKIE)?.value;
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return readMfaChallenge(raw);
 }
 
 export async function clearMfaPendingCookie(): Promise<void> {
@@ -196,7 +191,8 @@ export async function getMfaSetupCookie(): Promise<string | null> {
 
 export async function clearMfaSetupCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(MFA_SETUP_COOKIE);
+  cookieStore.set(MFA_SETUP_COOKIE, '', { path: '/api/v1/auth/mfa', maxAge: 0,
+    expires: new Date(0), httpOnly: true, secure: isProd(), sameSite: sameSiteMode() });
 }
 
 export function getMfaSetupCookieName() { return MFA_SETUP_COOKIE; }

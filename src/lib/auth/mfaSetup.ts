@@ -90,7 +90,7 @@ export function signSetupPayload(payload: MfaSetupPayload): string {
 
 /** Verify signature, shape, discriminator, and expiry. Returns null if invalid. */
 export function verifySetupCookieValue(value: string | null | undefined): MfaSetupPayload | null {
-  if (!value || typeof value !== 'string') return null;
+  if (!value || typeof value !== 'string' || value.length > 8192) return null;
   const dot = value.lastIndexOf('.');
   if (dot <= 0) return null;
   const body = value.slice(0, dot);
@@ -117,7 +117,8 @@ export function verifySetupCookieValue(value: string | null | undefined): MfaSet
   ) {
     return null;
   }
-  if (Date.now() > p.exp) return null;
+  if (typeof p.iat !== 'number' || !Number.isSafeInteger(p.iat) || !Number.isSafeInteger(p.exp)
+    || p.iat > Date.now() || Date.now() >= p.exp || p.exp - p.iat !== MFA_SETUP_TTL_MS) return null;
   if (p.enc !== undefined && typeof p.enc !== 'string') return null;
   return {
     kind: 'mfa_setup',

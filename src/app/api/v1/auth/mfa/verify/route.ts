@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { systemDb as db } from '@/lib/db';
 import { verifyMfaCode } from '@/lib/auth/mfa';
+import { consumeMfaChallenge } from '@/lib/auth/mfaChallenge';
 import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       where: { id: pending.userId, companyId: pending.companyId, deletedAt: null },
       include: { company: true, branchAccess: true },
     });
-    if (!user || !user.mfaEnabled || !user.mfaSecretCiphertext) {
+    if (!user || !user.isActive || user.company.status !== 'active' || !user.mfaEnabled || !user.mfaSecretCiphertext) {
       throw new DomainError('INVALID_MFA', 'MFA not enabled for this user', {}, 400);
     }
 
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Success — reset the rate limiter for this user
+    await consumeMfaChallenge(pending);
     resetRateLimit(rlKey);
 
     const branchIds = user.branchAccess.map(b => b.branchId);

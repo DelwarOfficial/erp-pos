@@ -22,8 +22,9 @@ export interface JournalLineInput {
   customerId?: string;
   supplierId?: string;
   productId?: string;
-  debit: number;
-  credit: number;
+  /** Base-currency amount. Callers must convert transaction currency exactly once. */
+  debit: number | string | Prisma.Decimal;
+  credit: number | string | Prisma.Decimal;
   memo?: string;
 }
 
@@ -61,25 +62,33 @@ export async function postJournalEntry(
   }
 
   // 1. Validate each line: exactly one of debit > 0 or credit > 0
-  let totalDebit = 0;
-  let totalCredit = 0;
+  if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0 || !Number.isFinite(input.entryDate.getTime())) {
+    throw new DomainError('VALIDATION_FAILED', 'Valid entry date and positive exchange rate required', {}, 400);
+  }
+  let totalDebit = new Prisma.Decimal(0);
+  let totalCredit = new Prisma.Decimal(0);
   for (let i = 0; i < input.lines.length; i++) {
     const line = input.lines[i];
-    if (line.debit > 0 && line.credit > 0) {
+    const debit = new Prisma.Decimal(line.debit);
+    const credit = new Prisma.Decimal(line.credit);
+    if (!debit.isFinite() || !credit.isFinite()) {
+      throw new DomainError('VALIDATION_FAILED', `Line ${i + 1}: finite amounts required`, {}, 400);
+    }
+    if (debit.gt(0) && credit.gt(0)) {
       throw new DomainError('VALIDATION_FAILED', `Line ${i + 1}: cannot have both debit and credit > 0`, {}, 400);
     }
-    if (line.debit === 0 && line.credit === 0) {
+    if (debit.isZero() && credit.isZero()) {
       throw new DomainError('VALIDATION_FAILED', `Line ${i + 1}: must have either debit or credit > 0`, {}, 400);
     }
-    if (line.debit < 0 || line.credit < 0) {
+    if (debit.lt(0) || credit.lt(0)) {
       throw new DomainError('VALIDATION_FAILED', `Line ${i + 1}: debit/credit must be >= 0`, {}, 400);
     }
-    totalDebit += line.debit;
-    totalCredit += line.credit;
+    totalDebit = totalDebit.plus(debit);
+    totalCredit = totalCredit.plus(credit);
   }
 
   // 2. Validate balanced (total debit == total credit)
-  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+  if (!totalDebit.eq(totalCredit)) {
     throw new DomainError(
       'VALIDATION_FAILED',
       `Unbalanced journal entry: total debit ${totalDebit.toFixed(2)} ≠ total credit ${totalCredit.toFixed(2)}`,
@@ -87,13 +96,13 @@ export async function postJournalEntry(
       400,
     );
   }
-  if (totalDebit === 0) {
+  if (totalDebit.isZero()) {
     throw new DomainError('VALIDATION_FAILED', 'Empty journal entry (zero debit/credit)', {}, 400);
   }
 
   // 3. Validate fiscal period is open
   const entryDateOnly = new Date(input.entryDate);
-  entryDateOnly.setHours(0, 0, 0, 0);
+  entryDateOnly.setUTCHours(0, 0, 0, 0);
   const period = await tx.fiscalPeriod.findFirst({
     where: {
       companyId: input.companyId,
@@ -101,25 +110,9 @@ export async function postJournalEntry(
       periodEnd: { gte: entryDateOnly },
     },
   });
-  if (period) {
-    if (period.status === 'locked') {
-      throw new DomainError(
-        'FISCAL_PERIOD_LOCKED',
-        `Fiscal period "${period.periodName}" is locked — cannot post journal entries`,
-        { period_name: period.periodName, status: period.status },
-        409,
-      );
-    }
-    if (period.status === 'soft_locked') {
-      throw new DomainError(
-        'FISCAL_PERIOD_LOCKED',
-        `Fiscal period "${period.periodName}" is soft-locked — requires approval to post`,
-        { period_name: period.periodName, status: period.status },
-        409,
-      );
-    }
+  if (!period || period.status !== 'open') {
+    throw new DomainError('FISCAL_PERIOD_LOCKED', 'An open fiscal period is required for posting', {}, 409);
   }
-  // If no period found, we allow posting (sandbox — in production this would be an error)
 
   // 4. Validate tenant consistency — all chart_of_account_ids belong to this company
   const accountIds = [...new Set(input.lines.map(line => line.chartOfAccountId))];
@@ -280,8 +273,8 @@ export async function reverseJournalEntry(
     customerId: l.customerId ?? undefined,
     supplierId: l.supplierId ?? undefined,
     productId: l.productId ?? undefined,
-    debit: parseFloat(l.creditBase.toString()),  // swap
-    credit: parseFloat(l.debitBase.toString()),  // swap
+    debit: l.creditBase,  // swap without losing Decimal precision
+    credit: l.debitBase,
     memo: `Reversal: ${l.memo ?? ''}`,
   }));
 
