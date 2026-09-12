@@ -11,7 +11,9 @@ const globalForPrisma = globalThis as unknown as {
 export const systemDb =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+    // Prisma exception logging may embed identity/password-hash query arguments.
+    // Domain errors and append-only audit/security events remain explicit.
+    log: [],
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = systemDb;

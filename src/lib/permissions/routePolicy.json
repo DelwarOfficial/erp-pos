@@ -1551,4 +1551,18 @@
     ],
     "exception": null
   }
+  ,{"file":"v1/admin/users/route.ts","method":"GET","permissions":["user.read"],"exception":null}
+  ,{"file":"v1/admin/users/route.ts","method":"POST","permissions":["user.create","role.assign","user.deactivate"],"exception":null}
+  ,{"file":"v1/admin/users/[id]/route.ts","method":"GET","permissions":["user.read"],"exception":null}
+  ,{"file":"v1/admin/users/[id]/route.ts","method":"PATCH","permissions":["user.update","role.assign","user.deactivate"],"exception":null}
+  ,{"file":"v1/admin/users/[id]/password-reset/route.ts","method":"POST","permissions":["user.reset_password"],"exception":null}
+  ,{"file":"v1/admin/roles/route.ts","method":"GET","permissions":["role.read"],"exception":null}
+  ,{"file":"v1/admin/roles/route.ts","method":"POST","permissions":["role.create"],"exception":null}
+  ,{"file":"v1/admin/roles/[id]/route.ts","method":"GET","permissions":["role.read"],"exception":null}
+  ,{"file":"v1/admin/roles/[id]/route.ts","method":"PATCH","permissions":["role.update"],"exception":null}
+  ,{"file":"v1/admin/roles/[id]/route.ts","method":"DELETE","permissions":["role.update"],"exception":null}
+  ,{"file":"v1/admin/permissions/route.ts","method":"GET","permissions":["role.read"],"exception":null}
+  ,{"file":"v1/admin/companies/route.ts","method":"GET","permissions":["company.read"],"exception":null}
+  ,{"file":"v1/admin/branches/route.ts","method":"GET","permissions":["branch.read"],"exception":null}
+  ,{"file":"v1/auth/password-reset/route.ts","method":"POST","permissions":[],"exception":"Single-use signed reset capability; scoped tenant transaction and token hash validation, no session issued."}
 ]

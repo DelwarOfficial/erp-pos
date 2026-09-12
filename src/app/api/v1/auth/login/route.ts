@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
       : users[0];
     if (!user) throw new DomainError('UNAUTHORIZED', 'Invalid credentials', {}, 401);
 
+    if (!user.isActive) throw new DomainError('UNAUTHORIZED', 'Invalid credentials', {}, 401);
+
     if (user.company.status !== 'active') {
       throw new DomainError('COMPANY_SUSPENDED', 'Company is not active', {}, 403);
     }
@@ -119,12 +121,14 @@ export async function POST(req: NextRequest) {
     const isGlobalAccess = user.accessScope === 'global';
     const userRoles = await db.userRole.findMany({
       where: { userId: user.id },
-      include: { role: true },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
     });
     const hasPrivilegedRole = isPlatformUser || isGlobalAccess ||
       userRoles.some(ur => {
         const name = ur.role.name.toLowerCase();
-        return name.includes('owner') || name.includes('admin') || name.includes('super');
+        return name.includes('owner') || name.includes('admin') || name.includes('super')
+          || ur.role.permissions.some(item => ['user.create', 'user.update', 'user.deactivate', 'user.reset_password',
+            'role.create', 'role.update', 'role.assign'].includes(item.permission.code));
       });
 
     // Sandbox bypass: in development mode or when E2E_TESTING is set, allow

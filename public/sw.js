@@ -18,7 +18,7 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(APP_SHELL).catch(() => {/* skip failed */})))
+      .then((cache) => cache.addAll(APP_SHELL).catch(() => {/* skip failed */}))
       .then(() => self.skipWaiting())
   );
 });
@@ -43,6 +43,14 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Credential and access-control operations must never be stored/replayed by
+  // the offline outbox, which would retain passwords or replay stale grants.
+  if (url.origin === self.location.origin &&
+      (url.pathname.startsWith('/api/v1/auth/') || url.pathname.startsWith('/api/v1/admin/'))) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // Non-GET, same-origin: queue when offline (Background Sync API)
   if (request.method !== 'GET' && url.origin === self.location.origin) {

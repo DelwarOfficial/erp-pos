@@ -9,6 +9,8 @@ import { spawn } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const state = join(root, '.local', 'ui-health-snapshot.json');
 const mode = process.argv[2];
+const suite = process.argv[3] ?? 'health';
+if (!['health', 'access'].includes(suite)) throw new Error('Unknown local verification suite');
 if (!['build', 'e2e'].includes(mode)) throw new Error('Expected build or e2e');
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|LOCALAPPDATA|APPDATA|PROGRAMDATA|PROGRAMFILES|PROGRAMFILES\(X86\))$/i.test(key)));
@@ -67,6 +69,7 @@ if (mode === 'build') {
       await new Promise(resolveWait => setTimeout(resolveWait, 500));
     }
     if (!ready) throw new Error('Local verification server readiness timeout');
-    process.exitCode = await execute([join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.ui-health.config.ts'], root);
+    process.exitCode = await execute([join(root, 'node_modules/@playwright/test/cli.js'), 'test',
+      `--config=${suite === 'access' ? 'playwright.access.config.ts' : 'playwright.ui-health.config.ts'}`], root);
   } finally { server.kill(); }
 }

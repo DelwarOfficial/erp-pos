@@ -40,7 +40,8 @@ async function loadEnrollableUser(payload: MfaSetupPayload) {
     include: { company: true, branchAccess: true },
   });
   // Re-check at USE time: already-enrolled users can never (re-)enroll here.
-  if (!user || !user.isActive || user.company.status !== 'active' || user.mfaEnabled || user.mfaSecretCiphertext) {
+  if (!user || !user.isActive || user.company.status !== 'active' || user.mfaEnabled || user.mfaSecretCiphertext
+    || user.passwordChangedAt.getTime() > payload.iat) {
     return null;
   }
   return user;
@@ -181,7 +182,7 @@ export async function activateEnrollment(
   // (a replayed request finds mfaEnabled=true and is rejected before writing).
   const activation = await db.user.updateMany({
     where: { id: user.id, companyId: user.companyId, isActive: true, deletedAt: null,
-      mfaEnabled: false, mfaSecretCiphertext: null },
+      mfaEnabled: false, mfaSecretCiphertext: null, passwordChangedAt: { lte: new Date(payload.iat) } },
     data: {
       mfaSecretCiphertext: Buffer.from(payload.enc, 'hex'),
       mfaEnabled: true,

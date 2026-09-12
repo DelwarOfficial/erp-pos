@@ -121,7 +121,7 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign In'}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              <Link href="#" className="hover:underline">Forgot password?</Link>
+              <Link href="/reset-password" className="hover:underline">Forgot password?</Link>
             </p>
           </CardFooter>
         </form>

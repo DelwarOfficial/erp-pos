@@ -18,6 +18,9 @@ import { DashboardSession, type DashboardUser } from '@/components/dashboard/ses
 
 const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: string }>; label: string; requiresPermission?: string }> = [
   { href: '/dashboard', icon: Activity, label: 'Overview' },
+  { href: '/dashboard/access/users', icon: Users, label: 'Access Control — Users', requiresPermission: 'user.read' },
+  { href: '/dashboard/access/roles', icon: ShieldCheck, label: 'Access Control — Roles', requiresPermission: 'role.read' },
+  { href: '/dashboard/access/permissions', icon: ShieldCheck, label: 'Access Control — Permissions', requiresPermission: 'role.read' },
   { href: '/dashboard/pos', icon: CreditCard, label: 'POS — New Sale' },
   { href: '/dashboard/sales', icon: Receipt, label: 'Sales' },
   { href: '/dashboard/cashier', icon: Clock, label: 'Cashier Shifts' },
@@ -49,6 +52,20 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/reports', icon: FileBarChart, label: 'Reports' },
   { href: '/dashboard/support', icon: LifeBuoy, label: 'Support' },
 ];
+
+const NAV_PERMISSIONS: Record<string, string> = {
+  '/dashboard/pos': 'sale.post', '/dashboard/sales': 'sale.read', '/dashboard/cashier': 'shift.read',
+  '/dashboard/payments': 'payment.read', '/dashboard/products': 'product.read', '/dashboard/catalogue': 'product.read',
+  '/dashboard/inventory': 'inventory.read', '/dashboard/purchases': 'purchase.read', '/dashboard/parties': 'customer.read',
+  '/dashboard/accounting': 'journal.read', '/dashboard/assets': 'asset.view.branch',
+  '/dashboard/bank-reconciliation': 'bank.reconciliation.view.company', '/dashboard/deliveries': 'delivery.read',
+  '/dashboard/service': 'service.read', '/dashboard/crm': 'crm.lead.read', '/dashboard/hr': 'employee.read',
+  '/dashboard/gift-cards': 'gift_card.read', '/dashboard/integrations': 'company.read',
+  '/dashboard/imports': 'import.execute.company', '/dashboard/feature-flags': 'system.config.view',
+  '/dashboard/security': 'audit.view', '/dashboard/risk-tuning': 'audit.view', '/dashboard/audit': 'audit.view',
+  '/dashboard/expenses': 'expense.read', '/dashboard/communications': 'communication.campaign.manage.company',
+  '/dashboard/reports': 'report.execute',
+};
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -131,7 +148,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const SidebarContent = (
     <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary">
       {NAV_ITEMS.map(item => {
-        if (item.requiresPermission && !user.is_global && !user.permissions.includes(item.requiresPermission)) return null;
+        const permission = item.requiresPermission ?? NAV_PERMISSIONS[item.href];
+        if (permission && !user.is_global && !user.permissions.includes(permission)) return null;
         const active = pathname === item.href || pathname.startsWith(item.href + '/');
         const Icon = item.icon;
         return (
