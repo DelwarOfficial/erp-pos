@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'user.create');
-  await requirePermission(auth, 'product.read');
+    await requirePermission(auth, 'customer.create');
+    await requirePermission(auth, 'customer.read');
     const search = req.nextUrl.searchParams.get('search') ?? undefined;
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') ?? '100', 10), 500);
 

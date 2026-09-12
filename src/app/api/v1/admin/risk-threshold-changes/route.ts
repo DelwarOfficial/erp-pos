@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   
 
   try {
-    await requirePermission(auth, 'audit_logs:read');
+    await requirePermission(auth, 'audit.view');
   } catch (e) {
     if (e instanceof DomainError) {
       if (!auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   
 
   try {
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'audit.manage');
   } catch (e) {
     if (e instanceof DomainError) {
       if (!auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });

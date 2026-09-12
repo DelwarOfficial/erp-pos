@@ -11,6 +11,27 @@ export interface PermissionSpec {
 }
 
 export const PERMISSIONS: PermissionSpec[] = [
+  // Read and administration grants are distinct from posting permissions.
+  { code: 'purchase.read', module: 'purchase', description: 'View purchase documents' },
+  { code: 'payment.read', module: 'payment', description: 'View payments and accounts' },
+  { code: 'shift.read', module: 'shift', description: 'View cashier shifts' },
+  { code: 'expense.read', module: 'expense', description: 'View expenses' },
+  { code: 'customer.read', module: 'customer', description: 'View customers' },
+  { code: 'customer.create', module: 'customer', description: 'Create customers' },
+  { code: 'customer.update', module: 'customer', description: 'Update or archive customers' },
+  { code: 'supplier.read', module: 'supplier', description: 'View suppliers' },
+  { code: 'supplier.create', module: 'supplier', description: 'Create suppliers' },
+  { code: 'employee.read', module: 'employee', description: 'View employees' },
+  { code: 'payroll.read', module: 'payroll', description: 'View payroll runs' },
+  { code: 'delivery.read', module: 'delivery', description: 'View deliveries and settlements' },
+  { code: 'service.read', module: 'service', description: 'View service requests' },
+  { code: 'gift_card.read', module: 'gift_card', description: 'View gift cards' },
+  { code: 'crm.lead.read', module: 'crm', description: 'View leads' },
+  { code: 'crm.lead.create', module: 'crm', description: 'Create leads' },
+  { code: 'audit.view', module: 'audit', description: 'View audit and security records' },
+  { code: 'audit.manage', module: 'audit', description: 'Manage risk review outcomes and thresholds' },
+  { code: 'approval.read', module: 'approval', description: 'View approval requests' },
+  { code: 'approval.request', module: 'approval', description: 'Request approval for a business operation' },
   // Platform / global
   { code: 'platform.onboarding.execute', module: 'platform', description: 'Onboard a new company tenant' },
   { code: 'platform.tenants.read', module: 'platform', description: 'List/view all tenants' },

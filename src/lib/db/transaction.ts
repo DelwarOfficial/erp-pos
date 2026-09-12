@@ -101,6 +101,7 @@ export function buildTenantContext(params: {
   userId?: string;
   deviceId?: string;
   branchIds: string[];
+  allBranches?: boolean;
   isGlobal?: boolean;
   ip?: string;
   userAgent?: string;
@@ -111,6 +112,7 @@ export function buildTenantContext(params: {
     userId: params.userId,
     deviceId: params.deviceId,
     branchIds: params.branchIds,
+    allBranches: params.allBranches ?? false,
     isGlobal: params.isGlobal ?? false,
     correlationId: params.correlationId ?? randomUUID(),
     requestId: randomUUID(),

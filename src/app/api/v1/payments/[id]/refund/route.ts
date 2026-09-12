@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'payment.allocate');
+    await requirePermission(auth, 'payment.refund.branch');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = RefundSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/payments/${id}/refund`, body });

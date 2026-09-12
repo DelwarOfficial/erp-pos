@@ -35,8 +35,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'product.create');
-  await requirePermission(auth, 'product.read');
+    await requirePermission(auth, 'product.create');
+    await requirePermission(auth, 'product.read');
     const url = req.nextUrl;
     const search = url.searchParams.get('search') ?? undefined;
     const productType = url.searchParams.get('product_type') ?? undefined;

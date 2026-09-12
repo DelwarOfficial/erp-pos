@@ -31,8 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'purchase.receive');
-  await requirePermission(auth, 'inventory.read');
+    await requirePermission(auth, 'purchase.receive');
+    await requirePermission(auth, 'purchase.read');
     const { id } = await params;
     const receivings = await runInTenantContext(auth.ctx, async () => {
       return db.purchaseReceiving.findMany({

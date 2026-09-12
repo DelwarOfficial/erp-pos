@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    try { await requirePermission(auth, 'audit_logs:read'); } catch (e) { if (e instanceof DomainError && !auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus }); }
-    await requirePermission(auth, 'audit_logs:read');
+    try { await requirePermission(auth, 'approval.read'); } catch (e) { if (e instanceof DomainError && !auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus }); }
+    await requirePermission(auth, 'approval.read');
 
     const url = new URL(req.url);
     const status = url.searchParams.get('status') ?? 'pending';
@@ -51,8 +51,8 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    try { await requirePermission(auth, 'audit_logs:read'); } catch (e) { if (e instanceof DomainError && !auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus }); }
-    await requirePermission(auth, 'audit_logs:write');
+    try { await requirePermission(auth, 'approval.read'); } catch (e) { if (e instanceof DomainError && !auth.isGlobal) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus }); }
+    await requirePermission(auth, 'approval.request');
 
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreateSchema.parse(await req.json());

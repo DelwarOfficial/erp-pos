@@ -2,6 +2,7 @@
 
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getTenantContext } from './transactionContext';
+import { assertBranchAccess } from './branchScope';
 
 const GLOBAL_MODELS = new Set([
   'Currency',
@@ -66,7 +67,8 @@ function scopeFor(model: string, companyId: string): Record<string, unknown> {
 
 function addScope(args: Record<string, any>, scope: Record<string, unknown>) {
   const where = args.where ?? {};
-  args.where = { ...where, AND: [scope] };
+  const previous = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+  args.where = { ...where, AND: [...previous, scope] };
 }
 
 function enforceCompanyId(data: Record<string, any>, companyId: string) {
@@ -105,10 +107,31 @@ export function applyTenantIsolation(prisma: PrismaClient) {
 
           const mutableArgs = args as Record<string, any>;
           const scope = scopeFor(model, ctx.companyId);
+          const branchField = Prisma.dmmf.datamodel.models.find(m => m.name === model)
+            ?.fields.find(f => f.name === 'branchId');
+          if (!ctx.allBranches) {
+            if (model === 'Branch') Object.assign(scope, { id: { in: ctx.branchIds } });
+            else if (branchField) Object.assign(scope, branchField.isRequired
+              ? { branchId: { in: ctx.branchIds } }
+              : { OR: [{ branchId: null }, { branchId: { in: ctx.branchIds } }] });
+            else if (['WarehouseStock', 'StockMovement', 'StockBatch', 'StockReservation'].includes(model)) {
+              Object.assign(scope, { warehouse: { branchId: { in: ctx.branchIds } } });
+            }
+          }
           // Widen for forward-compatible matching: this Prisma version's
           // extension operation union lags bulk-returning operations, but the
           // runtime still emits them and they MUST be tenant-scoped.
           const op = operation as string;
+
+          // Direct branch assignments cannot move a row to an inaccessible branch.
+          const writes = op === 'upsert' ? [mutableArgs.create, mutableArgs.update]
+            : Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
+          for (const data of writes) {
+            if (branchField && data?.branchId != null) {
+              const branchId = typeof data.branchId === 'string' ? data.branchId : data.branchId.set;
+              if (typeof branchId === 'string') assertBranchAccess(branchId, ctx);
+            }
+          }
 
           if (FILTERED_OPERATIONS.has(op)) addScope(mutableArgs, scope);
 

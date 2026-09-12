@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'user.create');
-  await requirePermission(auth, 'user.read');
+    await requirePermission(auth, 'employee.manage.branch');
+    await requirePermission(auth, 'employee.read');
     const employees = await runInTenantContext(auth.ctx, async () => {
       return db.employee.findMany({
         where: { companyId: auth.companyId },

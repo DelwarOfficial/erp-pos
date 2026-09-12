@@ -29,7 +29,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'product.read');
+    await requirePermission(auth, 'crm.lead.create');
+    await requirePermission(auth, 'crm.lead.read');
     const url = req.nextUrl;
     const today = url.searchParams.get('today') === 'true';
     const statusId = url.searchParams.get('status_id') ?? undefined;

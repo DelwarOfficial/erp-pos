@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'journal.post');
-  await requirePermission(auth, 'journal.read');
+    await requirePermission(auth, 'journal.post');
+    await requirePermission(auth, 'payment.read');
     const accounts = await runInTenantContext(auth.ctx, async () => {
       return db.financialAccount.findMany({
         where: { companyId: auth.companyId },

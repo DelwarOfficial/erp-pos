@@ -40,17 +40,17 @@ export async function requireMfaForAction(
 ): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get('erp_access')?.value;
-  if (!token) return; // No token — auth middleware will handle
+  if (!token) throw new DomainError('UNAUTHORIZED', 'Authentication required', {}, 401);
 
   let claims;
   try {
     claims = await verifyAccessToken(token);
   } catch {
-    return; // Invalid token — auth middleware will handle
+    throw new DomainError('UNAUTHORIZED', 'Invalid or expired token', {}, 401);
   }
 
   // If user has MFA enabled but hasn't verified MFA in this session
-  if (claims.mfa_enabled && !claims.mfa_verified) {
+  if (claims.mfa_verified !== true) {
     throw new DomainError(
       'INVALID_MFA',
       `MFA re-verification required for action: ${action}. Please complete MFA verification before proceeding.`,

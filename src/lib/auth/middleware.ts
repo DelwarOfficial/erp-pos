@@ -55,8 +55,9 @@ export async function authenticateRequest(): Promise<AuthResult> {
   const ctx = buildTenantContext({
     companyId: user.companyId,
     userId: user.id,
-    branchIds: claims.branch_ids,
-    isGlobal: claims.is_global,
+    branchIds: user.branchAccess.map(access => access.branchId),
+    allBranches: user.accessScope === 'global',
+    isGlobal: user.accessScope === 'global' && company.code === 'PLATFORM',
   });
 
   // NOTE: the tenant context is returned, NOT installed globally.
@@ -70,9 +71,9 @@ export async function authenticateRequest(): Promise<AuthResult> {
     ctx,
     userId: user.id,
     companyId: user.companyId,
-    accessScope: claims.scope,
-    isGlobal: claims.is_global,
-    branchIds: claims.branch_ids,
+    accessScope: user.accessScope,
+    isGlobal: ctx.isGlobal,
+    branchIds: ctx.branchIds,
     sessionId: claims.session_id,
     familyId: claims.family_id,
     mfaVerified: claims.mfa_verified,

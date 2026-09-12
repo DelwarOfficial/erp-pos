@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   // Require global admin permission (system:config:view or platform_admin role)
   try {
-    await requirePermission(auth, 'system:config:view');
+    await requirePermission(auth, 'system.config.view');
   } catch (e) {
     if (e instanceof DomainError) {
       // Fall back to isGlobal check (platform admin bypasses)

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     
-    await requirePermission(auth, 'audit_logs:read');
+    await requirePermission(auth, 'legal_hold.manage.company');
 
     const url = new URL(req.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);

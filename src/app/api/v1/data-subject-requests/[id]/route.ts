@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const auth = await authenticateRequest();
     const idempotencyKey = requireIdempotencyKey(req);
     
-    await requirePermission(auth, 'audit_logs:read');
+    await requirePermission(auth, 'dsr.manage.company');
 
     const { id } = await params;
     const item = await runInTenantContext(auth.ctx, async () => {
@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const auth = await authenticateRequest();
     const idempotencyKey = requireIdempotencyKey(req);
     
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'dsr.manage.company');
 
     const { id } = await params;
     const body = PatchSchema.parse(await req.json());

@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, 'payment.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const paymentType = url.searchParams.get('payment_type') ?? undefined;
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'payment.allocate');
+    await requirePermission(auth, 'payment.pay.branch');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreatePaymentSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/payments', body });

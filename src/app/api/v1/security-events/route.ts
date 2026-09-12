@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'company.read');
+    await requirePermission(auth, 'audit.view');
     const url = req.nextUrl;
     const severity = url.searchParams.get('severity') ?? undefined;
     const eventType = url.searchParams.get('event_type') ?? undefined;

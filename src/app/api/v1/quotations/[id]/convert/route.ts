@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.post');
+    await requirePermission(auth, 'quotation.convert.branch');
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ConvertSchema.parse(await req.json());

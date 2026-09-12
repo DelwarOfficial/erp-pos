@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'payroll.post');
-  await requirePermission(auth, 'journal.read');
+    await requirePermission(auth, 'payroll.post');
+    await requirePermission(auth, 'payroll.read');
     // requireFeatureFlag reads tenant-scoped flags internally, so it runs
     // inside the same explicit context as the query below.
     const runs = await runInTenantContext(auth.ctx, async () => {

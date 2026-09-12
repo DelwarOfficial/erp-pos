@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'company.update');
-  await requirePermission(auth, 'company.read');
+    await requirePermission(auth, 'company.update');
+    await requirePermission(auth, 'company.read');
     const endpoints = await runInTenantContext(auth.ctx, async () => {
       return db.webhookEndpoint.findMany({
         where: { companyId: auth.companyId },

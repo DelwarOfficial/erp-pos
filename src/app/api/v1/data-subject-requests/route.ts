@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     
-    await requirePermission(auth, 'audit_logs:read');
+    await requirePermission(auth, 'dsr.manage.company');
 
     const url = new URL(req.url);
     const status = url.searchParams.get('status');
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     
-    await requirePermission(auth, 'audit_logs:write');
+    await requirePermission(auth, 'dsr.manage.company');
 
     const idempotencyKey = requireIdempotencyKey(req);
     const body = DSRSchema.parse(await req.json());

@@ -15,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'payment.allocate');
+    await requirePermission(auth, 'payment.reverse.branch');
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ReverseSchema.parse(await req.json());

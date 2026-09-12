@@ -5,6 +5,8 @@ export interface TenantContext {
   userId?: string;
   deviceId?: string;
   branchIds: string[];
+  /** Company-wide branch access, derived from the current database user scope. */
+  allBranches?: boolean;
   isGlobal: boolean;
   correlationId: string;
   requestId: string;

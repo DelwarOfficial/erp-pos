@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'shift.open');
+    await requirePermission(auth, 'shift.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);

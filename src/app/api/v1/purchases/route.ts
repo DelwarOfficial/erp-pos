@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'purchase.create');
-  await requirePermission(auth, 'inventory.read');
+    await requirePermission(auth, 'purchase.create');
+    await requirePermission(auth, 'purchase.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const supplierId = url.searchParams.get('supplier_id') ?? undefined;

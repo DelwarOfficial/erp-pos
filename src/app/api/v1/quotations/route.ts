@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.post');
+    await requirePermission(auth, 'quotation.create.branch');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreateQuotationSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/quotations', body });

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, 'payment.read');
     const { id } = await params;
 
     const p = await runInTenantContext(auth.ctx, async () => {

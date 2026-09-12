@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
-import { authenticateRequest } from '@/lib/auth/middleware';
+import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { buildReceiptBytes, sendToNetworkPrinter } from '@/lib/escpos';
 import { DomainError } from '@/lib/errors/codes';
 
@@ -12,6 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
   let auth;
   try {
     auth = await authenticateRequest();
+    await requirePermission(auth, 'sale.read');
   } catch (e) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Authentication failed' } }, { status: 500 });

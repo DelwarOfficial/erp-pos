@@ -49,7 +49,7 @@ export async function GET(
     const auth = await authenticateRequest();
     // `customer.read` is not in the catalogue; fall back to `product.read`
     // (the same permission used by the sibling list endpoint) for parity.
-    await requirePermission(auth, 'product.read');
+    await requirePermission(auth, 'customer.read');
     const { id } = await params;
 
     // findFirst (not findUnique) so RLS-equivalent filter applies. We do
@@ -113,7 +113,7 @@ export async function PUT(
     // permission used by the sibling list endpoint is `user.create`.
     // global_admin / owner / branch_manager roles already cover the
     // `user.*` glob.
-    await requirePermission(auth, 'user.create');
+    await requirePermission(auth, 'customer.update');
     const { id } = await params;
 
     const idempotencyKey = requireIdempotencyKey(req);
@@ -292,7 +292,7 @@ export async function DELETE(
     const auth = await authenticateRequest();
     // `customer.manage` is not in the catalogue; fall back to `user.create`
     // (the closest mutation permission, used by the sibling POST endpoint).
-    await requirePermission(auth, 'user.create');
+    await requirePermission(auth, 'customer.update');
     const { id } = await params;
 
     const idempotencyKey = requireIdempotencyKey(req);
