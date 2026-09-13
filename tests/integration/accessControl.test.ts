@@ -138,7 +138,11 @@ describe('MariaDB administration security', () => {
       return saveUser(auth, { company_id: f.company.id, name: user.name, email: user.email, branch_ids: [f.a.id, f.b.id], access_scope: 'global', is_active: false, role_ids: [f.adminRole.id] }, user.id); };
     const results = await Promise.allSettled([disable(f.auth), disable(second)]);
     expect(results.filter(item => item.status === 'fulfilled')).toHaveLength(1);
-    expect(results.find(item => item.status === 'rejected')).toMatchObject({ reason: { httpStatus: 403 } });
+    const loser = results.find(item => item.status === 'rejected') as PromiseRejectedResult;
+    // Depending on which actor wins, the loser has either lost authority or
+    // would now remove the sole remaining administrator. Never accept a DB error.
+    expect([403, 409]).toContain(loser.reason.httpStatus);
+    expect(['FORBIDDEN_SCOPE', 'VALIDATION_FAILED']).toContain(loser.reason.code);
     expect(await raw.user.count({ where: { companyId: f.company.id, isActive: true, accessScope: 'global' } })).toBe(1);
   });
   it('requires MFA and current mutation authority', async () => {
@@ -163,5 +167,27 @@ describe('MariaDB administration security', () => {
     expect(await raw.refreshToken.count({ where: { userId: user.id, revokedAt: null } })).toBe(0);
     const logs = await raw.auditLog.findMany({ where: { companyId: f.company.id, entityId: user.id } });
     expect(JSON.stringify(logs).includes(payload.nonce)).toBe(false); expect(JSON.stringify(logs).includes(fixturePassword)).toBe(false);
+  });
+  it('rejects tampered, replaced, and expired reset capabilities without changing password', async () => {
+    const f = await fixture(), user = await saveUser(f.auth, f.input());
+    const first = await issuePasswordReset(f.auth, f.company.id, user.id);
+    const second = await issuePasswordReset(f.auth, f.company.id, user.id);
+    const [body, mac] = second.token.split('.');
+    const changedBody = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    changedBody.userId = f.auth.userId;
+    const tampered = `${Buffer.from(JSON.stringify(changedBody)).toString('base64url')}.${mac}`;
+    for (const token of [first.token, tampered]) {
+      await expect(redeemPasswordReset({ token, password: fixturePassword + 'changed' })).rejects.toMatchObject({ httpStatus: 401 });
+    }
+    await raw.webAuthnChallenge.update({ where: { id: changedBody.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await expect(redeemPasswordReset({ token: second.token, password: fixturePassword + 'changed' })).rejects.toMatchObject({ httpStatus: 401 });
+    const stored = await raw.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } });
+    expect(await verifyPassword(stored.passwordHash, fixturePassword)).toBe(true);
+  });
+  it('role changes revoke outstanding reset capabilities before later redemption', async () => {
+    const f = await fixture(), user = await saveUser(f.auth, f.input());
+    const issued = await issuePasswordReset(f.auth, f.company.id, user.id);
+    await saveRole(f.auth, { company_id: f.company.id, name: 'Staff updated', permission_ids: [permissionIds['product.read']] }, f.staffRole.id);
+    await expect(redeemPasswordReset({ token: issued.token, password: fixturePassword + 'changed' })).rejects.toMatchObject({ httpStatus: 401 });
   });
 });

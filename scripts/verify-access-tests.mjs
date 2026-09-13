@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(join(root, '.local'), { recursive: true });
 const work = mkdtempSync(join(root, '.local', 'access-tests-'));
-for (const input of ['src', 'tests', 'prisma', 'scripts', 'package.json', 'tsconfig.json', 'vitest.config.ts', 'next.config.ts']) {
+for (const input of ['src', 'public', 'tests', 'prisma', 'scripts', 'package.json', 'tsconfig.json', 'vitest.config.ts', 'next.config.ts']) {
   if (existsSync(join(root, input))) cpSync(join(root, input), join(work, input), { recursive: true,
     filter: path => !/(?:^|[\\/])\.env(?:[.\\/]|$)|\.(?:db|sqlite|sqlite3)(?:[-.]|$)/i.test(path) });
 }
@@ -16,10 +16,10 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|LOCALAPPDATA|APPDATA|PROGRAMDATA)$/i.test(key)));
 const target = new URL('mysql://127.0.0.1:43318/readiness_20260912_disposable'); target.username = 'root';
 Object.assign(env, { DATABASE_URL: target.toString(), NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'),
-  APP_ENCRYPTION_KEY: randomBytes(32).toString('hex'), DISABLE_S3_HEALTH: 'true' });
+  APP_ENCRYPTION_KEY: randomBytes(32).toString('hex'), DISABLE_S3_HEALTH: 'true', NO_COLOR: '1' });
 console.log('Database environment: LOCAL / DISPOSABLE; Host: 127.0.0.1; Port: 43318; Database name: readiness_20260912_disposable');
 const code = await new Promise(resolveExit => {
-  const child = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--maxWorkers=1', '--no-file-parallelism', '--reporter=dot'],
+  const child = spawn(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', ...process.argv.slice(2), '--maxWorkers=1', '--no-file-parallelism', '--reporter=default'],
     { cwd: work, env, windowsHide: true, stdio: 'inherit' });
   child.on('error', () => resolveExit(1)); child.on('exit', code => resolveExit(code ?? 1));
 });

@@ -69,7 +69,7 @@ export async function accessMutation<T>(auth: AuthResult, companyId: string, gra
     // A platform actor may bootstrap an already-unconfigured tenant by creating
     // users/roles. Never use this exception to update/delete remaining access.
     const bootstrapCreation = platform && before === 0 && ['user.create', 'role.create'].includes(grants[0]);
-    if (!usable && !bootstrapCreation) forbidden('Change would leave no usable administrator with full access');
+    if (!usable && !bootstrapCreation) throw new DomainError('VALIDATION_FAILED', 'Change would leave no usable administrator with full access', {}, 409);
     return result;
   });
 }

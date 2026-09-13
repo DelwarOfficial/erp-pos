@@ -59,6 +59,13 @@ async function confirmSave(page: Page, label: string) {
   await page.getByRole('button', { name: label, exact: true }).click();
 }
 
+// Browser fetch preserves Chromium's localhost Secure-cookie behavior. The
+// separate APIRequestContext does not model this browser exception over HTTP.
+async function browserGet(page: Page, path: string) {
+  return page.evaluate(async path => { const response = await fetch(path, { cache: 'no-store' });
+    return { status: response.status, body: await response.json() }; }, path);
+}
+
 test('platform admin logs in with MFA and manages tenant user lifecycle through UI', async ({ page }) => {
   await login(page, platform); await page.goto('/dashboard/access/users');
   await page.getByLabel('Company', { exact: true }).selectOption(companyId);
@@ -86,6 +93,12 @@ test('platform admin logs in with MFA and manages tenant user lifecycle through 
 });
 
 test('tenant admin creates a custom role, assigns permission and user, but cannot escape tenant', async ({ page }) => {
+  // Independent target: a failure/restarted worker in the lifecycle test must
+  // not replace this test's subject with an undefined identifier.
+  const target = await raw.user.create({ data: { companyId, name: 'Role assignment subject', email: `${randomUUID()}@example.invalid`,
+    passwordHash: await hashPassword(password), accessScope: 'single_branch',
+    roles: { create: [{ roleId: staffRoleId }] }, branchAccess: { create: [{ branchId: branchA }] } } });
+  await raw.role.createMany({ data: Array.from({ length: 30 }, (_, index) => ({ companyId, name: `A paged role ${String(index).padStart(2, '0')}` })) });
   await login(page, tenant); await page.goto('/dashboard/access/roles');
   await expect(page.getByLabel('Company', { exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'Create Role', exact: true }).click();
@@ -93,15 +106,17 @@ test('tenant admin creates a custom role, assigns permission and user, but canno
   await page.getByRole('checkbox', { name: /\(product\.read\)/ }).check();
   await confirmSave(page, 'Save Role');
   await page.waitForURL(url => /\/dashboard\/access\/roles\/[a-f0-9-]{36}$/.test(url.pathname));
-  await page.goto(`/dashboard/access/users/${createdUserId}?company_id=${companyId}`);
+  await page.goto(`/dashboard/access/users/${target.id}?company_id=${companyId}`);
+  await page.getByRole('button', { name: 'Next role options', exact: true }).click();
   await page.getByLabel('Browser custom role', { exact: true }).check();
   await confirmSave(page, 'Save User');
   await expect(page.getByRole('status').filter({ hasText: 'User updated' })).toBeVisible();
-  const response = await page.request.get(`/api/v1/admin/users/${platform.id}?company_id=${companyId}`);
-  expect(response.status()).toBe(404);
+  expect(await raw.userRole.count({ where: { userId: target.id } })).toBe(2);
+  const response = await browserGet(page, `/api/v1/admin/users/${platform.id}?company_id=${companyId}`);
+  expect(response.status).toBe(404);
   const root = await raw.company.findUniqueOrThrow({ where: { code: 'PLATFORM' }, select: { id: true } });
-  expect((await page.request.get(`/api/v1/admin/users?company_id=${root.id}`)).status()).toBe(403);
-  const catalogue = await (await page.request.get('/api/v1/admin/permissions')).json();
+  expect((await browserGet(page, `/api/v1/admin/users?company_id=${root.id}`)).status).toBe(403);
+  const catalogue = (await browserGet(page, '/api/v1/admin/permissions')).body;
   expect(catalogue.data.some((item: { code: string }) => item.code.startsWith('platform.'))).toBe(false);
 });
 
@@ -110,13 +125,13 @@ test('last tenant administrator cannot suspend own usable access', async ({ page
   await page.getByLabel('Active account (uncheck to suspend)', { exact: true }).uncheck();
   await confirmSave(page, 'Save User');
   await expect(page.locator('main').getByRole('alert')).toContainText('no usable administrator');
-  expect((await page.request.get('/api/v1/me')).status()).toBe(200);
+  expect((await browserGet(page, '/api/v1/me')).status).toBe(200);
 });
 
 test('restricted staff has no Access Control navigation and direct APIs deny access', async ({ page }) => {
   await login(page, staff);
   await expect(page.getByRole('link', { name: /^Access Control/ })).toHaveCount(0);
-  for (const path of ['users', 'roles', 'permissions']) expect((await page.request.get(`/api/v1/admin/${path}`)).status()).toBe(403);
+  for (const path of ['users', 'roles', 'permissions']) expect((await browserGet(page, `/api/v1/admin/${path}`)).status).toBe(403);
   await page.goto('/dashboard/access/users');
   await expect(page.locator('main').getByRole('alert')).toContainText('access denied');
 });

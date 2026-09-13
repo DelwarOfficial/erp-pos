@@ -1,9 +1,9 @@
 // Local-only UI verification. Never loads .env or targets an existing server.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,6 +26,21 @@ function execute(args, cwd) {
     const child = spawn(process.execPath, args, { cwd, env, stdio: 'inherit', windowsHide: true });
     child.on('error', () => resolveExit(1)); child.on('exit', code => resolveExit(code ?? 1));
   });
+}
+function applicationFingerprint(directory) {
+  const hash = createHash('sha256');
+  function visit(relative) {
+    const path = join(directory, relative);
+    if (!existsSync(path) || /(?:^|[\\/])\.env(?:[.\\/]|$)|\.(?:db|sqlite|sqlite3)(?:[-.]|$)/i.test(path)) return;
+    if (statSync(path).isDirectory()) {
+      for (const name of readdirSync(path).sort()) visit(join(relative, name));
+    } else { hash.update(relative); hash.update('\0'); hash.update(readFileSync(path)); hash.update('\0'); }
+  }
+  // Exclude Next-generated next-env/tsconfig files. Include all authored runtime
+  // inputs so a successful stale build cannot masquerade as current-source E2E.
+  for (const input of ['src', 'public', 'prisma', 'package.json', 'next.config.ts', 'postcss.config.mjs', 'tailwind.config.ts',
+    'components.json', 'sentry.client.config.ts', 'sentry.server.config.ts', 'sentry.edge.config.ts']) visit(input);
+  return hash.digest('hex');
 }
 if (mode === 'build') {
   mkdirSync(join(root, '.local'), { recursive: true });
@@ -53,6 +68,7 @@ if (mode === 'build') {
 } else {
   const saved = JSON.parse(readFileSync(state, 'utf8'));
   if (!saved.buildPassed || !resolve(saved.snapshot).startsWith(join(root, '.local', 'ui-health-app-'))) throw new Error('Successful isolated build required');
+  if (applicationFingerprint(root) !== applicationFingerprint(saved.snapshot)) throw new Error('Application changed since build; rebuild before E2E');
   await new Promise((resolvePort, rejectPort) => {
     const probe = createServer();
     probe.once('error', () => rejectPort(new Error('Verification port already in use; refusing to reuse server')));

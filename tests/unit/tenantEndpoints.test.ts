@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
 
 const cookieStore = new Map<string, string>();
 vi.mock('next/headers', () => ({
@@ -30,6 +31,7 @@ const raw = new PrismaClient();
 let companyA = '';
 let companyB = '';
 let userA = '';
+const familyId = randomUUID(), sessionId = randomUUID();
 
 function authedReq(path: string, token?: string): NextRequest {
   if (token) cookieStore.set(getAccessCookieName(), token);
@@ -44,13 +46,15 @@ async function tokenFor(userId: string, companyId: string): Promise<string> {
     scope: 'single_branch',
     is_global: false,
     branch_ids: [],
-    session_id: 'test-session',
-    family_id: 'test-family',
+    session_id: sessionId,
+    family_id: familyId,
     mfa_verified: false,
   });
 }
 
 beforeAll(async () => {
+  const target = new URL(process.env.DATABASE_URL || 'invalid:');
+  if (target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Disposable local database required');
   await raw.$connect();
   await raw.currency.upsert({
     where: { code: 'BDT' },
@@ -79,9 +83,11 @@ beforeAll(async () => {
     },
   });
   userA = ua.id;
+  await raw.refreshToken.create({ data: { companyId: companyA, userId: userA, familyId, sessionId,
+    tokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
 
   // Permissions needed by the exercised endpoints.
-  const codes = ['category.manage', 'product.read', 'inventory.read', 'sale.read', 'audit_logs:read'];
+  const codes = ['category.manage', 'product.read', 'inventory.read', 'sale.read', 'approval.read'];
   const permIds: string[] = [];
   for (const code of codes) {
     const p = await raw.permission.upsert({

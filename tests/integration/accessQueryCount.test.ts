@@ -43,3 +43,11 @@ it('MariaDB user-list SQL counts stay constant at 1, 10, and 100 rows', async ()
   expect(counts[1]).toBe(counts[0]); expect(counts[2]).toBe(counts[0]);
   console.log('User-list SQL count proof (rows 1/10/100):', counts.join('/'));
 });
+it('records MariaDB EXPLAIN for the tenant-scoped user-page predicate', async () => {
+  const rows = await raw.$queryRaw<Array<{ type: string; key: string | null; rows: bigint | number; Extra: string | null }>>`
+    EXPLAIN SELECT id, name FROM users WHERE company_id = ${auth.companyId} AND deleted_at IS NULL ORDER BY name, id LIMIT 100`;
+  expect(rows).toHaveLength(1);
+  // Evidence only: never demand a specific optimizer choice on tiny fixtures.
+  console.log('User-page EXPLAIN:', JSON.stringify(rows.map(row => ({ access: row.type, index: row.key,
+    estimatedRows: String(row.rows), extra: row.Extra }))));
+});
