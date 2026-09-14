@@ -11,7 +11,7 @@
 //      c. Webhook endpoints (/api/v1/webhooks/*) are exempt (they use HMAC signatures)
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAccessCookieName } from '@/lib/auth/sessions';
+import { getAccessCookieName } from '@/lib/auth/cookieNames';
 
 const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 const EXEMPT_PATHS = [

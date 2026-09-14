@@ -9,6 +9,7 @@ import type { NextRequest } from 'next/server';
 import { verifyAccessToken } from '@/lib/auth/jwt';
 import { DomainError } from '@/lib/errors/codes';
 import { cookies } from 'next/headers';
+import { getAccessCookieName } from './cookieNames';
 
 /**
  * Actions that require MFA re-verification per §6 rule 2.
@@ -39,7 +40,7 @@ export async function requireMfaForAction(
   action: MfaRequiredAction,
 ): Promise<void> {
   const cookieStore = await cookies();
-  const token = cookieStore.get('erp_access')?.value;
+  const token = cookieStore.get(getAccessCookieName())?.value;
   if (!token) throw new DomainError('UNAUTHORIZED', 'Authentication required', {}, 401);
 
   let claims;

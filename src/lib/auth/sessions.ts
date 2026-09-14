@@ -6,10 +6,8 @@ import { NextResponse } from 'next/server';
 import { issueAccessToken, AccessClaims } from './jwt';
 import { issueRefreshToken, IssuedRefreshToken } from './refreshToken';
 import { issueMfaChallenge, readMfaChallenge, type MfaLoginChallenge } from './mfaChallenge';
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, MFA_PENDING_COOKIE_NAME } from './cookieNames';
 
-const ACCESS_COOKIE = 'erp_access';
-const REFRESH_COOKIE = 'erp_refresh';
-const MFA_PENDING_COOKIE = 'erp_mfa_pending';
 
 function isProd() {
   // In production with HTTPS, cookies should be Secure.
@@ -71,7 +69,7 @@ export async function setAuthCookies(params: {
 
   const cookieDefs = [
     {
-      name: ACCESS_COOKIE,
+      name: ACCESS_COOKIE_NAME,
       value: accessToken,
       options: {
         httpOnly: true,
@@ -82,7 +80,7 @@ export async function setAuthCookies(params: {
       },
     },
     {
-      name: REFRESH_COOKIE,
+      name: REFRESH_COOKIE_NAME,
       value: refreshToken.token,
       options: {
         httpOnly: true,
@@ -120,8 +118,8 @@ export function applyCookiesToResponse(
 export async function clearAuthCookies(): Promise<void> {
   const cookieStore = await cookies();
   for (const [name, path] of [
-    [ACCESS_COOKIE, '/'], [REFRESH_COOKIE, '/api/v1/auth/refresh'],
-    [MFA_PENDING_COOKIE, '/'], ['erp_mfa_setup', '/api/v1/auth/mfa'],
+    [ACCESS_COOKIE_NAME, '/'], [REFRESH_COOKIE_NAME, '/api/v1/auth/refresh'],
+    [MFA_PENDING_COOKIE_NAME, '/'], ['erp_mfa_setup', '/api/v1/auth/mfa'],
   ]) {
     cookieStore.set(name, '', { path, maxAge: 0, expires: new Date(0),
       httpOnly: true, secure: isProd(), sameSite: sameSiteMode() });
@@ -138,7 +136,7 @@ export async function setMfaPendingCookie(payload: {
 }): Promise<void> {
   const cookieStore = await cookies();
   const challenge = await issueMfaChallenge({ userId: payload.userId, companyId: payload.companyId, familyId: payload.familyId });
-  cookieStore.set(MFA_PENDING_COOKIE, challenge, {
+  cookieStore.set(MFA_PENDING_COOKIE_NAME, challenge, {
     httpOnly: true,
     secure: isProd(),
     sameSite: sameSiteMode(),
@@ -149,17 +147,16 @@ export async function setMfaPendingCookie(payload: {
 
 export async function getMfaPendingCookie(): Promise<MfaLoginChallenge | null> {
   const cookieStore = await cookies();
-  const raw = cookieStore.get(MFA_PENDING_COOKIE)?.value;
+  const raw = cookieStore.get(MFA_PENDING_COOKIE_NAME)?.value;
   return readMfaChallenge(raw);
 }
 
 export async function clearMfaPendingCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(MFA_PENDING_COOKIE);
+  cookieStore.delete(MFA_PENDING_COOKIE_NAME);
 }
 
-export function getAccessCookieName() { return ACCESS_COOKIE; }
-export function getRefreshCookieName() { return REFRESH_COOKIE; }
+export { getAccessCookieName, getRefreshCookieName } from './cookieNames';
 
 const MFA_SETUP_COOKIE = 'erp_mfa_setup';
 
