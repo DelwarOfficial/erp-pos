@@ -53,6 +53,7 @@ export function UsersList() {
 export function UserEditor({ id, companyId }: { id: string; companyId?: string }) {
   const access = useAccess(companyId), creating = id === 'new';
   const [user, setUser] = useState<User | null>(null), [roles, setRoles] = useState<Role[]>([]), [branches, setBranches] = useState<Branch[]>([]);
+  const [branchSearch, setBranchSearch] = useState('');
   const [rolePage, setRolePage] = useState(1), [roleTotal, setRoleTotal] = useState(0), [roleLoading, setRoleLoading] = useState(false), [roleError, setRoleError] = useState('');
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]), [branchIds, setBranchIds] = useState<string[]>([]), [scope, setScope] = useState('single_branch'), [active, setActive] = useState(true);
@@ -63,13 +64,19 @@ export function UserEditor({ id, companyId }: { id: string; companyId?: string }
     if (!allowed || !access.company) return;
     const controller = new AbortController(); setLoading(true); setError(''); setResetLink(''); setUser(null); setRoleIds([]); setBranchIds([]); setRolePage(1);
     Promise.all([
-      access.can('branch.read') ? request<{ data: Branch[] }>(`/api/v1/admin/branches?company_id=${access.company}`, { signal: controller.signal }) : Promise.resolve({ data: [] }),
       creating ? Promise.resolve(null) : request<{ data: User }>(`/api/v1/admin/users/${id}?company_id=${access.company}`, { signal: controller.signal }),
-    ]).then(([branchResult, result]) => { if (controller.signal.aborted) return; setBranches(branchResult.data);
+    ]).then(([result]) => { if (controller.signal.aborted) return;
       if (result) { const value = result.data; setUser(value); setName(value.name); setEmail(value.email); setScope(value.accessScope); setActive(value.isActive); setRoleIds(value.roles.map(item => item.role.id)); setBranchIds(value.branchAccess.map(item => item.branch.id)); }
     }).catch(() => { if (!controller.signal.aborted) setError('User or assignment options unavailable.'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [allowed, access.company, creating, id]);
+  useEffect(() => {
+    if (!allowed || !access.company || !access.can('branch.read')) return;
+    const controller = new AbortController();
+    request<{ data: Branch[] }>(`/api/v1/admin/branches?company_id=${access.company}&search=${encodeURIComponent(branchSearch)}`, { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setBranches(result.data); }).catch(() => {});
+    return () => controller.abort();
+  }, [allowed, access.company, branchSearch]);
   useEffect(() => {
     if (!allowed || !access.company || !access.can('role.read')) return;
     const controller = new AbortController(); setRoleLoading(true); setRoleError('');
@@ -104,7 +111,7 @@ export function UserEditor({ id, companyId }: { id: string; companyId?: string }
       <label>Email<Input type="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={150} disabled={!editable} /></label>
       {creating && <label>Initial password<Input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} required minLength={12} maxLength={200} disabled={!editable} /></label>}
       <label>Branch access scope<select aria-label="Branch access scope" className={`${control} block`} value={scope} onChange={event => setScope(event.target.value)} disabled={!editable}><option value="single_branch">Single branch</option><option value="multi_branch">Multiple branches</option>{(access.user?.is_global || access.user?.access_scope === 'global') && <option value="global">All company branches</option>}</select></label>
-      <fieldset disabled={!editable} className="border rounded p-3"><legend>Allowed branches</legend>{branches.map(branch => <label key={branch.id} className="block"><input type="checkbox" checked={branchIds.includes(branch.id)} onChange={() => setBranchIds(toggle(branchIds, branch.id))} /> {branch.name}</label>)}{!branches.length && <p>No branch options available.</p>}</fieldset>
+      <fieldset disabled={!editable} className="border rounded p-3"><legend>Allowed branches</legend><Input aria-label="Search branches" placeholder="Search branches" value={branchSearch} onChange={event => setBranchSearch(event.target.value)} />{branches.map(branch => <label key={branch.id} className="block"><input type="checkbox" checked={branchIds.includes(branch.id)} onChange={() => setBranchIds(toggle(branchIds, branch.id))} /> {branch.name}</label>)}{!branches.length && <p>No branch options available.</p>}</fieldset>
       <fieldset disabled={!editable} className="border rounded p-3"><legend>Roles</legend>{roles.map(role => <label key={role.id} className="block"><input type="checkbox" checked={roleIds.includes(role.id)} onChange={() => setRoleIds(toggle(roleIds, role.id))} /> {role.name}{role.isSystemRole ? ' (protected role)' : ''}</label>)}{!roles.length && <p>No role options available.</p>}</fieldset>
       {roleError && <p role="alert">{roleError}</p>}
       <p>{roleIds.length} roles selected across all pages.</p>

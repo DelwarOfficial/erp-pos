@@ -25,16 +25,18 @@ export function useAccess(companyOverride?: string) {
   const [company, setCompany] = useState(companyOverride || '');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [error, setError] = useState('');
+  const [companySearch, setCompanySearch] = useState('');
   const can = (permission: string) => Boolean(user && (user.is_global || user.permissions.includes(permission)));
   useEffect(() => { if (!company && user) setCompany(companyOverride || user.company_id); }, [company, companyOverride, user]);
   useEffect(() => {
     if (!user?.is_global) return;
     const controller = new AbortController();
-    request<{ data: Company[] }>('/api/v1/admin/companies', { signal: controller.signal }).then(result => setCompanies(result.data))
+    const query = companySearch ? `?search=${encodeURIComponent(companySearch)}` : '';
+    request<{ data: Company[] }>(`/api/v1/admin/companies${query}`, { signal: controller.signal }).then(result => setCompanies(result.data))
       .catch(() => { if (!controller.signal.aborted) setError('Company list unavailable.'); });
     return () => controller.abort();
-  }, [user?.is_global]);
-  return { user, company, setCompany, companies, error, can, assured: Boolean(user?.mfa_enabled && user.mfa_verified) };
+  }, [user?.is_global, companySearch]);
+  return { user, company, setCompany, companies, companySearch, setCompanySearch, error, can, assured: Boolean(user?.mfa_enabled && user.mfa_verified) };
 }
 export function AccessHeading({ title }: { title: string }) {
   const user = useDashboardSession();
@@ -45,7 +47,7 @@ export function AccessHeading({ title }: { title: string }) {
   </nav></header>;
 }
 export function CompanyPicker({ access, disabled = false }: { access: ReturnType<typeof useAccess>; disabled?: boolean }) {
-  return access.user?.is_global ? <label className="grid gap-1">Company<select aria-label="Company" className={control} value={access.company} disabled={disabled}
+  return access.user?.is_global ? <label className="grid gap-1">Company<input aria-label="Search companies" className={control} placeholder="Search companies" value={access.companySearch} onChange={event => access.setCompanySearch(event.target.value)} disabled={disabled} /><select aria-label="Company" className={control} value={access.company} disabled={disabled}
     onChange={event => access.setCompany(event.target.value)}><option value="">Select company</option>
     {access.companies.map(company => <option key={company.id} value={company.id}>{company.displayName} ({company.code})</option>)}</select></label>
     : <p>Company: {access.user?.company_name}</p>;
