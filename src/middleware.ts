@@ -11,6 +11,7 @@
 //      c. Webhook endpoints (/api/v1/webhooks/*) are exempt (they use HMAC signatures)
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getAccessCookieName } from '@/lib/auth/sessions';
 
 const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 const EXEMPT_PATHS = [
@@ -72,7 +73,7 @@ export function middleware(req: NextRequest) {
 
   // Double-submit cookie check (X-CSRF-Token matches cookie)
   const csrfToken = headers.get('x-csrf-token');
-  const accessCookie = req.cookies.get('erp_access')?.value;
+  const accessCookie = req.cookies.get(getAccessCookieName())?.value;
   if (csrfToken && accessCookie && csrfToken === accessCookie) {
     return NextResponse.next();
   }
