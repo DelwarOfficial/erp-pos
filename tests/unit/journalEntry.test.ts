@@ -34,6 +34,7 @@ beforeAll(async () => {
     },
   });
   companyId = company.id;
+  await db.fiscalPeriod.create({ data: { companyId, periodName: 'FY-TEST', periodStart: new Date('2020-01-01T00:00:00Z'), periodEnd: new Date('2030-12-31T23:59:59Z'), status: 'open' } });
   const user = await db.user.create({
     data: { companyId, name: 'Accountant', email: 'je-' + Date.now() + '@test.local', passwordHash: 'x', accessScope: 'global' },
   });

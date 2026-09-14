@@ -82,6 +82,10 @@ beforeAll(async () => {
     },
   });
   financialAccountId = fa.id;
+  await db.fiscalPeriod.create({ data: { companyId, periodName: 'FY-TEST', periodStart: new Date('2020-01-01T00:00:00Z'), periodEnd: new Date('2030-12-31T23:59:59Z'), status: 'open' } });
+  await db.accountingPolicy.create({ data: { companyId, inventoryAccountId: coa.id, cogsAccountId: coa.id, salesRevenueAccountId: coa.id,
+    arAccountId: coa.id, apAccountId: coa.id, customerAdvanceAccountId: coa.id, supplierAdvanceAccountId: coa.id,
+    purchaseVarianceAccountId: coa.id, giftCardLiabilityAccountId: coa.id } });
 
   // Seed opening stock: 10 units of Test Product @ 50 BDT
   const eventId = crypto.randomUUID();
