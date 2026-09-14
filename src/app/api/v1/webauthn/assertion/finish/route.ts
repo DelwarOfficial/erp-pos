@@ -9,6 +9,8 @@ import { finishAuthentication } from '@/lib/auth/webauthn';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { recordSecurityEvent } from '@/lib/audit';
+import { checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
 
 const FinishSchema = z.object({
   response: z.record(z.string(), z.unknown()),
@@ -18,6 +20,8 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const limited = await checkDistributedRateLimit('webauthn-assertion-finish', `${auth.companyId}:${auth.userId}`, DEFAULT_MFA_LIMIT);
+    if (!limited.allowed) return NextResponse.json({ error: { code: 'RATE_LIMITED', message: 'Too many authentication attempts. Please try again later.' } }, { status: 429 });
     const body = FinishSchema.parse(await req.json());
 
     const result = await runInTenantContext(auth.ctx, async () => {

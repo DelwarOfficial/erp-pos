@@ -13,6 +13,8 @@ import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
+import { checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { DEFAULT_LOGIN_LIMIT } from '@/lib/auth/rateLimiter';
 
 const LoginSchema = z.object({
   email: z.string().email().max(150),
@@ -27,6 +29,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = LoginSchema.parse(await req.json());
+    // Layered abuse control: Redis identity throttle plus a bounded IP ceiling.
+    // DB account lockout below remains authoritative for verified accounts.
+    const identity = body.email.toLowerCase();
+    const identityLimit = await checkDistributedRateLimit('login-identity', identity, DEFAULT_LOGIN_LIMIT);
+    const ipLimit = await checkDistributedRateLimit('login-ip', ip || 'unknown', { ...DEFAULT_LOGIN_LIMIT, maxAttempts: 100 });
+    if (!identityLimit.allowed || !ipLimit.allowed) {
+      throw new DomainError('RATE_LIMITED', 'Too many login attempts. Please try again later.', {}, 429);
+    }
 
     // Find user by email across tenants (login is pre-tenant)
     // In production with RLS, this endpoint bypasses RLS via migration_role
