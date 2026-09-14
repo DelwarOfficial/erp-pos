@@ -24,6 +24,7 @@ import {
   type MfaSetupPayload,
 } from './mfaSetup';
 import { checkRateLimit, buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from './rateLimiter';
+import { checkDistributedRateLimit } from './distributedRateLimiter';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError } from '@/lib/errors/codes';
 
@@ -134,7 +135,7 @@ export async function activateEnrollment(
   }
 
   const rlKey = buildRateLimitKey('mfa_setup_activate', ctx?.ip, payload.userId);
-  const rl = checkRateLimit(rlKey, DEFAULT_MFA_LIMIT);
+  const rl = await checkDistributedRateLimit('mfa-enrollment', rlKey, DEFAULT_MFA_LIMIT);
   if (!rl.allowed) {
     await recordSecurityEvent({
       eventType: 'mfa_setup_rate_limited',

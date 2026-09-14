@@ -4,9 +4,10 @@ import { accessResponse, accessError } from '@/lib/access/http';
 import { checkRateLimit, DEFAULT_PASSWORD_RESET_LIMIT } from '@/lib/auth/rateLimiter';
 import { DomainError } from '@/lib/errors/codes';
 import { getClientIp } from '@/lib/http';
+import { checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
 export async function POST(req: NextRequest) {
   try {
-    if (!checkRateLimit(`password-reset:${getClientIp(req) || 'unknown'}`, DEFAULT_PASSWORD_RESET_LIMIT).allowed) {
+    if (!(await checkDistributedRateLimit('password-reset', getClientIp(req) || 'unknown', DEFAULT_PASSWORD_RESET_LIMIT)).allowed) {
       throw new DomainError('RATE_LIMITED', 'Too many reset attempts. Please try again later.', {}, 429);
     }
     return accessResponse(await redeemPasswordReset(await req.json()));

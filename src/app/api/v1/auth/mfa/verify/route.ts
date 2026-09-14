@@ -12,6 +12,7 @@ import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
 import { checkRateLimit, buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
+import { checkDistributedRateLimit, resetDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
 
 const MfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // Rate limit: 5 attempts per 5 min, then 15-min lock with progressive backoff
     const rlKey = buildRateLimitKey('mfa_verify', ip, pending.userId);
-    const rl = checkRateLimit(rlKey, DEFAULT_MFA_LIMIT);
+    const rl = await checkDistributedRateLimit('mfa-verify', rlKey, DEFAULT_MFA_LIMIT);
     if (!rl.allowed) {
       const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000);
       return NextResponse.json(
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
     // Success — reset the rate limiter for this user
     await consumeMfaChallenge(pending);
     resetRateLimit(rlKey);
+    await resetDistributedRateLimit('mfa-verify', rlKey);
 
     const branchIds = user.branchAccess.map(b => b.branchId);
     const sessionId = randomUUID();
