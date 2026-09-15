@@ -1,11 +1,11 @@
-# ERP/POS System — Complete Production ERP Product Blueprint (v4.1 — Production Decisions Resolved)
+# ERP/POS System — Complete Production ERP Product Blueprint (v4.2 — MariaDB 11.8.x Database Architecture Reconciliation)
 
 **Target:** Multi-branch electronics, mobile, appliance, accessory, service, and warranty ERP/POS for Bangladesh  
 **Status:** Final developer-ready product, architecture, security, accounting, and implementation contract — all 20 production decisions formally resolved  
 **Supersedes:** v4.0, the v4.1 draft, the v4.1 TRUTHMODE/REDTEAM audit draft, Production Core Architecture Blueprint v3.0, the original feature blueprint, and all prior audit drafts  
-**Revision note:** Applies all corrections from the v4.0 production-readiness audit (47 findings), the v4.1-draft TRUTHMODE/REDTEAM audit (52 findings), and formally resolves all 20 business-owner production decisions per the strategic direction approved for a Bangladesh-focused multi-tenant ERP SaaS  
+**Revision note:** Applies all corrections from the v4.0 production-readiness audit (47 findings), the v4.1-draft TRUTHMODE/REDTEAM audit (52 findings), and formally resolves all 20 business-owner production decisions per the strategic direction approved for a Bangladesh-focused multi-tenant ERP SaaS. v4.2 reconciles ONLY database/platform mechanisms to MariaDB 11.8.x authority (see docs/adr/0007-mariadb-production-database.md); product, workflow, accounting, permission, report, and acceptance requirements remain unchanged. Tenant isolation requirements were preserved, not weakened.  
 **Architecture:** Multi-tenant modular monolith from launch; public self-service SaaS signup disabled initially; administrator-led company onboarding  
-**Database:** PostgreSQL 16 or newer, pinned to a supported patched minor release  
+**Database:** MariaDB 11.8 or newer within the approved 11.x production line, pinned to a supported patched release. MariaDB (InnoDB) is the authoritative transactional system of record. PostgreSQL 16+ text in prior revisions is historical mechanism reference only. Redis is used only for queues, rate limiting, distributed coordination/locks where safe, and short-lived cache; Redis is never authoritative for accounting, stock, payment, tax, or tenant ownership.  
 **Default timezone/currency:** Asia/Dhaka / BDT  
 **Primary clients:** Responsive admin web application, offline-capable POS PWA (pilot-only at launch), optional mobile client  
 **Document role:** Product requirements document, data contract, security contract, implementation contract, go-live acceptance contract, and formal decision register
@@ -19,14 +19,14 @@
 3. Operational documents and their stock, serial, payment, tax, journal, audit, and outbox effects commit or roll back together.
 4. Current-balance tables are transactionally maintained projections; immutable ledgers remain the historical audit source and are reconciled automatically.
 5. All money uses DECIMAL; binary floating-point types are prohibited.
-6. All timestamps are TIMESTAMPTZ stored in UTC. Business dates are explicit DATE fields.
+6. All timestamps are stored and interpreted in UTC (MariaDB DATETIME(3)/TIMESTAMP as defined by the MariaDB schema; historical `TIMESTAMPTZ` wording refers to the same UTC semantic). Business dates are explicit DATE fields. Application, server, and database timezone policy must be explicit; tenant/company timezone applies at rendering.
 7. Document numbers are generated or leased before document insert and before COMMIT.
-8. Every tenant-owned row includes company_id; every branch operation includes branch_id or resolves through a branch-owned warehouse/account. Pure junction tables between two company-scoped entities (e.g., `user_roles`, `user_branch_access`) inherit tenant scope through their foreign keys and are protected by RLS on parent tables; they are exempt from carrying a redundant company_id column only when both FK targets include company_id and RLS is enabled on those targets. Junction tables that link to a global catalogue (e.g., `role_permissions` links `roles` (company-scoped) to `permissions` (global)) inherit tenant scope from the company-scoped FK side and are protected by RLS on the company-scoped parent table; no redundant company_id column is required on the junction itself, but every query must join through the company-scoped parent to enforce isolation.
+8. Every tenant-owned row includes company_id; every branch operation includes branch_id or resolves through a branch-owned warehouse/account. Pure junction tables between two company-scoped entities (e.g., `user_roles`, `user_branch_access`) inherit tenant scope through their foreign keys and are protected by tenant-aware predicates plus composite tenant foreign keys and the centralized scoped data-access layer on parent tables; they are exempt from carrying a redundant company_id column only when both FK targets include company_id and tenant isolation is enforced on those targets (historical `RLS` wording means this layered MariaDB mechanism). Junction tables that link to a global catalogue (e.g., `role_permissions` links `roles` (company-scoped) to `permissions` (global)) inherit tenant scope from the company-scoped FK side and are protected by the company-scoped parent table controls; no redundant company_id column is required on the junction itself, but every query must join through the company-scoped parent to enforce isolation.
 9. All owner, legal, tax, and operating choices have been formally resolved in §20 (Resolved Production Decisions). Each decision is classified as mandatory platform policy, tenant-configurable, feature-flagged, pilot-only, or dependent on external professional sign-off. Inline references throughout this document use `RESOLVED §20.Dxx` to point to the formal decision. Items requiring external professional sign-off (tax adviser, legal counsel, labour counsel, payment-card Qualified Security Assessor, statutory authority) are marked `EXTERNAL SIGN-OFF REQUIRED` and linked to Appendix B.
 10. Every required product module has an authoritative page map, workflow, permission boundary, API surface, data authority, test suite, and acceptance criteria.
 11. Feature flags may disable an approved module at deployment time, but they may not hide an incomplete implementation. Disabled modules must return an explicit not-enabled response and remain absent from navigation.
 12. Production environments contain no demo passwords, default shared accounts, test webhooks, or publicly downloadable database backups.
-13. Generic JSON configuration is allowed only where a registered schema validates the value. Money, stock, tax, accounting, and lifecycle state may never be stored only in untyped JSON. Columns holding JSONB configuration (`withholding_rules.conditions`, `feature_flags.rollout_rules`, `communication_campaigns.audience_definition`, `cash_drawer_counts.denomination_detail`, `communication_templates.allowed_tokens`, `campaign_recipients` audience fields, `outbox_events.payload`, `service_events.event_data`, `risk_assessments.sanitized_response`, `courier_shipments.sanitized_provider_data`, `payroll_items.calculation_detail`, `payroll_item_components.calculation_basis`, `reconciliation_runs.summary`, `reconciliation_findings.details`, `import_job_errors.raw_row`, `offline_commands.payload`, `offline_sync_batches.result`, `stock_movements.metadata`, `security_events.metadata`, `audit_logs.before_value`/`after_value`) must each have a versioned JSON schema registered in `configuration_definitions` or in a migration-seeded schema registry; the `validate_typed_configuration` or a column-specific validation trigger rejects non-conforming values before COMMIT.
+13. Generic JSON configuration is allowed only where a registered schema validates the value. Money, stock, tax, accounting, and lifecycle state may never be stored only in untyped JSON. Columns holding JSON configuration (MariaDB JSON; historical `JSONB` wording) (`withholding_rules.conditions`, `feature_flags.rollout_rules`, `communication_campaigns.audience_definition`, `cash_drawer_counts.denomination_detail`, `communication_templates.allowed_tokens`, `campaign_recipients` audience fields, `outbox_events.payload`, `service_events.event_data`, `risk_assessments.sanitized_response`, `courier_shipments.sanitized_provider_data`, `payroll_items.calculation_detail`, `payroll_item_components.calculation_basis`, `reconciliation_runs.summary`, `reconciliation_findings.details`, `import_job_errors.raw_row`, `offline_commands.payload`, `offline_sync_batches.result`, `stock_movements.metadata`, `security_events.metadata`, `audit_logs.before_value`/`after_value`) must each have a versioned JSON schema registered in `configuration_definitions` or in a migration-seeded schema registry; the `validate_typed_configuration` or a column-specific validation trigger rejects non-conforming values before COMMIT.
 14. Accessibility, localization, responsive behavior, export behavior, and printer output are product requirements, not optional UI polish.
 15. Where Bangladesh legal or tax treatment can change, the system provides configurable effective-dated rules and requires professional approval rather than hard-coding rates or legal conclusions.
 
@@ -59,30 +59,32 @@ flowchart TB
   WORKER --> EXT[SMS / Payments / Courier / Webhooks / Tax Export]
 ```
 
-## 1.3 Database Connection and RLS Flow
+## 1.3 Database Connection and MariaDB Tenant-Isolation Flow
+
+MariaDB 11.8.x provides no native PostgreSQL RLS. Tenant isolation is layered (see docs/adr/0007-mariadb-production-database.md and §8.2): trusted server-side scope resolution + mandatory company_id/branch_id predicates + centralized tenant-scoped data access + RBAC/branch checks + composite tenant FKs + CHECK/UNIQUE/trigger enforcement + executable cross-tenant tests. Application tenant context alone is not a security boundary.
 
 ```mermaid
 sequenceDiagram
   participant C as Client
   participant A as API
   participant S as Scope Resolver
-  participant T as Prisma Transaction Wrapper
-  participant D as PostgreSQL + RLS
+  participant T as Tenant-Scoped Transaction Wrapper
+  participant D as MariaDB (InnoDB)
   C->>A: Authenticated request
   A->>S: Resolve company, branches, permissions
   S-->>A: Signed request context
   A->>T: Execute domain command
   T->>D: BEGIN
-  T->>D: set_config app.company_id/user_id/branch_ids
-  T->>D: Parameterized statements
-  D->>D: RLS USING and WITH CHECK
+  T->>D: Tenant-scoped Prisma/data-access wrapper applies company/branch scope
+  T->>D: Parameterized tenant-scoped statements
+  D->>D: FK/CHECK/UNIQUE/trigger validation
   D-->>T: Result
   T->>D: COMMIT or ROLLBACK
   T-->>A: Committed domain result
   A-->>C: Response + correlation_id
 ```
 
-No module may import an unrestricted Prisma client. All database work uses the request-scoped transaction wrapper. The application database role is `NOSUPERUSER`, `NOBYPASSRLS`, and is not the owner of protected tables.
+No module may import an unrestricted client for tenant-owned business data. All tenant-owned database work uses the centralized tenant-scoped data-access helpers and request-scoped transaction wrapper. The application database account has least privilege only (no administrative, schema-modification, user-management, or arbitrary FILE privileges) and is not the owner of protected tables; migration credentials are never used by runtime.
 
 # 2. Non-Negotiable Design Principles
 
@@ -91,7 +93,7 @@ No module may import an unrestricted Prisma client. All database work uses the r
 | Stock | `stock_movements` | `warehouse_stocks` |
 | Reservations | `stock_reservations` | `warehouse_stocks.qty_reserved` |
 | IMEI/serial lifecycle | `serial_events` | `product_serials` |
-| Financial position | `posted journal_lines` | `reporting/materialized views` |
+| Financial position | `posted journal_lines` | `reporting views/projections (MariaDB views, summary/projection tables, scheduled refresh tables, or application-maintained projections; historical "materialized views" wording)` |
 | Invoice due | `invoices, returns, payment_allocations` | `sale_balance_v / purchase_balance_v` |
 | Advances | `customer/supplier advance ledgers` | `advance balance views` |
 | Cash drawer | `cashier shifts, counts, eligible payments` | `cashier_shift_expected_v` |
@@ -175,14 +177,17 @@ The following are not silently implied by this contract: restaurant table orderi
 
 # 4. Data Conventions
 
-- UUID primary keys use `gen_random_uuid()`; public document numbers are separate.
-- All foreign keys are indexed and default to `ON DELETE RESTRICT` unless explicitly stated.
+- UUID primary keys use application-generated UUIDs (CHAR(36)) or the approved MariaDB-compatible UUID strategy; public document numbers are separate. Historical `gen_random_uuid()` wording is PostgreSQL syntax reference only.
+- All foreign keys are indexed and default to `ON DELETE RESTRICT` unless explicitly stated. Relationships between tenant-owned entities must prevent cross-company links via composite tenant foreign keys, conceptually `(company_id, fk) REFERENCES parent(company_id, id)` where structurally appropriate.
 - Tenant uniqueness includes `company_id`. Composite tenant-consistency checks prevent cross-company foreign-key relationships.
-- Money: `DECIMAL(18,2)`; unit cost/rate: `DECIMAL(18,6)`; quantity: `DECIMAL(18,4)`; percentages: `DECIMAL(9,6)`.
+- Money: `DECIMAL(18,2)`; unit cost/rate: `DECIMAL(18,6)`; quantity: `DECIMAL(18,4)`; percentages: `DECIMAL(9,6)`. DECIMAL precision requirements are unchanged.
 - Soft delete applies only to master data. Financial and stock documents never use hard delete or soft delete.
-- Stable lifecycle values may use PostgreSQL enums or CHECK constraints; changing reference data uses lookup tables.
+- Stable lifecycle values use MariaDB-compatible CHECK constraints, reference tables, or application enums per the implemented schema; changing reference data uses lookup tables. Historical `PostgreSQL enums` wording is mechanism reference only.
+- MariaDB interpretation rule: every `TIMESTAMPTZ` in §5 means UTC `DATETIME(3)`/`TIMESTAMP` as defined by the MariaDB schema; every `UUID ... gen_random_uuid()` means application-generated UUID; every `JSONB` means MariaDB `JSON` with registered-schema validation; `INET` means validated `VARCHAR`; `BYTEA` means `BLOB`/`VARBINARY`; `GIN`/`GiST`/partial-unique/`EXCLUDE`/expression-index requirements in §5 are governed by §8.2/§16 MariaDB-compatible enforcement (composite UNIQUE, generated columns, FULLTEXT where needed, transactional overlap check + trigger where no direct equivalent). Invariants are preserved; only syntax is mapped.
 
 # 5. Production Database Schema
+
+> MariaDB authority: `prisma/mariadb/schema.prisma` and ordered `prisma/mariadb/migrations/` are production authority. Column types below retain v4.1 PostgreSQL spelling for traceability; every type is read through the §4 MariaDB interpretation rule and ADR 0007. Product requirements (tables, columns, constraints, invariants, DECIMAL precision, business rules) are unchanged. `EXCLUDE` overlap invariants (e.g., document-number leases, fiscal-period overlap) are enforced by MariaDB-compatible transactional locking + overlap query + unique/trigger protection preserving the no-overlap outcome.
 
 ## 5.1 Organization and Currency
 
@@ -3502,7 +3507,7 @@ flowchart TD
   D -->|Succeeded, same hash| E[Return stored response]
   D -->|Same key, different hash| F[409 conflict]
   D -->|No| G[BEGIN transaction]
-  G --> H[Set LOCAL RLS context]
+  G --> H[Apply resolved tenant/branch scope via scoped data access]
   H --> I[Create idempotency processing row]
   I --> J[Lock sequence, balances, reservations, and serials]
   J --> K[Revalidate business rules]
@@ -3514,7 +3519,7 @@ flowchart TD
   K -->|Invalid| Q[ROLLBACK and domain error]
 ```
 
-Inventory, serial, gift-card, coupon-limit, advance-application, and document-sequence commands use `SERIALIZABLE` or deterministic row locks under `REPEATABLE READ`. Serialization/deadlock failures are retried with bounded jitter. Master-data writes may use `READ COMMITTED`.
+Inventory, serial, gift-card, coupon-limit, advance-application, and document-sequence commands use InnoDB row-level locking with `SELECT ... FOR UPDATE`, deterministic lock ordering, unique-constraint race prevention, and atomic UPDATE patterns; `SERIALIZABLE`/`REPEATABLE READ` naming in prior revisions is replaced by outcome-preserving MariaDB/InnoDB controls unless a workflow explicitly requires stronger isolation. Deadlock/serialization failures are retried with bounded jitter and idempotent retries. Master-data writes may use default committed-read semantics.
 
 ## 7.2 Online POS Sale
 
@@ -3911,28 +3916,33 @@ A scheduled BullMQ worker (`expire-held-sale-reservations`) runs every minute an
 - Transfer visibility is granted when the user may view source or destination; dispatch and receipt require separate branch permissions.
 - Financial accounts may be branch-specific or company-wide. Journal branch attribution is per line, enabling cross-branch payments.
 
-## 8.2 RLS Context and Policy
+## 8.2 MariaDB Tenant-Isolation Context and Policy
 
-Every read and write executes in a transaction that first calls:
+MariaDB has no native RLS. The PostgreSQL `set_config`/`current_setting` policy text below is retained as historical intent reference only; the authoritative MariaDB mechanism is the layered contract in docs/adr/0007-mariadb-production-database.md.
 
-```sql
-SELECT set_config('app.company_id', :company_id::text, true);
-SELECT set_config('app.user_id', :user_id::text, true);
-SELECT set_config('app.branch_ids', :branch_ids_csv, true);
-SELECT set_config('app.is_global', :is_global::text, true);
-```
+Historical PostgreSQL intent (superseded mechanism, preserved outcome):
 
 ```sql
-CREATE POLICY sales_scope ON sales
-USING (company_id = current_setting('app.company_id')::uuid
-  AND (current_setting('app.is_global')::boolean
-       OR branch_id = ANY(string_to_array(current_setting('app.branch_ids'), ',')::uuid[])))
-WITH CHECK (company_id = current_setting('app.company_id')::uuid
-  AND (current_setting('app.is_global')::boolean
-       OR branch_id = ANY(string_to_array(current_setting('app.branch_ids'), ',')::uuid[])));
+-- HISTORICAL (PostgreSQL-only, NOT executed on MariaDB):
+-- SELECT set_config('app.company_id', :company_id::text, true);
+-- CREATE POLICY sales_scope ON sales
+-- USING (company_id = current_setting('app.company_id')::uuid ...);
 ```
 
-RLS is enabled on all tenant/sensitive tables, including warehouses, users, devices, stock projections/ledgers, serials, parties, commerce documents, transfers, payments, advances, shifts, expenses, journals, audit, approvals, offline, reconciliation, outbox, and integrations. The migration role may bypass RLS; the application role may not.
+Authoritative MariaDB tenant-isolation layers (all mandatory):
+
+1. COMPANY ROOT: `companies.id` remains the tenant boundary.
+2. TENANT COLUMNS: every tenant-owned row contains `company_id` (junction exemptions per §0 rule 8 only).
+3. BRANCH SCOPE: branch-owned operations contain or resolve a valid `branch_id` (e.g., sales/purchases/returns/expenses/shifts/payments/journal lines carry explicit branch context; stock resolves warehouse → branch).
+4. COMPOSITE TENANT FKs: relationships between tenant-owned entities prevent cross-company links, conceptually `(company_id, fk) REFERENCES parent(company_id, id)` where structurally appropriate.
+5. TENANT-AWARE UNIQUENESS: business uniqueness includes `company_id` where tenant-local (e.g., serial per company).
+6. CENTRAL DATA ACCESS: application code uses centralized tenant-scoped helpers; no route/domain command intentionally executes tenant-owned business queries without resolved tenant context except explicitly audited platform-global admin operations.
+7. REQUEST CONTEXT: resolved company, user, branch scope, permissions, and global-admin status are established before tenant-owned data access; company context derives from session, never from an untrusted request field.
+8. RBAC: tenant filtering never replaces permission checking; both must pass; branch permissions (e.g., transfer dispatch vs receipt) are enforced separately.
+9. DB CONSTRAINTS: FK/UNIQUE/CHECK/trigger enforcement provides defense in depth (including tenant-consistency and HTTPS-only webhook URL checks).
+10. TESTING: executable cross-tenant read/write penetration tests prove tenant A cannot read/update/delete/reference tenant B, branch-limited users are denied foreign branches, and global/platform behavior is explicit and audited.
+
+Tenant/sensitive tables covered include warehouses, users, devices, stock projections/ledgers, serials, parties, commerce documents, transfers, payments, advances, shifts, expenses, journals, audit, approvals, offline, reconciliation, outbox, and integrations. Migration credentials are never used by runtime; the application account has least privilege only.
 
 ## 8.3 Permission Taxonomy
 
@@ -4497,8 +4507,8 @@ Critical/high findings block fiscal-period locking until resolved or formally wa
 - MFA/webhook/provider secrets use versioned envelope encryption and a tested rotation runbook.
 - Files use extension and magic-byte allowlists, malware scan where available, random object keys, short signed URLs, and SHA-256 verification.
 - CSV/Excel exports escape formula-leading cells to prevent spreadsheet injection.
-- Separate application, migration, reporting, backup, and monitoring DB roles. Application role cannot bypass RLS, disable triggers, or alter schema.
-- Containers run non-root; private network access protects PostgreSQL/Redis; CI performs SAST, dependency, secret, and image scanning.
+- Separate application, migration, reporting, backup, and monitoring DB accounts with least privilege. Application account cannot bypass tenant isolation, disable triggers, or alter schema; migration credentials are never used by runtime; backup credentials have only required backup privileges.
+- Containers run non-root; private network access protects MariaDB/Redis; CI performs SAST, dependency, secret, and image scanning.
 
 ## 12.3 Maker-Checker
 
@@ -4567,17 +4577,17 @@ Responses never expose SQL, stack traces, secrets, internal topology, or another
 
 | Resource | Control |
 |---|---|
-| Document number | Sequence row FOR UPDATE |
+| Document number | Sequence/lease row `SELECT ... FOR UPDATE` (InnoDB) |
 | Stock | Lock warehouse/product rows in deterministic product-ID order |
-| IMEI | FOR UPDATE plus version/status |
+| IMEI | `SELECT ... FOR UPDATE` plus version/status |
 | Gift card/coupon | Row lock plus ledger balance/use count |
 | Payment allocation | Lock payment and invoices; deferred sums |
 | Advance | Lock advance ledger balance and target invoice |
-| Cashier shift | Partial unique open-shift index plus row lock |
+| Cashier shift | Unique open-shift enforcement (MariaDB-compatible unique key/generated-column/trigger where partial-index syntax differs) plus row lock |
 | Transfer | Lock transfer and stock rows in stable order |
-| Fiscal close | Company/period advisory lock plus status check |
+| Fiscal close | Company/period lock (transactional status check + row lock; historical "advisory lock" wording) plus status check |
 
-Deadlock/serialization errors are retried a bounded number of times. Final failure returns a conflict, not a partial result.
+Deadlock/serialization errors are retried a bounded number of times with idempotent retries. Final failure returns a conflict, not a partial result.
 
 ## 13.3 Logging, Tracing, and Metrics
 
@@ -4589,21 +4599,21 @@ Deadlock/serialization errors are retried a bounded number of times. Final failu
 
 # 14. Backup, Recovery, and Business Continuity
 
-- Nightly logical backup plus continuous WAL archiving for point-in-time recovery.
+- Nightly logical backup (`mariadb-dump`) plus binary-log-based point-in-time strategy where evidenced (historical `WAL archiving` wording is PostgreSQL mechanism reference).
 - Encrypted storage snapshots and object-storage versioning.
-- Immutable/locked backup retention where supported and a separate backup credential.
+- Immutable/locked backup retention where supported and a separate least-privilege backup credential.
 - Every backup records checksum, database/schema version, row-count summary, and encryption-key version.
 - Automated checksum verification after every backup; monthly full restore to isolation; quarterly documented DR exercise.
 - Post-restore reconciliation covers journal balance, row counts, AR/AP, stock quantity/value, serial count, outbox, idempotency, and object references.
-- A backup is not considered valid until a restore test succeeds.
+- A backup is not considered valid until a restore test succeeds. No binlog/PITR capability is claimed without evidence; any unimplemented portion remains an explicit acceptance gap.
 
-`RESOLVED §20.D10`: Production recovery defaults are RPO ≤ 15 minutes (continuous WAL archiving) and RTO ≤ 4 hours for core POS/accounting. Encrypted backups, immutable copies, monthly restore tests, and named DR owners are mandatory. See §20.D10 for the full backup/DR specification.
+`RESOLVED §20.D10`: Production recovery defaults are RPO ≤ 15 minutes and RTO ≤ 4 hours for core POS/accounting. Encrypted backups, immutable copies, monthly restore tests, and named DR owners are mandatory. See §20.D10 for the full backup/DR specification.
 
 ## 14.1 Recovery Runbook
 
 1. Declare incident and freeze writes if required.
 2. Select safe recovery point.
-3. Restore base backup and replay WAL.
+3. Restore base backup and replay binary logs / approved PITR steps where implemented.
 4. Verify object storage and schema version.
 5. Run full post-restore reconciliation.
 6. Review provider and offline-device transactions around the recovery window.
@@ -4619,9 +4629,9 @@ After recovery the server increments a recovery epoch. Devices on an older epoch
 |---|---|
 | Web/PWA | Next.js App Router, React, TypeScript, CSS framework (Tailwind CSS recommended), accessible component library |
 | Domain/API | TypeScript modular monolith; shared services used by API and workers |
-| ORM/SQL | Prisma request-scoped transaction wrapper; TypedSQL/parameterized SQL for functions/reports |
-| Database | PostgreSQL 16+ in local, CI, staging, production |
-| Pooling | PgBouncer transaction pooling or managed equivalent; set_config local to every transaction |
+| ORM/SQL | Prisma request-scoped transaction wrapper (MariaDB provider in production); TypedSQL/parameterized SQL for triggers/reports |
+| Database | MariaDB 11.8+ in local, CI, staging, production (SQLite sandbox for unit scope; legacy PostgreSQL files are historical reference only) |
+| Pooling | Managed connection pooling or equivalent; tenant scope applied in every transaction via scoped data-access wrapper |
 | Cache/Queue | Redis + BullMQ |
 | Storage | Encrypted S3-compatible object storage |
 | Auth | Reviewed JOSE library, rotating refresh tokens, TOTP/WebAuthn |
@@ -4634,8 +4644,8 @@ Package versions are pinned in lockfiles and updated through tested dependency c
 
 1. Format, lint, TypeScript.
 2. Unit/domain invariant tests.
-3. Migration validation against production-like PostgreSQL.
-4. Integration tests with RLS and real constraints.
+3. Migration validation against production-like MariaDB 11.8 (clean migrate from zero on disposable MariaDB; repeat deploy safe; status clean before release; no `prisma db push` in production).
+4. Integration tests with MariaDB tenant-isolation and real constraints.
 5. Concurrency/idempotency tests for stock, serials, sequences, gift cards, and allocations.
 6. SAST, dependency, secret, and image scans.
 7. Build immutable artifact.
@@ -4686,11 +4696,11 @@ reverse_journal_entry
 post_account_adjustment
 ```
 
-Any SECURITY DEFINER function is owned by a non-login role, sets a safe search_path, validates company context, and grants EXECUTE only to the application role.
+Privileged database logic (historical `SECURITY DEFINER` wording) follows least-privilege MariaDB discipline: triggers and transactional domain commands validate company context and run under restricted accounts with only required grants. There is no `search_path` concept on MariaDB.
 
-**Migration rules:** forward-only corrective migrations; expand/migrate/contract for destructive change; concurrent indexes for large tables; backfill before NOT NULL; no direct production SQL except audited incident runbook. Seed chart of accounts, permissions, base currency, company, periods, and professionally approved tax configuration.
+**Migration rules:** Prisma MariaDB schema/provider is production authority; ordered forward-only corrective migrations; clean migration from zero on disposable MariaDB with idempotent repeat deploy; expand/migrate/contract for destructive change; online-compatible index strategy for large tables; backfill before NOT NULL; no direct production SQL except audited incident runbook; destructive changes require explicit migration review with rollback/forward-fix documented; production drift detection. Seed chart of accounts, permissions, base currency, company, periods, and professionally approved tax configuration.
 
-`RESOLVED §20.D11`: Partitioning and archival policies are defined for stock_movements, journal_entries/lines, payments, audit_logs, outbox_events, and report_export_jobs. Partitioning is enabled at M4 for the highest-volume tables; archival and retention schedules are defined in §20.D11. Partition design preserves RLS and uniqueness. See §20.D11 for thresholds, retention periods, and archival procedures.
+`RESOLVED §20.D11`: Partitioning and archival policies are defined for stock_movements, journal_entries/lines, payments, audit_logs, outbox_events, and report_export_jobs. Partitioning is evidence-based per D11 thresholds (enabled at M4 only where measured volume justifies MariaDB-native partitioning); archival and retention schedules are defined in §20.D11. Partition design preserves tenant isolation and uniqueness (including `company_id` in partition key design where applicable). If partitioning is not yet implemented, the gap is explicit with measurable activation thresholds; retention, immutability, and reporting correctness are never weakened. See §20.D11 for thresholds, retention periods, and archival procedures.
 
 # 17. Testing and Go-Live Acceptance
 
@@ -4721,7 +4731,7 @@ Any SECURITY DEFINER function is owned by a non-login role, sets a safe search_p
 - Recovery epoch prevents unsafe replay.
 
 **Security/isolation**
-- Cross-company access fails at RLS even with application filter removed.
+- Cross-company access fails at the database + scoped-access layer even with application filter removed (MariaDB tenant-isolation penetration: read/update/delete/reference denied).
 - Single-branch user cannot access another branch.
 - Transfer source/destination permissions work.
 - Posted ledgers cannot mutate.
@@ -4737,7 +4747,7 @@ Any SECURITY DEFINER function is owned by a non-login role, sets a safe search_p
 ## 17.2 Go-Live Exit Criteria
 
 - No open critical/high reconciliation findings.
-- RLS and authorization penetration tests pass.
+- MariaDB tenant-isolation and authorization penetration tests pass.
 - Concurrency, idempotency, and offline tests pass.
 - At least one full backup restore and recovery-epoch test passes.
 - Accounting owner approves mappings, journals, trial balance, P&L, balance sheet, and due reports.
@@ -4792,7 +4802,7 @@ Any SECURITY DEFINER function is owned by a non-login role, sets a safe search_p
 
 A module is accepted only when all applicable conditions pass:
 
-1. Required schema migrations, constraints, RLS, indexes, and rollback/corrective migration plan exist.
+1. Required schema migrations, constraints, MariaDB tenant-isolation enforcement, indexes, and rollback/corrective migration plan exist.
 2. Domain state machine and transaction boundary tests pass.
 3. API authorization, validation, idempotency, error envelope, and audit tests pass.
 4. Required pages, responsive layouts, empty/loading/error states, keyboard use, and accessibility pass.
@@ -4822,17 +4832,17 @@ Each milestone is a capability gate with explicit scope, dependencies, database 
 
 | Dimension | Specification |
 |---|---|
-| Scope | Repository, CI/CD, environments, PostgreSQL with RLS wrapper, auth/MFA, audit logging, observability, migration discipline, backup infrastructure |
+| Scope | Repository, CI/CD, environments, MariaDB 11.8 with layered tenant-isolation wrapper, auth/MFA, audit logging, observability, migration discipline, backup infrastructure |
 | Dependencies | None (first milestone) |
 | Required database changes | `companies`, `branches`, `warehouses`, `currencies`, `exchange_rates`, `company_domains`, `users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `user_branch_access`, `devices`, `refresh_tokens`, `security_events`, `audit_logs`, `configuration_definitions`, `configuration_values`, `feature_flags`, `recovery_epochs` |
 | APIs | `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/mfa/verify`, `/auth/password/reset`; `/platform/companies` (D01); `/platform/backups/trigger`, `/platform/backups/restore` (D10) |
 | UI work | Login, forgot-password, reset-password, MFA setup; platform operations company-onboarding screen |
-| Security controls | RLS on all tenant tables; Argon2id passwords; TOTP MFA; CSRF; CSP; HSTS; TLS; parameterized SQL only; separate DB roles (application, migration, backup, reporting) |
+| Security controls | Layered tenant isolation on all tenant tables (company predicates + composite FKs + scoped access + RBAC/branch checks + DB constraints/triggers); Argon2id passwords; TOTP MFA; CSRF; CSP; HSTS; TLS; parameterized SQL only; separate least-privilege DB accounts (application, migration, backup, reporting) |
 | Integrations | Error tracking (Sentry/equivalent); structured logging; OpenTelemetry traces; uptime monitoring |
-| Testing | RLS isolation test; MFA test; auth rate-limit test; backup restore test (first monthly test) |
+| Testing | Tenant-isolation penetration test; MFA test; auth rate-limit test; backup restore test (first monthly test) |
 | Migration activities | Seed base currency (BDT), first company, platform operations role, permission catalogue |
-| Operational readiness | Backup schedule active; WAL archiving active; monitoring alerts configured; DR runbook drafted |
-| Exit criteria | RLS penetration test passes; first backup restore test passes; auth/MFA works end-to-end; CI/CD pipeline green; observability dashboards live |
+| Operational readiness | Backup schedule active; binary-log shipping active (where PITR evidenced); monitoring alerts configured; DR runbook drafted |
+| Exit criteria | Tenant-isolation penetration test passes; first backup restore test passes; auth/MFA works end-to-end; CI/CD pipeline green; observability dashboards live |
 | Responsible owner | Platform engineering lead |
 | Decisions delivered | D01 (multi-tenant/onboarding), D10 (backup/DR), D19 (localization infrastructure) |
 
@@ -4971,7 +4981,7 @@ Each milestone is a capability gate with explicit scope, dependencies, database 
 | Required database changes | None (final hardening) |
 | APIs | All APIs penetration-tested |
 | UI work | UAT bug fixes; accessibility audit fixes; performance optimizations |
-| Security controls | RLS penetration test; SAST; dependency scan; secret scan; image scan; rate-limit verification; backup restore; recovery epoch; incident exercise |
+| Security controls | Tenant-isolation penetration test; SAST; dependency scan; secret scan; image scan; rate-limit verification; backup restore; recovery epoch; incident exercise |
 | Integrations | Production provider credentials configured; provider reconciliation schedules confirmed |
 | Testing | Load test (peak POS, product search, dashboard, sync storm, report export, webhook retry); query plan review; axe accessibility scan; keyboard-only POS; responsive tests; locale-switch tests; full UAT scenarios (§17.5) |
 | Migration activities | Full migration rehearsal; delta import; stock/serial/cash count; opening balance sign-off; legacy freeze |
@@ -4986,7 +4996,7 @@ Milestones are capability gates, not permission to ship partially reconciled fin
 | Environment | Data and controls |
 |---|---|
 | Local | Synthetic seed only; PostgreSQL parity; provider simulators |
-| CI | Ephemeral real PostgreSQL/Redis; migrations, RLS, concurrency and contract tests |
+| CI | Ephemeral real MariaDB/Redis; migrations, tenant-isolation, concurrency and contract tests |
 | Staging | Production-like topology; anonymized or synthetic data; provider sandbox; full monitoring |
 | Production | Least-privilege roles, managed secrets, immutable images, protected migrations, backups/PITR, WAF |
 | DR test | Isolated restored production backup with outbound providers disabled |
@@ -5025,7 +5035,7 @@ The ERP may enter production only when:
 - End-to-end UAT scenarios in §17.5 pass using production-like data and hardware.
 - Accounting, stock, serial, cashier, AR/AP, tax, and courier control totals reconcile with zero unexplained variance.
 - Accessibility, localization, thermal/A4 printing, browser support, mobile POS, and export acceptance pass.
-- RLS penetration, secret scan, dependency/SAST/image scan, rate-limit, backup restore, recovery epoch, and incident exercise pass.
+- Tenant-isolation penetration, secret scan, dependency/SAST/image scan, rate-limit, backup restore, recovery epoch, and incident exercise pass.
 - Production owner, finance owner, inventory owner, security owner, operations owner, and tax adviser sign the release record.
 
 # 18. Production Decision Summary (All 20 Resolved)
@@ -5072,8 +5082,8 @@ All 20 production decisions have been formally resolved in §20 (Resolved Produc
 | Single tax rate | Effective tax components, snapshots, withholding, statutory records |
 | Transfer contradiction | Reserve → dispatch/in-transit → receive or return-to-source |
 | Backdated COGS distortion | Stock backdating blocked by default; revaluation for exceptions |
-| Incomplete RLS | Tenant/branch RLS across all sensitive tables |
-| Prisma/RLS gap | Mandatory transaction wrapper with local context |
+| Incomplete tenant isolation | Tenant/branch isolation across all sensitive tables (MariaDB layered controls) |
+| Prisma/tenant-scope gap | Mandatory tenant-scoped transaction wrapper with resolved context |
 | Stored overdue | Derived from dates and installment allocations |
 | Allocation duplicate | Event-line identity plus deferred sums |
 | Untrusted device | Registered keys, revocation, sequence and leases |
@@ -5162,7 +5172,7 @@ This section contains the formal, binding specification for all 20 production de
 
 The following controls are mandatory platform policy. No tenant, deployment, feature flag, or configuration may disable, weaken, or bypass them:
 
-1. **Tenant data isolation** — RLS on all tenant/sensitive tables; company context from session, not request; migration role may bypass RLS, application role may not.
+1. **Tenant data isolation** — Layered MariaDB isolation on all tenant/sensitive tables (company predicates + composite FKs + scoped access + RBAC/branch checks + DB constraints/triggers + penetration tests); company context from session, not request; migration credentials never used by runtime; application account least-privilege only.
 2. **Double-entry accounting integrity** — every journal entry has equal total debit and credit; deferred constraint rejects unbalanced entries at COMMIT.
 3. **Immutable posted ledgers** — posted journal_entries, journal_lines, stock_movements, serial_events, payment_allocations, and statutory_documents cannot be updated or deleted; corrections use reversal/return/refund/compensating entries.
 4. **Reversal-based correction** — no posted record is edited; all corrections create equal-and-opposite linked entries.
@@ -5186,7 +5196,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 **Scope and exclusions:**
 - Scope: All companies on the platform, including the first seeded company during platform bootstrap.
-- Exclusions: A single-company private deployment may skip the onboarding workflow by seeding one company through migration; the multi-tenant schema and RLS remain active regardless.
+- Exclusions: A single-company private deployment may skip the onboarding workflow by seeding one company through migration; the multi-tenant schema and layered tenant isolation remain active regardless.
 
 **Configuration rules:**
 - `configuration_definitions.key='platform.public_signup_enabled'` is seeded as `boolean` with `default_value=false`. Only the platform operations role may change this value.
@@ -5240,7 +5250,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 **Acceptance criteria:**
 - A new company can be onboarded in under 5 minutes by platform operations.
 - The admin user can log in and configure the company without platform operations intervention after initial creation.
-- RLS isolation is verified: a user in company A cannot read company B data.
+- Tenant isolation is verified: a user in company A cannot read company B data (executable cross-tenant penetration tests).
 
 **Migration and rollout considerations:** The first company (platform owner's own company) is seeded via migration. Subsequent companies are onboarded via the API.
 
@@ -5907,7 +5917,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 ## 20.D10 — Backup, Recovery, and Business Continuity
 
-**Decision statement:** Production recovery defaults are RPO ≤ 15 minutes (continuous WAL archiving) and RTO ≤ 4 hours for core POS/accounting. Encrypted backups, immutable copies, monthly restore tests, quarterly DR exercises, and named DR owners are mandatory.
+**Decision statement:** Production recovery defaults are RPO ≤ 15 minutes (continuous point-in-time protection) and RTO ≤ 4 hours for core POS/accounting. Encrypted backups, immutable copies, monthly restore tests, quarterly DR exercises, and named DR owners are mandatory.
 
 **Classification:** Mandatory platform policy.
 
@@ -5916,8 +5926,8 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 - Exclusions: Development and CI environments use simpler backup strategies (daily snapshot, no PITR).
 
 **Configuration rules:**
-- RPO ≤ 15 minutes: continuous WAL archiving to encrypted S3-compatible storage with at-least-every-60-seconds WAL segment shipping.
-- RTO ≤ 4 hours: base backup + WAL replay + post-restore reconciliation ≤ 4 hours for core POS/accounting.
+- RPO ≤ 15 minutes: continuous binary-log shipping to encrypted S3-compatible storage with at-least-every-60-seconds binary-log segment shipping.
+- RTO ≤ 4 hours: base backup + binary-log replay + post-restore reconciliation ≤ 4 hours for core POS/accounting.
 - Backup retention: daily backups retained 30 days; weekly backups retained 12 weeks; monthly backups retained 12 months; yearly backups retained 7 years (or per tax retention, whichever is longer).
 - Immutable copies: backup objects are stored with object-lock (S3 Object Lock in Compliance mode) for the retention period; no user, including platform operations, can delete or overwrite during lock.
 - Encryption: backups are encrypted at rest with AES-256; encryption keys are managed by a separate KMS with rotation every 90 days.
@@ -5926,14 +5936,14 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 - Recovery epoch: after any restore, the server increments a `recovery_epoch` value; offline devices on older epochs must re-bootstrap.
 
 **Database implications:**
-- `pgBackRest` or managed equivalent (RDS Automated Backups with PITR) for base backup + WAL archiving.
+- MariaDB-native backup tooling or managed equivalent (base backup + binary-log/PITR strategy where evidenced) for base backup + point-in-time recovery (historical `pgBackRest`/WAL wording superseded).
 - Object storage versioning on all S3 buckets.
 - A `recovery_epochs` table: `(epoch_number, created_at, reason, initiated_by)` tracking each recovery event.
 - `devices.last_recovery_epoch` is compared to the current epoch on bootstrap/sync.
 
 **Workflow steps:**
-1. **Nightly logical backup:** `pg_dump` with `--format=custom` to encrypted object storage; checksum recorded.
-2. **Continuous WAL archiving:** WAL segments shipped every ≤ 60 seconds to encrypted object storage.
+1. **Nightly logical backup:** `mariadb-dump` logical backup to encrypted object storage; checksum recorded.
+2. **Continuous point-in-time protection:** binary-log shipping (or approved MariaDB PITR strategy where evidenced) every ≤ 60 seconds to encrypted object storage.
 3. **Automated checksum verification:** after every backup, the system verifies the checksum against the recorded value.
 4. **Monthly full restore test:** restore the latest base backup + WAL to an isolated DR test environment; run full post-restore reconciliation; record pass/fail.
 5. **Quarterly DR exercise:** simulate a production failure; declare incident; restore to DR test; verify RTO; document findings; update runbook.
@@ -5963,7 +5973,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 **Failure and exception handling:**
 - Backup checksum mismatch: alert platform operations; retry backup; investigate.
 - Restore test failure: block production deploy until resolved; root-cause and fix.
-- WAL archiving gap > 60 seconds: alert; investigate and resume.
+- Binary-log/PITR shipping gap > 60 seconds: alert; investigate and resume.
 - Device epoch mismatch: device uploads to quarantine; re-bootstrap required.
 
 **Reporting requirements:**
@@ -6022,11 +6032,11 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
   - `reconciliation_findings`: 7 years.
 - Archival: data past the hot-retention threshold (e.g., 2 years for stock_movements) is moved to an archival table with the same schema but slower storage; queries spanning hot + archival use UNION ALL views.
 - Deletion: data past the full retention period is deleted, unless a legal hold is active (§20.D09).
-- Partition design preserves RLS and uniqueness constraints by including `company_id` in the partition key or using sub-partitioning.
+- Partition design preserves tenant isolation and uniqueness constraints by including `company_id` in the partition key design where applicable.
 
 **Database implications:**
-- Partitioned tables use PostgreSQL declarative partitioning (RANGE by date).
-- A `partition_management` function creates new partitions monthly (1 month ahead) and detaches old partitions for archival/deletion.
+- Partitioned tables use MariaDB-native partitioning (RANGE by date) only where measured volume justifies it per D11 thresholds; otherwise the requirement is an explicit deferred-scaling policy with activation thresholds.
+- A scheduled partition-maintenance routine creates new partitions monthly (1 month ahead) and detaches old partitions for archival/deletion where partitioning is active.
 - Archival tables: `stock_movements_archive`, `journal_entries_archive`, etc., with the same columns and constraints.
 - A `retention_jobs` table: `(id, company_id, table_name, retention_days, last_run_at, last_run_status, rows_archived, rows_deleted)`.
 
@@ -6065,7 +6075,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 - Archival moves data without loss.
 - Deletion respects legal holds.
 - Cross-partition queries return correct results.
-- RLS works across partitions.
+- Tenant isolation holds across partitions where partitioning is active.
 
 **Acceptance criteria:**
 - All high-volume tables are partitioned before reaching 10M rows.
@@ -6881,7 +6891,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 | Milestone | Exit Gate Criteria | Blocking? |
 |---|---|---|
-| M0 Architecture foundation | RLS wrapper, auth/MFA, audit, observability, migration discipline, backup infrastructure deployed; first restore test passes | Yes |
+| M0 Architecture foundation | MariaDB tenant-isolation wrapper, auth/MFA, audit, observability, migration discipline, backup infrastructure deployed; first restore test passes | Yes |
 | M1 Organization and catalogue | Company/branch/warehouse CRUD, products, media, units, barcode/QR, prices/tax, users/RBAC, bn-BD/en-BD localization working | Yes |
 | M2 Inventory and purchasing | Stock ledger, IMEI, purchase/receiving/returns, transfer, count, adjustment, valuation; negative-stock CHECK enforced; foreign-currency purchasing + landed cost | Yes |
 | M3 POS and payments | Online POS, hold/recall, sales, split tender, due/installments, cashier shifts, receipts/invoices; hosted payment gateway integration; thermal/A4 printing | Yes |
@@ -6895,7 +6905,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 - [ ] All M0–M8 milestones passed exit-gate criteria
 - [ ] No open critical/high reconciliation findings
-- [ ] RLS and authorization penetration tests pass
+- [ ] Tenant-isolation and authorization penetration tests pass
 - [ ] Concurrency, idempotency, and offline tests pass
 - [ ] At least one full backup restore and recovery-epoch test passes
 - [ ] DR exercise achieves RTO ≤ 4 hours
@@ -6915,7 +6925,7 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 | Acceptance Criterion | Decision | Test/Validation | Sign-Off Required |
 |---|---|---|---|
-| Multi-tenant isolation | D01 | RLS penetration test | Security owner |
+| Multi-tenant isolation | D01 | Tenant-isolation penetration test | Security owner |
 | Feature flags work | D02 | Flag toggle + API rejection test | Engineering owner |
 | Negative stock enforced | D03 | Concurrent sale + DB CHECK test | Inventory owner |
 | Approval thresholds work | D04 | Threshold boundary test | Operations owner |
@@ -7196,17 +7206,17 @@ No team may replace an authoritative ledger with a cached balance, omit a requir
 ## §21.11 — Backup & DR
 
 ### Decision
-`RESOLVED §21.11`: Nightly pg_dump + continuous WAL archiving per §20.D10. RPO ≤ 15 min (WAL), RTO ≤ 4h. Encrypted, immutable (S3 object-lock), checksum-verified. Post-restore reconciliation (8 checks). A backup is not valid until restore test succeeds.
+`RESOLVED §21.11`: Nightly mariadb-dump + continuous point-in-time protection per §20.D10. RPO ≤ 15 min (binary-log/PITR where evidenced), RTO ≤ 4h. Encrypted, immutable (S3 object-lock), checksum-verified. Post-restore reconciliation (8 checks). A backup is not valid until restore test succeeds.
 
 ### Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/backup/nightly-backup.sh` | pg_dump + SHA-256 + metadata + S3 upload + checksum verify |
+| `scripts/backup/nightly-backup.sh` | mariadb-dump + SHA-256 + metadata + S3 upload + checksum verify |
 | `scripts/backup/restore-from-backup.sh` | Download + verify + restore to isolated DB |
 | `scripts/backup/post-restore-reconciliation.sh` | 8 reconciliation checks after restore |
 | `scripts/backup/first-restore-test.sh` | M0 exit gate: backup → restore → reconcile |
-| `scripts/backup/wal-archive.sh` | Continuous WAL segment archiving to S3 |
+| `scripts/backup/wal-archive.sh` | Continuous binary-log segment archiving to S3 (historical filename; MariaDB mechanism) |
 
 ---
 
@@ -7282,7 +7292,7 @@ No team may replace an authoritative ledger with a cached balance, omit a requir
 
 ## §21.17 — Supplemental SQL Functions
 
-9 additional SECURITY DEFINER functions created in `prisma/functions/supplemental_functions.sql`:
+9 additional privileged database routines (historical `SECURITY DEFINER` wording; MariaDB least-privilege trigger/domain-command discipline) created in `prisma/functions/supplemental_functions.sql`:
 
 1. `post_service_part_consumption` — validates + posts parts consumption from repair warehouse
 2. `post_expense` — links expense to journal entry + marks posted
@@ -7338,7 +7348,9 @@ i18n loader (`src/lib/i18n/index.ts`) with 4-tier fallback: company overrides �
 
 ---
 
-## Updated Project Statistics (§21 complete)
+## Updated Project Statistics (§21 complete — historical v4.1 PostgreSQL snapshot; MariaDB authority per ADR 0007)
+
+> Historical note (v4.2): counts below preserve the 2026-07-15 PostgreSQL verification snapshot. Authoritative production is MariaDB 11.8.x (`prisma/mariadb/schema.prisma` + `prisma/mariadb/migrations/`). `PostgreSQL tables` means relational tables; `RLS-enabled` means tenant-isolated via layered MariaDB controls; `EXCLUDE` means no-overlap invariants preserved via MariaDB-compatible enforcement.
 
 | Metric | Count |
 |--------|-------|
@@ -7367,11 +7379,13 @@ i18n loader (`src/lib/i18n/index.ts`) with 4-tier fallback: company overrides �
 
 ---
 
-## §22 — REDTEAM Final Compliance Audit (v4.1 — Final Pass)
+## §22 — REDTEAM Final Compliance Audit (v4.1 — Final Pass — HISTORICAL PostgreSQL snapshot, preserved)
+
+> Historical audit preserved verbatim for traceability. PostgreSQL/RLS mechanism claims below are v4.1 evidence only and are NOT current deployment authority. Current authority is MariaDB 11.8.x with layered tenant isolation per ADR 0007. Product outcomes (modules, workflows, permissions, reports, reconciliation) remain authoritative; database mechanisms are superseded by §§1.3/4/8.2/14/15/16 and D10/D11 as reconciled in v4.2.
 
 ### Audit Date: 2026-07-15
 ### Auditor: REDTEAM + TRUTHMODE (independent)
-### Method: Evidence-based — every claim verified against actual PostgreSQL schema, code, and test runs
+### Method: Evidence-based — every claim verified against actual PostgreSQL schema, code, and test runs (historical)
 
 ### Critical Bugs Fixed During Audit
 
@@ -7453,4 +7467,4 @@ i18n loader (`src/lib/i18n/index.ts`) with 4-tier fallback: company overrides �
 
 ---
 
-*End of §22 — Final REDTEAM Compliance Audit. All findings verified with evidence. No security control, RLS policy, financial integrity rule, approval workflow, or audit logging has been weakened.*
+*End of §22 — Final REDTEAM Compliance Audit (historical). All findings verified with evidence at v4.1 time. No security control, tenant-isolation policy, financial integrity rule, approval workflow, or audit logging has been weakened by v4.2 reconciliation; only database mechanisms were mapped to MariaDB.*
