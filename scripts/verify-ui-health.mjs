@@ -18,7 +18,8 @@ const target = new URL('mysql://127.0.0.1:43318/readiness_20260912_disposable');
 target.username = 'root';
 Object.assign(env, { NODE_ENV: 'production', DATABASE_URL: target.toString(), JWT_SECRET: randomBytes(32).toString('hex'),
   APP_ENCRYPTION_KEY: randomBytes(32).toString('hex'), NEXT_TELEMETRY_DISABLED: '1', DISABLE_S3_HEALTH: 'true',
-  E2E_BASE_URL: 'http://127.0.0.1:43300', UI_HEALTH_LOCAL_VERIFICATION: '1' });
+  E2E_BASE_URL: `http://127.0.0.1:${process.env.UI_HEALTH_PORT ?? '43300'}`, UI_HEALTH_LOCAL_VERIFICATION: '1' });
+const verificationPort = Number(process.env.UI_HEALTH_PORT ?? '43300');
 console.log('Database environment: LOCAL / DISPOSABLE; Host: 127.0.0.1; Port: 43318; Database name: readiness_20260912_disposable');
 
 function execute(args, cwd) {
@@ -72,9 +73,9 @@ if (mode === 'build') {
   await new Promise((resolvePort, rejectPort) => {
     const probe = createServer();
     probe.once('error', () => rejectPort(new Error('Verification port already in use; refusing to reuse server')));
-    probe.listen(43300, '127.0.0.1', () => probe.close(resolvePort));
+    probe.listen(verificationPort, '127.0.0.1', () => probe.close(resolvePort));
   });
-  const server = spawn(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '43300', '-H', '127.0.0.1'],
+  const server = spawn(process.execPath, [join(root, 'node_modules/next/dist/bin/next'), 'start', '-p', String(verificationPort), '-H', '127.0.0.1'],
     { cwd: saved.snapshot, env, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });
   try {
     let ready = false;

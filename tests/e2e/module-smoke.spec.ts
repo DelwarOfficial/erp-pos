@@ -35,7 +35,7 @@ test.afterAll(async () => { await db.$disconnect(); });
 
 for (const [name, path] of modules) {
   test(`${name} authenticated smoke`, async ({ page }) => {
-    await page.context().addCookies([{ name: 'erp_access', value: token, url: 'http://127.0.0.1:43300', httpOnly: true, sameSite: 'Strict' }]);
+    await page.context().addCookies([{ name: 'erp_access', value: token, url: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:43300', httpOnly: true, sameSite: 'Strict' }]);
     const statuses: number[] = [];
     page.on('response', response => { if (response.url().includes('/api/')) statuses.push(response.status()); });
     const response = await page.goto(path);

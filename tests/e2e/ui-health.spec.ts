@@ -47,7 +47,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await db.$disconnect(); });
 
 async function signIn(page: Page, token = adminToken) {
-  await page.context().addCookies([{ name: 'erp_access', value: token, url: 'http://127.0.0.1:43300', httpOnly: true, sameSite: 'Strict' }]);
+  await page.context().addCookies([{ name: 'erp_access', value: token, url: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:43300', httpOnly: true, sameSite: 'Strict' }]);
 }
 function noEngineering(page: Page) {
   return expect(page.locator('main')).not.toContainText(/Phased Development Plan|Architecture Controls|§18A\.1|§20\.0|M0|M8|SECURITY DEFINER|set_config|Argon2|JWT/);
