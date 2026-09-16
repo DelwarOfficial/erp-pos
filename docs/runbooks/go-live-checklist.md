@@ -27,7 +27,7 @@ Per Appendix E — production go-live checklist.
 - [ ] Negative-stock CHECK enforced — verified
 
 ### Database
-- [ ] PostgreSQL 16+ provisioned
+- [ ] MariaDB 11.8+ provisioned (PostgreSQL 16+ text is historical; see docs/adr/0007)
 - [ ] All migrations run successfully (0001-0010)
 - [ ] RLS enabled + forced on all tenant tables
 - [ ] 4 DB roles created (app/migration/backup/reporting)
@@ -38,7 +38,7 @@ Per Appendix E — production go-live checklist.
 ### Infrastructure
 - [ ] TLS configured on DB connection
 - [ ] Encrypted disk storage
-- [ ] WAL archiving to encrypted S3 with object-lock
+- [ ] Binary-log / point-in-time protection to encrypted S3 with object-lock (WAL wording historical)
 - [ ] Backup credential separate from app role
 - [ ] First backup restore test passed
 - [ ] Recovery epoch table initialized

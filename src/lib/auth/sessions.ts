@@ -49,6 +49,8 @@ export async function setAuthCookies(params: {
   mfaVerified: boolean;
   /** Token already issued atomically by refresh rotation; do not issue a sibling. */
   rotatedRefreshToken?: IssuedRefreshToken;
+  /** Prepare response cookies without mutating request state before a DB commit. */
+  writeCookies?: boolean;
 }): Promise<CookieAuthResult> {
   const refreshToken = params.rotatedRefreshToken ?? await issueRefreshToken({
     companyId: params.companyId, userId: params.userId,
@@ -93,9 +95,11 @@ export async function setAuthCookies(params: {
   ];
 
   // Also set via next/headers for Server Component compatibility
-  const cookieStore = await cookies();
-  for (const def of cookieDefs) {
-    cookieStore.set(def.name, def.value, def.options as never);
+  if (params.writeCookies !== false) {
+    const cookieStore = await cookies();
+    for (const def of cookieDefs) {
+      cookieStore.set(def.name, def.value, def.options as never);
+    }
   }
 
   return { accessToken, refreshToken, accessClaims, cookieDefs };

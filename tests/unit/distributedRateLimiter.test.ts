@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ keys: new Map<string, { count: number; expires: number }>(), fail: false }));
-vi.mock('@/lib/queue', () => ({ getRedisConnection: () => ({
+vi.mock('@/lib/auth/rateLimitRedis', () => ({ createRateLimitRedis: () => ({
+  connect: async () => {}, disconnect: () => {},
   eval: async (_script: string, _n: number, key: string, windowMs: string) => {
     if (state.fail) throw new Error('offline');
     const now = Date.now(); const current = state.keys.get(key);

@@ -4,7 +4,7 @@
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Tests](https://img.shields.io/badge/tests-395%2F395-brightgreen)]()
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue)]()
+[![MariaDB](https://img.shields.io/badge/MariaDB-11.8-blue)]()
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)]()
 [![License](https://img.shields.io/badge/license-Proprietary-red)]()
 
@@ -80,7 +80,7 @@ This system implements a Bangladesh-focused, multi-tenant ERP/POS SaaS for elect
           ┌──────────────────┼──────────────────┐
           ▼                  ▼                  ▼
 ┌──────────────────┐ ┌───────────────┐ ┌──────────────────┐
-│   PostgreSQL 17  │ │    Redis 7    │ │  S3 / MinIO      │
+│   MariaDB 11.8  │ │    Redis 7    │ │  S3 / MinIO      │
 │   201 tables     │ │  BullMQ Queue │ │  Media / Backup  │
 │   177 RLS tables │ │  5 Workers    │ │  Encrypted       │
 │   352 functions  │ │  Rate Limits  │ │  Versioned       │
@@ -96,7 +96,7 @@ This system implements a Bangladesh-focused, multi-tenant ERP/POS SaaS for elect
 | Metric | Count |
 |--------|-------|
 | Prisma models | 181 |
-| PostgreSQL tables | 201 |
+| Historical PostgreSQL tables (not MariaDB evidence) | 201 |
 | RLS-enabled tables | 177 |
 | RLS policies | 352 |
 | SQL functions (SECURITY DEFINER) | 352 |
@@ -130,7 +130,7 @@ This system implements a Bangladesh-focused, multi-tenant ERP/POS SaaS for elect
 | **Runtime** | Bun 1.x / Node.js 20+ |
 | **Framework** | Next.js 16 (App Router, Turbopack, standalone output) |
 | **Language** | TypeScript 5.x (strict mode) |
-| **Database** | PostgreSQL 16+ (SQLite for sandbox tests) |
+| **Database** | MariaDB 11.8 (SQLite is not MariaDB evidence) |
 | **ORM** | Prisma 6.x |
 | **Cache/Queue** | Redis 7 + BullMQ |
 | **Storage** | S3-compatible (AWS S3 / MinIO / Cloudflare R2) |
@@ -154,7 +154,7 @@ This system implements a Bangladesh-focused, multi-tenant ERP/POS SaaS for elect
 erp-pos/
 ├── prisma/
 │   ├── schema.prisma                    # 181 Prisma models (SQLite sandbox)
-│   ├── schema.postgres.prisma           # 181 Prisma models (PostgreSQL prod)
+│   ├── schema.postgres.prisma           # Historical PostgreSQL schema; not authoritative
 │   ├── migrations/                      # 22 forward-only SQL migrations
 │   │   ├── 0001_extensions_and_schemas.sql
 │   │   ├── 0002_organization_currency.sql
@@ -185,18 +185,18 @@ erp-pos/
 │   └── load/                            # k6 load test scripts
 ├── docker/                              # Dockerfile.web, Dockerfile.worker, compose
 ├── scripts/
-│   ├── backup/                          # nightly-backup, restore, WAL archive, DR test
+│   ├── backup/                          # nightly-backup, MariaDB logical backup/restore; legacy WAL scripts
 │   ├── seed.ts                          # Sandbox seeder
 │   ├── seed-staging.sql                 # Staging DB seed
 │   ├── smoke-test-providers.ts          # Provider integration smoke test
 │   ├── e2e-staging-suite.ts             # Memory-conscious E2E validation
-│   ├── switch-to-postgres.ts            # SQLite → PostgreSQL switch
-│   └── run-postgres-migrations.ts       # Forward-only migration runner
+│   ├── switch-to-postgres.ts            # Historical PostgreSQL switch (do not deploy)
+│   └── run-postgres-migrations.ts       # Historical PostgreSQL runner (do not deploy)
 ├── docs/
 │   ├── adr/                             # 6 Architecture Decision Records
 │   ├── runbooks/                        # 4 operational runbooks
 │   ├── TOKEN-SCOPE.md                   # GitHub token workflow scope fix
-│   ├── postgres-quickstart.md           # PostgreSQL setup guide
+│   ├── postgres-quickstart.md           # Historical PostgreSQL reference
 │   └── provider-integration-guide.md    # Provider sandbox credentials
 ├── public/
 │   ├── locales/bn-BD/                   # Bangla translations
@@ -244,55 +244,11 @@ All 19 blueprint modules are implemented with API routes, domain commands, and U
 
 ## Database Architecture
 
-### PostgreSQL 16+ (Production)
+### MariaDB 11.8 (authoritative)
 
-| Aspect | Implementation |
-|--------|---------------|
-| **Tables** | 201 (22 forward-only migrations) |
-| **RLS** | 177 tables with `ENABLE + FORCE ROW LEVEL SECURITY` + tenant policies |
-| **DB Roles** | `app_role` (NOSUPERUSER, NOBYPASSRLS), `migration_role` (BYPASSRLS), `backup_role`, `reporting_role` |
-| **Functions** | 352 SECURITY DEFINER functions (safe `search_path`) |
-| **Triggers** | 64 (immutable posted records, set_updated_at, tenant consistency) |
-| **Views** | 13 (trial_balance_v, customer_ar_v, inventory_valuation_v, etc.) |
-| **Constraints** | 1,700+ CHECK + 2 EXCLUDE (fiscal period overlap, document lease overlap) |
-| **Partitioning** | `stock_movements`, `journal_entries`, `payments` (monthly RANGE) |
-
-### Key Constraints
-
-- `warehouse_stocks.qty_on_hand >= 0` — negative stock prohibition (§20.D03)
-- `journal_lines`: exactly-one-of debit/credit > 0 (double-entry integrity)
-- `fiscal_periods`: EXCLUDE USING gist (no overlapping periods per company)
-- `product_serials`: status-warehouse CHECK (in_stock requires warehouse)
-- `gift_card_transactions`: refund requires `sale_return_id` (§20.D17)
-- `customer_advance_ledger`: exactly-one-source (`payment_id` XOR `sale_return_id`)
-- `risk_assessments`: block decision requires `expires_at > assessed_at`
-- `webhook_endpoints.url`: CHECK ~ `'^https://'`
-
-### Immutable Posted Records
-
-Triggers prevent `UPDATE`/`DELETE` on:
-
-- `journal_entries` (WHERE `status = 'posted'` — except `posted → reversed` transition)
-- `journal_lines` (always)
-- `payment_allocations` (always)
-- `fixed_asset_depreciation` (always)
-- `stock_movements`, `serial_events`, `audit_logs`, `statutory_documents`
-
-### RLS Cross-Tenant Isolation
-
-Verified with live PostgreSQL testing:
-
-```sql
--- As erp_prod user (NOSUPERUSER, NOBYPASSRLS, member of app_role):
-SET app.company_id = 'tenant-a-uuid';
-SET app.is_global = 'false';
-
-SELECT count(*) FROM companies WHERE id = 'tenant-b-uuid';
--- → 0  (RLS blocked cross-tenant access)
-
-SELECT count(*) FROM companies WHERE id = 'tenant-a-uuid';
--- → 1  (own tenant visible)
-```
+Schema: `prisma/mariadb/schema.prisma`. Forward-only migrations: `prisma/mariadb/migrations/`.
+Tenant-scoped access and composite tenant FKs replace PostgreSQL RLS assumptions. Treat triggers, checks, views and routines as migration-managed where documented; verify actual deployments against migrations.
+Historical PostgreSQL counts and isolation tests are not MariaDB evidence.
 
 ---
 
@@ -333,7 +289,7 @@ Client → POST /api/v1/sales (with Idempotency-Key)
   ├─ 3. requireIdempotencyKey(req)     → check key+hash
   ├─ 4. Zod validation                 → parse items, payments
   ├─ 5. BEGIN SERIALIZABLE TRANSACTION
-  │     ├─ set_config('app.company_id', ...)  (RLS context)
+   │     ├─ tenant-scoped data access (company/branch context)  (MariaDB layered isolation)
   │     ├─ next_document_number()             → generate INV-000001
   │     ├─ Create business_event
   │     ├─ Validate products + stock availability
@@ -420,7 +376,7 @@ All 20 production decisions from the blueprint are formally resolved and impleme
 | D07 | Offline POS (bootstrap + sync + conflict) | ✅ |
 | D08 | Tax/VAT (Mushak 6.1/6.3/9.1 + withholding) | ✅ |
 | D09 | Privacy/GDPR (DSR + legal holds) | ✅ |
-| D10 | Backup/DR (pg_dump + WAL + restore test) | ✅ |
+| D10 | MariaDB backup/DR | UNPROVEN runtime recovery; see runbook |
 | D11 | Partitioning (3 tables, monthly RANGE) | ✅ |
 | D12 | Multi-currency (revaluation + reversal) | ✅ |
 | D13 | Trade finance scope exclusion | ✅ |
@@ -439,7 +395,7 @@ All 20 production decisions from the blueprint are formally resolved and impleme
 ### Prerequisites
 
 - **Bun** 1.0+ (or Node.js 20+)
-- **PostgreSQL** 16+ (SQLite included for sandbox)
+- **MariaDB** 11.8 (SQLite only for appropriate unit/sandbox tests)
 - **Redis** 7+ (optional — workers skip if unavailable)
 
 ### Sandbox (SQLite, no external services)
@@ -482,107 +438,21 @@ bunx playwright test tests/e2e/login.spec.ts -g "invalid" --project="Desktop Chr
 
 ---
 
-## Staging / UAT Setup
+## Staging / UAT and Production Migration
 
-Staging uses PostgreSQL with sandbox provider credentials. A complete template is provided.
-
-```bash
-# 1. Copy staging env template
-cp .env.staging.example .env.staging
-
-# 2. Edit .env.staging — replace CHANGE_ME_* placeholders with:
-#    - Real sandbox DB password
-#    - openssl rand -base64 48  (for JWT_SECRET, APP_ENCRYPTION_KEY)
-#    - Provider sandbox keys (bKash, Nagad, SSL SMS, SendGrid, etc.)
-
-# 3. Activate staging env
-cp .env.staging .env
-
-# 4. Generate Prisma client for PostgreSQL
-bunx prisma generate --schema=prisma/schema.postgres.prisma
-
-# 5. Create + migrate staging database
-createdb erp_pos_staging
-psql -d erp_pos_staging -f scripts/seed-staging.sql
-
-# 6. Apply all migrations (see docs/postgres-quickstart.md for details)
-
-# 7. Start staging server
-bun run staging:dev
-```
-
-**NPM scripts for staging:**
-
-| Script | Purpose |
-|--------|---------|
-| `bun run staging:generate` | Generate Prisma client for PostgreSQL schema |
-| `bun run staging:dev` | Start dev server with PostgreSQL |
-| `bun run staging:seed` | Seed staging database |
-
-**Provider smoke test:**
+Use isolated MariaDB 11.8 with synthetic data for tests. Never copy/source production environment files.
+Use protected target-specific credentials and the locked Prisma version:
 
 ```bash
-bun run scripts/smoke-test-providers.ts
-# Verifies all 12 provider adapters instantiate + env vars are set
+bun install --frozen-lockfile
+bunx --no-install prisma generate --schema=prisma/mariadb/schema.prisma
+bunx --no-install prisma migrate deploy --schema=prisma/mariadb/schema.prisma
+bunx --no-install prisma migrate status --schema=prisma/mariadb/schema.prisma
 ```
 
----
-
-## Production Deployment
-
-### Prerequisites
-
-- VPS or container platform with ≥ 2GB RAM (4GB+ recommended)
-- PostgreSQL 16+ (managed RDS / Cloud SQL / self-hosted)
-- Redis 7+ (managed ElastiCache / self-hosted)
-- S3-compatible storage (AWS S3 / MinIO / Cloudflare R2)
-- Domain + TLS certificate (Caddy auto-provisions Let's Encrypt)
-
-### Docker Deployment
-
-```bash
-# 1. Clone + configure
-git clone https://github.com/DelwarOfficial/erp-pos.git
-cd erp-pos && bun install
-
-# 2. Configure production env
-cp .env.example .env
-# Edit .env: DATABASE_URL, REDIS_URL, S3_*, JWT_SECRET, APP_ENCRYPTION_KEY
-# Generate secrets:
-openssl rand -base64 48  # JWT_SECRET
-openssl rand -base64 32  # APP_ENCRYPTION_KEY
-
-# 3. Start infrastructure
-cd docker && docker compose up -d postgres redis minio
-
-# 4. Run migrations
-DATABASE_URL=postgresql://... bun run scripts/switch-to-postgres.ts
-
-# 5. Build production bundle
-bun run build
-
-# 6. Start web server
-NODE_ENV=production bun run start
-
-# 7. Start background worker (separate process)
-bun run worker
-
-# 8. Reverse proxy with SSL (Caddy auto-provisions Let's Encrypt)
-caddy run --config Caddyfile
-```
-
-### Cron Jobs
-
-```bash
-# Nightly backup (1am UTC)
-0 1 * * * /path/to/scripts/backup/nightly-backup.sh >> /var/log/erp-backup.log 2>&1
-
-# Risk alert evaluation (3am UTC / 9am Asia/Dhaka)
-0 3 * * * /path/to/scripts/cron-evaluate-risk-alerts.sh >> /var/log/risk-alerts.log 2>&1
-
-# WAL archive (continuous — configured in postgresql.conf)
-# archive_command = '/path/to/scripts/backup/wal-archive.sh %p %f'
-```
+Repeat migrate deploy and run tenant/accounting/inventory/concurrency/browser tests before any release approval.
+Production requires separate operator authorization, verified backups and rehearsed forward-only migrations. See [MariaDB migration runbook](docs/runbooks/production-migration.md).
+Legacy PostgreSQL staging/switch scripts and Docker database examples are not the current deployment flow. Do not run them for MariaDB.
 
 ---
 
@@ -663,45 +533,12 @@ bash scripts/backup/first-restore-test.sh
 
 ## Backup & Disaster Recovery
 
-### Backup Strategy (§20.D10)
+MariaDB logical backup: `scripts/backup/nightly-backup.sh` uses `mariadb-dump`, private artifacts, SHA-256 and completion marker.
+Restore: `scripts/backup/restore-from-backup.sh` verifies checksum and imports only into a new local disposable database; errors stop execution, never silently pass.
 
-| Component | Schedule | Retention |
-|-----------|----------|-----------|
-| Full pg_dump | Nightly 1am UTC | 30 days |
-| WAL archive | Continuous | RPO ≤ 15 min |
-| S3 object-lock | On upload | Immutable |
-| Restore test | Weekly | Verify recoverability |
+See [backup/restore runbook](docs/runbooks/backup-restore.md) for protected client option files, encrypted storage prerequisites and reconciliation gates.
 
-**RPO:** ≤ 15 minutes (WAL archiving)
-**RTO:** ≤ 4 hours (restore + reconcile)
-
-### Backup Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/backup/nightly-backup.sh` | pg_dump + SHA-256 + metadata + S3 upload + checksum verify |
-| `scripts/backup/restore-from-backup.sh` | Download + verify + restore to isolated DB |
-| `scripts/backup/post-restore-reconciliation.sh` | 8 reconciliation checks after restore |
-| `scripts/backup/first-restore-test.sh` | M0 exit gate: backup → restore → reconcile |
-| `scripts/backup/wal-archive.sh` | Continuous WAL segment archiving to S3 |
-
-**A backup is not valid until restore test succeeds.**
-
-### Verified Restore Test
-
-```bash
-# Backup
-pg_dump -h localhost -U postgres -d erp_pos_prod -F c -f /tmp/backup.dump
-# → 1.2MB dump created
-
-# Restore
-createdb erp_pos_restore_test
-pg_restore -d erp_pos_restore_test /tmp/backup.dump
-
-# Verify
-psql -d erp_pos_restore_test -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
-# → 201 (matches original)
-```
+**UNPROVEN:** binary-log PITR, offsite encryption/immutability, restore reconciliation and achieved RPO/RTO until dated executable evidence exists. Scripts do not implement binlog replay or offsite upload. Legacy WAL/DR helper scripts are historical PostgreSQL tooling, not MariaDB recovery controls.
 
 ---
 
@@ -711,7 +548,7 @@ psql -d erp_pos_restore_test -c "SELECT count(*) FROM information_schema.tables 
 |---------|------|
 | Blueprint (source of truth) | `upload/ERP_Product_Blueprint_v4.1.md` |
 | Prisma schema (SQLite sandbox) | `prisma/schema.prisma` |
-| Prisma schema (PostgreSQL prod) | `prisma/schema.postgres.prisma` |
+| Prisma schema (MariaDB authoritative) | `prisma/mariadb/schema.prisma` |
 | SQL migrations | `prisma/migrations/0001-0022*.sql` |
 | SQL functions | `prisma/functions/*.sql` |
 | SQL triggers | `prisma/triggers/*.sql` |
@@ -737,13 +574,13 @@ psql -d erp_pos_restore_test -c "SELECT count(*) FROM information_schema.tables 
 | Approval thresholds | `src/lib/approval/thresholds.ts` |
 | Chart of accounts seed | `src/lib/accounting/seedCoa.ts` |
 | Backup scripts | `scripts/backup/*.sh` |
-| Migration runner | `scripts/run-postgres-migrations.ts` |
+| Migrations (MariaDB) | `prisma/mariadb/migrations/` |
 | Staging env template | `.env.staging.example` |
 | Env reference | `.env.example` |
 | Docker compose | `docker/docker-compose.yml` |
 | CI/CD pipeline | `.github/workflows/ci.yml` |
 | Token scope docs | `docs/TOKEN-SCOPE.md` |
-| PostgreSQL quickstart | `docs/postgres-quickstart.md` |
+| MariaDB migration runbook | `docs/runbooks/production-migration.md` |
 | Provider integration | `docs/provider-integration-guide.md` |
 | ADRs | `docs/adr/` |
 | Runbooks | `docs/runbooks/` |
@@ -779,7 +616,7 @@ The `.github/workflows/ci.yml` pipeline runs 7 stages on every push to `main`/`d
 
 1. **Lint + Type Check** — `bun run lint` + `bunx tsc --noEmit`
 2. **Unit Tests** — `bun run test` (395 tests)
-3. **Migration Validation** — Apply all 22 migrations to fresh PostgreSQL 16 container
+3. **Migration Validation** — Apply all MariaDB migrations to fresh disposable MariaDB 11.8; repeat deploy
 4. **Security Scan** — Hardcoded secrets, CSP/HSTS, Argon2id memory cost
 5. **Build** — Next.js standalone production build
 6. **E2E Tests** — Playwright + axe-core accessibility
@@ -800,7 +637,7 @@ Proprietary — All rights reserved.
 - **Master Blueprint:** `upload/ERP_Product_Blueprint_v4.1.md` (7,400+ lines — the single source of truth)
 - **Architecture Decision Records:** `docs/adr/` (6 ADRs)
 - **Operational Runbooks:** `docs/runbooks/` (4 runbooks)
-- **PostgreSQL Quickstart:** `docs/postgres-quickstart.md`
+- **MariaDB Migration:** `docs/runbooks/production-migration.md`
 - **Provider Integration Guide:** `docs/provider-integration-guide.md`
 - **GitHub Token Scope:** `docs/TOKEN-SCOPE.md`
 

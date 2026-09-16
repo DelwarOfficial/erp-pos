@@ -8,9 +8,9 @@ export interface ReconciliationFinding {
   severity: 'info' | 'warning' | 'high' | 'critical';
   reference_type?: string;
   reference_id?: string;
-  expected_value?: number;
-  actual_value?: number;
-  variance?: number;
+  expected_value?: number | string;
+  actual_value?: number | string;
+  variance?: number | string;
   details: Record<string, unknown>;
 }
 export type ReconciliationCheck = (tx: Prisma.TransactionClient, companyId: string) => Promise<ReconciliationFinding[]>;
@@ -134,10 +134,29 @@ export const checkTaxOutputGl: ReconciliationCheck = async (tx, companyId) => {
 };
 
 export const checkGiftCardLiability: ReconciliationCheck = async (tx, companyId) => {
-  const total = await tx.giftCard.aggregate({ where: { companyId, status: 'active' }, _sum: { faceValue: true } });
-  const val = parseFloat(total._sum.faceValue?.toString() ?? '0');
-  return val > 0 ? [{ check_code: 'GIFT_CARD_LIABILITY', severity: 'info', expected_value: val, actual_value: 0, variance: 0, details: { active_gift_card_total: val } }] : [];
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId } });
+  const account = policy?.giftCardLiabilityAccountId && await tx.chartOfAccount.findFirst({
+    where: { id: policy.giftCardLiabilityAccountId, companyId }, select: { id: true },
+  });
+  if (!account) throw new ReconciliationCheckError('MISSING_GIFT_CARD_LIABILITY_MAPPING');
+  // The current card ledger has no currency column: signed deltas are in company base currency.
+  // Include redeemed/expired cards; their ledger must net out through explicit entries.
+  const ledger = await tx.giftCardTransaction.aggregate({ where: { companyId }, _sum: { amountDelta: true } });
+  const gl = await tx.journalLine.aggregate({ where: { companyId, chartOfAccountId: account.id,
+    journalEntry: { companyId, status: { in: ['posted', 'reversed'] } } }, _sum: { creditBase: true, debitBase: true } });
+  // MariaDB Decimal(65,30) sums can exceed Decimal.js's default 20 significant digits.
+  const Money = Prisma.Decimal.clone({ precision: 80 });
+  const expected = new Money(ledger._sum.amountDelta ?? 0);
+  const actual = new Money(gl._sum.creditBase ?? 0).minus(gl._sum.debitBase ?? 0);
+  const variance = actual.minus(expected);
+  return variance.isZero() ? [] : [{ check_code: 'GIFT_CARD_LIABILITY', severity: 'high',
+    expected_value: expected.toFixed(), actual_value: actual.toFixed(), variance: variance.toFixed(),
+    details: { authority: 'gift_card_transactions', account_id: account.id, currency_basis: 'company_base' } }];
 };
+
+export class ReconciliationCheckError extends Error {
+  constructor(public readonly safeCode: 'MISSING_GIFT_CARD_LIABILITY_MAPPING') { super(safeCode); }
+}
 
 export const checkFiscalPeriodIntegrity: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
@@ -296,7 +315,7 @@ export const checkTaxInputGl: ReconciliationCheck = async (tx, companyId) => {
   const inputVatResult = await tx.purchaseItemTax.aggregate({
     where: { companyId },
     _sum: { taxAmount: true },
-  }).catch(() => ({ _sum: { taxAmount: null } }));
+  });
   const expectedInputVat = parseFloat(inputVatResult._sum.taxAmount?.toString() ?? '0');
   if (expectedInputVat === 0) return findings; // no purchases with tax
   // Check GL — this is simplified; in production would check the VAT receivable account
@@ -316,7 +335,7 @@ export const checkOutboxCompleteness: ReconciliationCheck = async (tx, companyId
   const findings: ReconciliationFinding[] = [];
   const deadLetterCount = await tx.outboxEvent.count({
     where: { companyId, status: 'dead_letter' },
-  }).catch(() => 0);
+  });
   if (deadLetterCount > 0) {
     findings.push({
       check_code: 'OUTBOX_COMPLETENESS',
@@ -334,7 +353,7 @@ export const checkOutboxCompleteness: ReconciliationCheck = async (tx, companyId
       status: 'pending',
       nextAttemptAt: { lt: new Date(Date.now() - 60 * 60 * 1000) },
     },
-  }).catch(() => 0);
+  });
   if (stalePending > 0) {
     findings.push({
       check_code: 'OUTBOX_COMPLETENESS',
@@ -357,7 +376,7 @@ export const checkIdempotencyResource: ReconciliationCheck = async (tx, companyI
       status: 'processing',
       lockedAt: { lt: new Date(Date.now() - 10 * 60 * 1000) }, // stuck >10 min
     },
-  }).catch(() => 0);
+  });
   if (orphaned > 0) {
     findings.push({
       check_code: 'IDEMPOTENCY_RESOURCE',
@@ -461,19 +480,39 @@ export async function runReconciliation(companyId: string, runType: 'nightly' | 
   return runInTenantContext(ctx, async () => {
   const run = await db.reconciliationRun.create({ data: { companyId, runType, status: 'running', initiatedBy: initiatedBy ?? null, summary: '{}' } });
   const allFindings: ReconciliationFinding[] = [];
+  const checks: Array<{ code: string; outcome: 'PASS' | 'FINDING' | 'CHECK_ERROR';
+    error_code?: string; phase?: string; driver_code?: string; duration_ms?: number }> = [];
   for (const check of ALL_CHECKS) {
+    const startedAt = Date.now();
+    let phase = 'execute';
     try {
       const findings = await db.$transaction(async (tx) => check.fn(tx, companyId));
+      phase = 'persist_findings';
       allFindings.push(...findings);
       for (const f of findings) {
         await db.reconciliationFinding.create({ data: { companyId, reconciliationRunId: run.id, checkCode: f.check_code, severity: f.severity, referenceType: f.reference_type ?? null, referenceId: f.reference_id ?? null, expectedValue: f.expected_value ?? null, actualValue: f.actual_value ?? null, variance: f.variance ?? null, details: JSON.stringify(f.details), status: 'open' } });
       }
-    } catch (e) { console.error(`Reconciliation check ${check.code} failed:`, e); }
+      checks.push({ code: check.code, outcome: findings.length ? 'FINDING' : 'PASS' });
+    } catch (e) {
+      // Never store raw driver messages, SQL, bind values or stack traces in results.
+      const errorCode = e instanceof ReconciliationCheckError ? e.safeCode : 'CHECK_EXECUTION_FAILED';
+      const metadata = { error_code: errorCode, phase, duration_ms: Date.now() - startedAt,
+        ...(e instanceof Prisma.PrismaClientKnownRequestError && /^P\d{4}$/.test(e.code)
+          ? { driver_code: e.code } : {}) };
+      checks.push({ code: check.code, outcome: 'CHECK_ERROR', ...metadata });
+      const failure: ReconciliationFinding = { check_code: check.code, severity: 'critical',
+        details: { outcome: 'CHECK_ERROR', run_id: run.id, ...metadata } };
+      allFindings.push(failure);
+      try {
+        await db.reconciliationFinding.create({ data: { companyId, reconciliationRunId: run.id,
+          checkCode: check.code, severity: 'critical', details: JSON.stringify(failure.details), status: 'open' } });
+      } catch { /* Summary below durably records the error even if finding persistence fails. */ }
+    }
   }
-  const summary: Record<string, number> = { total: allFindings.length };
+  const summary: Record<string, number> = { total: allFindings.length, check_errors: checks.filter(c => c.outcome === 'CHECK_ERROR').length };
   for (const f of allFindings) summary[f.severity] = (summary[f.severity] ?? 0) + 1;
   const status = allFindings.some(f => f.severity === 'critical') ? 'failed' : allFindings.some(f => f.severity === 'high') ? 'partial' : 'passed';
-  await db.reconciliationRun.update({ where: { id: run.id }, data: { status, completedAt: new Date(), summary: JSON.stringify(summary) } });
-  return { runId: run.id, findings: allFindings, summary };
+  await db.reconciliationRun.update({ where: { id: run.id }, data: { status, completedAt: new Date(), summary: JSON.stringify({ ...summary, checks }) } });
+  return { runId: run.id, status, findings: allFindings, summary, checks };
   });
 }

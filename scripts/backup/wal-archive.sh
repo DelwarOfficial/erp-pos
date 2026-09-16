@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/backup/wal-archive.sh
+# HISTORICAL — PostgreSQL WAL archiving (pre-MariaDB authority, see ADR 0007).
 # Continuous WAL archiving to S3/MinIO with object-lock.
 # Per §20.D10 — RPO ≤ 15 minutes via continuous WAL archiving.
 #
-# This script is called by PostgreSQL's archive_command setting in postgresql.conf:
+# This script is called by PostgreSQL's archive_command setting in postgresql.conf (historical, MariaDB uses binary-log equivalent):
 #   archive_command = '/home/z/my-project/scripts/backup/wal-archive.sh %p %f'
 #
 # %p = full path to the WAL file to be archived

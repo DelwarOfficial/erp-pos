@@ -7,12 +7,14 @@ import { z } from 'zod';
 import { systemDb as db } from '@/lib/db';
 import { verifyMfaCode } from '@/lib/auth/mfa';
 import { consumeMfaChallenge } from '@/lib/auth/mfaChallenge';
-import { setAuthCookies, getMfaPendingCookie, clearMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
+import { setAuthCookies, getMfaPendingCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
+import { MFA_PENDING_COOKIE_NAME } from '@/lib/auth/cookieNames';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
-import { checkRateLimit, buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
+import { buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
 import { checkDistributedRateLimit, resetDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { issueRefreshToken } from '@/lib/auth/refreshToken';
 
 const MfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
@@ -70,51 +72,60 @@ export async function POST(req: NextRequest) {
       throw new DomainError('INVALID_MFA', `Invalid MFA code. ${rl.remaining - 1} attempts remaining.`, { remaining: rl.remaining - 1 }, 401);
     }
 
-    // Success — reset the rate limiter for this user
+    // Irreversible CAS first: any subsequent failure requires a new password challenge.
     await consumeMfaChallenge(pending);
-    resetRateLimit(rlKey);
-    await resetDistributedRateLimit('mfa-verify', rlKey);
-
     const branchIds = user.branchAccess.map(b => b.branchId);
     const sessionId = randomUUID();
-    const mfaResult = await setAuthCookies({
-      userId: user.id,
-      companyId: user.companyId,
-      accessScope: user.accessScope,
-      isGlobal: user.accessScope === 'global' && user.company.code === 'PLATFORM',
-      branchIds,
-      familyId: pending.familyId,
-      sessionId,
-      mfaVerified: true,
-    });
+    // Prepare cookies and audit within the session transaction. No cookies escape on rollback.
+    const mfaResponse = await db.$transaction(async tx => {
+      const refreshToken = await issueRefreshToken({ companyId: user.companyId, userId: user.id,
+        familyId: pending.familyId, sessionId, mfaVerified: true }, tx);
+      const mfaResult = await setAuthCookies({
+        rotatedRefreshToken: refreshToken,
+        writeCookies: false,
+        userId: user.id,
+        companyId: user.companyId,
+        accessScope: user.accessScope,
+        isGlobal: user.accessScope === 'global' && user.company.code === 'PLATFORM',
+        branchIds,
+        familyId: pending.familyId,
+        sessionId,
+        mfaVerified: true,
+      });
 
-    await clearMfaPendingCookie();
+      await tx.securityEvent.create({ data: {
+        eventType: 'mfa_success',
+        severity: 'info',
+        metadata: JSON.stringify({ user_id: user.id, session_id: sessionId }),
+        companyId: user.companyId,
+        userId: user.id,
+        ipAddress: ip,
+        userAgent: ua,
+      } });
 
-    await recordSecurityEvent({
-      eventType: 'mfa_success',
-      severity: 'info',
-      metadata: { user_id: user.id, session_id: sessionId },
-      companyId: user.companyId,
-      userId: user.id,
-      ip,
-      userAgent: ua,
+      const response = NextResponse.json({
+        mfa_required: false,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          company_id: user.companyId,
+          company_code: user.company.code,
+          company_name: user.company.displayName,
+          access_scope: user.accessScope,
+          branch_ids: branchIds,
+        },
+        access_token_expires_in: 900,
+      });
+      applyCookiesToResponse(response, mfaResult);
+      response.cookies.delete(MFA_PENDING_COOKIE_NAME);
+      return response;
     });
-
-    const mfaResponse = NextResponse.json({
-      mfa_required: false,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        company_id: user.companyId,
-        company_code: user.company.code,
-        company_name: user.company.displayName,
-        access_scope: user.accessScope,
-        branch_ids: branchIds,
-      },
-      access_token_expires_in: 900,
-    });
-    applyCookiesToResponse(mfaResponse, mfaResult);
+    resetRateLimit(rlKey);
+    if (!(await resetDistributedRateLimit('mfa-verify', rlKey))) {
+      // Session is already issued. Keep distributed quota until expiry; no retry/reissue.
+      console.warn('[auth] MFA rate-limit cleanup unavailable; quota retained until expiry');
+    }
     return mfaResponse;
   } catch (e) {
     if (e instanceof z.ZodError) {
