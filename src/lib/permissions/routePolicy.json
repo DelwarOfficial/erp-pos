@@ -370,7 +370,9 @@
     "file": "v1/gift-cards/route.ts",
     "method": "POST",
     "permissions": [
-      "gift_card.issue"
+      "gift_card.issue",
+      "payment.pay.branch",
+      "journal.post"
     ],
     "exception": null
   },

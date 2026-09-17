@@ -5,52 +5,42 @@ import { NextRequest } from 'next/server';
 import { issueAccessToken } from '@/lib/auth/jwt';
 import { ACCESS_COOKIE_NAME } from '@/lib/auth/cookieNames';
 import { checkGiftCardLiability } from '@/lib/reconciliation/checks';
+import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const injected = vi.hoisted(() => ({ cookies: new Map<string, string>(), failure: '' }));
 vi.mock('next/headers', () => ({ cookies: async () => ({
   get: (name: string) => injected.cookies.has(name) ? { value: injected.cookies.get(name) } : undefined,
 }) }));
 // Only inject a write exception; transactions, authentication and all SQL remain real.
+// The proxy activates ONLY while injected.failure is set; otherwise withTenant is a faithful
+// pass-through (an always-on proxy interferes with tenant-scoped permission resolution).
 vi.mock('@/lib/db/transaction', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/db/transaction')>();
   return { ...actual, withTenant: (ctx: Parameters<typeof actual.withTenant>[0], work: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
-    actual.withTenant(ctx, tx => work(new Proxy(tx, { get(target, key) {
-      const delegate = Reflect.get(target, key);
-      if (key !== injected.failure) return delegate;
-      return new Proxy(delegate, { get(model, operation) {
-        const method = Reflect.get(model, operation);
-        if (operation !== 'create' && operation !== 'update') return method;
-        return async (...args: Array<{ data?: { action?: string } }>) => {
-          if (key === 'idempotencyRequest' && operation !== 'update') return method.apply(model, args);
-          if (key === 'auditLog' && args[0]?.data?.action !== 'gift_card.issue') return method.apply(model, args);
-          throw new Error('SYNTHETIC_PRIVATE_DRIVER_DETAILS');
-        };
-      } });
-    } }))) };
+    actual.withTenant(ctx, tx => {
+      if (!injected.failure) return work(tx);
+      return work(new Proxy(tx, { get(target, key) {
+        const delegate = Reflect.get(target, key);
+        if (key !== injected.failure) return delegate;
+        return new Proxy(delegate, { get(model, operation) {
+          const method = Reflect.get(model, operation);
+          if (operation !== 'create' && operation !== 'update') return method;
+          return async (...args: Array<{ data?: { action?: string } }>) => {
+            if (key === 'idempotencyRequest' && operation !== 'update') return method.apply(model, args);
+            if (key === 'auditLog' && args[0]?.data?.action !== 'gift_card.issue') return method.apply(model, args);
+            throw new Error('SYNTHETIC_PRIVATE_DRIVER_DETAILS');
+          };
+        } });
+      } }));
+    }) };
 });
 import { POST } from '@/app/api/v1/gift-cards/route';
 
 const db = new PrismaClient();
 const companyA = '7ff2f39e-a402-4744-adcc-a9e4f2897ef2';
 const companyB = '7e05c6d3-ce29-4740-8298-ed2a45ef4d41';
-let a: Awaited<ReturnType<typeof loadFixture>>, b: Awaited<ReturnType<typeof loadFixture>>;
+let a: Awaited<ReturnType<typeof ensureSyntheticIssuerTenant>>, b: Awaited<ReturnType<typeof ensureSyntheticIssuerTenant>>;
 let familyId: string;
-
-async function loadFixture(companyId: string) {
-  const company = await db.company.findUniqueOrThrow({ where: { id: companyId } });
-  expect(company.displayName).toMatch(/^Synthetic Company [AB]$/);
-  const branches = await db.branch.findMany({ where: { companyId }, orderBy: { code: 'asc' } });
-  expect(branches).toHaveLength(2);
-  const user = await db.user.findFirstOrThrow({ where: { companyId } });
-  const role = await db.role.findFirstOrThrow({ where: { companyId, name: 'Synthetic issuer' } });
-  const cash = await db.financialAccount.findFirstOrThrow({ where: { companyId, branchId: branches[0].id } });
-  const expense = await db.chartOfAccount.upsert({
-    where: { companyId_code: { companyId, code: 'giftMarketing' } }, update: {},
-    create: { companyId, code: 'giftMarketing', name: 'Synthetic marketing', accountClass: 'expense',
-      accountSubtype: 'operating_expense', normalBalance: 'D', allowManualPosting: true },
-  });
-  return { companyId, branches, user, role, cash, expense };
-}
 
 beforeAll(async () => {
   const target = new URL(process.env.DATABASE_URL ?? '');
@@ -59,7 +49,8 @@ beforeAll(async () => {
   console.log('Database environment: LOCAL / DISPOSABLE; Host: 127.0.0.1; Port: 43318; Database name: readiness_20260912_disposable');
   const version = await db.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`;
   expect(version[0].version).toMatch(/^11\.8\..*MariaDB/);
-  a = await loadFixture(companyA); b = await loadFixture(companyB);
+  a = await ensureSyntheticIssuerTenant(db, { companyId: companyA, label: 'A', code: 'SYN-A' });
+  b = await ensureSyntheticIssuerTenant(db, { companyId: companyB, label: 'B', code: 'SYN-B' });
   for (const code of ['gift_card.issue', 'payment.pay.branch', 'journal.post']) {
     const permission = await db.permission.upsert({ where: { code }, update: {},
       create: { code, module: 'loyalty', description: 'Synthetic issuance permission' } });
@@ -255,3 +246,4 @@ it('has no orphan/cross-company issuance ledger and posting-event links', async 
     WHERE t.company_id = ${companyA} AND t.entry_type = 'issue' AND (c.id IS NULL OR e.id IS NULL)`;
   expect(Number(rows[0].orphanCount)).toBe(0);
 });
+

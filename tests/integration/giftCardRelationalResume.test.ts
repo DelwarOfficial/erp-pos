@@ -1,7 +1,8 @@
 import { afterAll, expect, it } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { redeemGiftCard } from '@/domain/commands/m6/Loyalty';
+import { redeemGiftCard, issueGiftCard } from '@/domain/commands/m6/Loyalty';
+import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const db = new PrismaClient();
 afterAll(() => db.$disconnect());
@@ -14,6 +15,17 @@ it('resumes at gift-card redemption using the preserved issuance fixture; stops 
   const version = await db.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`;
   expect(version[0].version).toMatch(/^11\.8\..*MariaDB/);
   const companyId = '7ff2f39e-a402-4744-adcc-a9e4f2897ef2';
+  await ensureSyntheticIssuerTenant(db, { companyId, label: 'A', code: 'SYN-A' });
+  // Self-provision the issuance fixture so this suite never depends on another suite having run.
+  const tenant = {
+    user: await db.user.findFirstOrThrow({ where: { companyId } }),
+    expense: await db.chartOfAccount.findFirstOrThrow({ where: { companyId, code: 'giftMarketing' } }),
+    branchA: await db.branch.findFirstOrThrow({ where: { companyId, code: 'A' } }),
+  };
+  await db.$transaction(tx => issueGiftCard(tx, {
+    companyId, branchId: tenant.branchA.id,
+    faceValue: '100.25', issuedBy: tenant.user.id, mode: 'promotional', expenseAccountId: tenant.expense.id,
+  }, randomUUID()), { timeout: 30000 });
   const card = await db.giftCard.findFirstOrThrow({ where: {
     companyId, status: 'active', faceValue: '100.25', transactions: { some: { entryType: 'issue' } },
   }, orderBy: { issuedAt: 'desc' } });

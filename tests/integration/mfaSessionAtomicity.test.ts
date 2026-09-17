@@ -6,6 +6,7 @@ import { authenticator } from '@otplib/preset-default';
 import { setupMfa } from '@/lib/auth/mfa';
 import { issueMfaChallenge, readMfaChallenge } from '@/lib/auth/mfaChallenge';
 import { MFA_PENDING_COOKIE_NAME } from '@/lib/auth/cookieNames';
+import { ensureBdt } from './helpers/disposableFixtures';
 
 const state = vi.hoisted(() => ({ cookie: '', failPreparation: false }));
 vi.mock('next/headers', () => ({ cookies: async () => ({
@@ -35,6 +36,7 @@ beforeAll(async () => {
     throw new Error('Local disposable MariaDB required');
   const versions = await db.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`;
   expect(versions[0].version).toMatch(/^11\.8\..*MariaDB/);
+  await ensureBdt(db);
   const company = await db.company.create({ data: {
     code: 'MFA-P1-' + randomUUID(), legalName: 'Synthetic', displayName: 'Synthetic', baseCurrencyCode: 'BDT',
   } });

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { ALL_CHECKS, checkGiftCardLiability, runReconciliation } from '@/lib/reconciliation/checks';
+import { ensureBdt } from './helpers/disposableFixtures';
 
 const db = new PrismaClient();
 beforeAll(async () => {
@@ -10,6 +11,7 @@ beforeAll(async () => {
       || !target.pathname.endsWith('_disposable')) throw new Error('Local disposable MariaDB required');
   const rows = await db.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`;
   expect(rows[0].version).toMatch(/^11\.8\..*MariaDB/);
+  await ensureBdt(db);
 });
 afterAll(() => db.$disconnect());
 

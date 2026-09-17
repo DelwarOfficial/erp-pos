@@ -7,6 +7,7 @@ import { listUsers, readUser, saveUser, saveRole, deleteRole } from '@/lib/acces
 import { issuePasswordReset, redeemPasswordReset } from '@/lib/access/reset';
 import { ADMIN_GRANTS } from '@/lib/access/policy';
 import { verifyPassword } from '@/lib/auth/password';
+import { ensureBdt } from './helpers/disposableFixtures';
 
 const raw = new PrismaClient({ log: [] });
 const grants = [...ADMIN_GRANTS, 'user.create', 'role.create', 'user.reset_password', 'branch.read', 'company.read', 'product.read'];
@@ -16,6 +17,7 @@ beforeAll(async () => {
   const target = new URL(process.env.DATABASE_URL || 'invalid:');
   if (target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Guarded disposable MariaDB required');
   expect((await raw.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`)[0].version.startsWith('11.8.')).toBe(true);
+  await ensureBdt(raw);
   permissionIds = {};
   for (const code of [...grants, 'platform.onboarding.execute', 'sale.post']) permissionIds[code] = (await raw.permission.upsert({ where: { code }, update: {}, create: { code, module: 'test', description: code } })).id;
 });

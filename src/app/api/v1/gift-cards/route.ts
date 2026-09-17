@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
     const idempotencyKey = requireIdempotencyKey(req);
     const body = GiftCardSchema.parse(await req.json());
     await requirePermission(auth, 'gift_card.issue', body.branch_id);
-    await requirePermission(auth, body.mode === 'sold' ? 'payment.pay.branch' : 'journal.post', body.branch_id);
+    if (body.mode === 'sold') await requirePermission(auth, 'payment.pay.branch', body.branch_id);
+    else await requirePermission(auth, 'journal.post', body.branch_id);
     await runInTenantContext(auth.ctx, async () => {
       await requireFeatureFlag('loyalty_enabled');
     });

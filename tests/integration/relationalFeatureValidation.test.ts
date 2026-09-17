@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { issueAccessToken } from '@/lib/auth/jwt';
 import { ACCESS_COOKIE_NAME } from '@/lib/auth/cookieNames';
+import { ensureBdt } from './helpers/disposableFixtures';
 
 const cookies = vi.hoisted(() => new Map<string, string>());
 vi.mock('next/headers', () => ({ cookies: async () => ({
@@ -114,6 +115,7 @@ it('validates relational chains in order and stops at first unmet invariant', as
     throw new Error('Only known local synthetic disposable MariaDB permitted');
   const version = await db.$queryRaw<Array<{ version: string }>>`SELECT VERSION() AS version`;
   expect(version[0].version).toMatch(/^11\.8\..*MariaDB/);
+  await ensureBdt(db);
   const migrations = await db.$queryRaw<Array<{ unfinished: bigint }>>`
     SELECT COUNT(*) AS unfinished FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL`;
   expect(Number(migrations[0].unfinished)).toBe(0);
