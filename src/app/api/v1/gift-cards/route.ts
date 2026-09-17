@@ -11,6 +11,7 @@ import { issueGiftCard } from '@/domain/commands/m6/Loyalty';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { requireFeatureFlag } from '@/lib/featureFlags';
+import { Prisma } from '@prisma/client';
 
 const common = {
   face_value: z.string().regex(/^\d{1,12}(\.\d{1,2})?$/),
@@ -78,7 +79,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {
     if (e instanceof z.ZodError) return errorResponse(new DomainError('VALIDATION_FAILED', 'Invalid gift card payload', { issues: e.issues }, 400), correlationId);
-    if (e && typeof e === 'object' && 'code' in e && e.code === 'P2034') {
+    // MariaDB 11.8 can expose ER_CHECKREAD (1020) through Prisma's unknown
+    // request error during concurrent inserts, rather than the usual P2034.
+    if ((e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034')
+      || (e instanceof Prisma.PrismaClientUnknownRequestError
+        && /code: 1020\b/.test(e.message) && /Record has changed since last read/i.test(e.message))) {
       return errorResponse(new DomainError('CONCURRENT_MODIFICATION', 'Concurrent issuance; retry with the same Idempotency-Key', {}, 409), correlationId);
     }
     if (e instanceof SyntaxError) return errorResponse(new DomainError('VALIDATION_FAILED', 'Invalid JSON payload', {}, 400), correlationId);

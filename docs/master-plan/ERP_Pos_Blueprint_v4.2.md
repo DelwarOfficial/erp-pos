@@ -40,7 +40,7 @@ The schema is multi-tenant capable from day one. `companies` is the tenant bound
 
 ## 1.2 Modular Monolith
 
-The web/PWA, API, domain services, and workers share one TypeScript domain package but run as independently scalable processes. PostgreSQL is the system of record. Redis is used only for queues, rate limits, locks with database verification, and short-lived cache. S3-compatible storage holds media, receipts, imports, exports, and encrypted backups.
+The web/PWA, API, domain services, and workers share one TypeScript domain package but run as independently scalable processes. MariaDB 11.8.x is the transactional system of record. Redis is used only for queues, rate limits, locks with database verification, and short-lived cache. S3-compatible storage holds media, receipts, imports, exports, and encrypted backups.
 
 ```mermaid
 flowchart TB
@@ -50,12 +50,12 @@ flowchart TB
   WAF --> API[Next.js API Gateway]
   API --> AUTH[Auth + RBAC + Scope Resolver]
   AUTH --> DOMAIN[Domain Services]
-  DOMAIN --> PG[(PostgreSQL)]
-  DOMAIN --> REDIS[(Redis)]
-  DOMAIN --> S3[(Object Storage)]
-  DOMAIN --> OUTBOX[Transactional Outbox]
-  WORKER[BullMQ Workers] --> PG
-  WORKER --> REDIS
+   DOMAIN --> MDB[(MariaDB 11.8 / InnoDB)]
+   DOMAIN --> REDIS[(Redis)]
+   DOMAIN --> S3[(Object Storage)]
+   DOMAIN --> OUTBOX[Transactional Outbox]
+   WORKER[BullMQ Workers] --> MDB
+   WORKER --> REDIS
   WORKER --> EXT[SMS / Payments / Courier / Webhooks / Tax Export]
 ```
 
@@ -120,8 +120,8 @@ No module may import an unrestricted client for tenant-owned business data. All 
 | Inventory | Warehouse stock, reservations, batches, IMEI/serial, stock count, adjustment, damage, transfer, valuation, alerts | `stock_movements`, `warehouse_stocks`, `serial_events`, count/adjustment tables | Enabled |
 | Purchasing | Purchase orders, partial receiving, serial capture, landed cost, supplier returns, CSV import | `purchases`, `purchase_receivings`, `purchase_returns`, import jobs | Enabled |
 | Sales and POS | Quotation, POS, manual sale, hold/recall, split payment, due sale, invoice, return, refund, installments | `quotations`, `sales`, `payments`, `installments`, returns | Enabled |
-| Delivery and Courier | Packing, dispatch, courier booking, tracking, proof of delivery, COD settlement, failed/returned delivery | delivery, shipment, and COD settlement tables | Enabled when delivery is used |
-| Service and Warranty | Device intake, diagnosis, repair, parts, estimate approval, warranty claim, replacement, service delivery | service and warranty tables, serial ledger, payments | Enabled for electronics service operations |
+| Delivery and Courier | Packing, dispatch, courier booking, tracking, proof of delivery, COD settlement, failed/returned delivery | delivery, shipment, and COD settlement tables | Optional feature flag (D02) |
+| Service and Warranty | Device intake, diagnosis, repair, parts, estimate approval, warranty claim, replacement, service delivery | service and warranty tables, serial ledger, payments | Optional feature flag (D02) |
 | Payments and Cashier | Bill received, supplier payment, advances, account transfers, cheque lifecycle, cashier shifts and variance | `payments`, allocations, advance ledgers, cashier tables | Enabled |
 | Accounting and Tax | Chart of accounts, journals, fiscal periods, P&L, balance sheet, cash flow, VAT/SD/RD/withholding, statutory exports | journal, tax, statutory, reconciliation tables | Enabled |
 | Expenses | Categories, approvals, evidence, posting, payment, recurring operational expense import | expense tables, journals, payments | Enabled |
@@ -288,7 +288,7 @@ Verified custom-domain or subdomain mapping.
 | created_at | TIMESTAMPTZ | NOT NULL DEFAULT now() |  |
 | UNIQUE | — | company_id | PARTIAL UNIQUE WHERE is_primary = true AND tls_status='active' |
 
-- The partial unique index enforces exactly one active primary domain per company. A scheduled job downgrades the previous primary when a new domain is promoted.
+- The partial unique index enforces at most one active primary domain per company (no two active primaries). A scheduled job or application lifecycle rule downgrades the previous primary when a new domain is promoted. "At least one" active primary domain is an application lifecycle invariant, not a DB uniqueness guarantee.
 - Hostname resolution occurs before tenant context is accepted. Header-supplied company IDs never override the verified domain/session tenant.
 
 ## 5.2 Identity, RBAC, and Devices
@@ -6541,6 +6541,33 @@ The following controls are mandatory platform policy. No tenant, deployment, fea
 
 **API and integration requirements:**
 - `POST /api/v1/gift-cards` — issue.
+- Issuance clarification (2026-09-17): require explicit `mode` (`sold` or `promotional`),
+  `branch_id`, and decimal-string `face_value` (positive, at most 12 integer and 2 fractional digits).
+  No implicit mode or accounting account. Amounts are in company base currency because the
+  current gift-card subledger has no currency dimension; unsupported currency precision/FX
+  and external-provider settlement need a separately verified extension.
+- `sold` requires `financial_account_id` and `cash_received: true`: an active, same-tenant,
+  same-branch cash financial account in company base currency backed by an active debit-normal
+  asset account. This is an operator-confirmed cash sale, not proof of bank/provider settlement.
+  Create one incoming posted cash receipt (`payment_type='other'`, `client_txn_id` and
+  `method_reference` equal to card ID); do not issue pending/unconfirmed funding.
+- `promotional` requires an explicitly selected `expense_account_id`: an active same-tenant,
+  debit-normal, manually postable, non-control expense account designated by the authorized
+  accountant as marketing expense. Do not reuse the reward-points expense mapping implicitly.
+  No cash receipt/payment is fabricated for promotional issuance.
+- Current issuance permission codes: `gift_card.issue` plus `payment.pay.branch` for sold,
+  or `journal.post` for promotional; enforce branch assignment for both. Account selectors
+  additionally use existing `payment.read` / `journal.read` permissions; never bypass these.
+- Require an active credit-normal liability mapping and open fiscal period. Use the existing
+  journal posting helper once. Card, initial `gift_card_transactions.entry_type='issue'`,
+  receipt (sold only), journal, event, audit and successful idempotency response must commit
+  in one transaction. Ledger `event_id` references the posting event; journal source is
+  `gift_card` / card ID; issuance audit records mode, branch, debit account, journal and receipt.
+  Any failure rolls everything back. Retry the same key/body after an unknown result or
+  concurrency conflict; never collect cash again for that retry.
+- These clarifications define issuance only. They do not certify redemption, refund,
+  payment reversal, expiry, transfer or lost-card recovery; each must separately preserve
+  the signed ledger and compensating GL invariants before release.
 - `POST /api/v1/gift-cards/{id}/redeem` — redeem.
 - `POST /api/v1/gift-cards/{id}/refund` — refund (requires `sale_return_id`).
 - `POST /api/v1/gift-cards/{id}/transfer` — transfer.

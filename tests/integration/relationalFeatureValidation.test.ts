@@ -14,7 +14,7 @@ import { POST as issueGiftCard } from '@/app/api/v1/gift-cards/route';
 const db = new PrismaClient();
 afterAll(() => db.$disconnect());
 
-async function fixture(label: string, permissionId: string) {
+async function fixture(label: string, permissionIds: string[]) {
   return db.$transaction(async tx => {
     const company = await tx.company.create({ data: {
       code: 'REL-' + label + '-' + randomUUID(), legalName: 'Synthetic Company ' + label,
@@ -31,7 +31,7 @@ async function fixture(label: string, permissionId: string) {
       } }));
     }
     const role = await tx.role.create({ data: {
-      companyId, name: 'Synthetic issuer', permissions: { create: { permissionId } },
+      companyId, name: 'Synthetic issuer', permissions: { create: permissionIds.map(permissionId => ({ permissionId })) },
     } });
     const user = await tx.user.create({ data: {
       companyId, name: 'Synthetic user', email: randomUUID() + '@example.invalid',
@@ -119,8 +119,10 @@ it('validates relational chains in order and stops at first unmet invariant', as
   expect(Number(migrations[0].unfinished)).toBe(0);
   const permission = await db.permission.upsert({ where: { code: 'gift_card.issue' },
     update: {}, create: { code: 'gift_card.issue', module: 'loyalty', description: 'Synthetic issue permission' } });
-  const a = await fixture('A', permission.id);
-  const b = await fixture('B', permission.id);
+  const paymentPermission = await db.permission.upsert({ where: { code: 'payment.pay.branch' },
+    update: {}, create: { code: 'payment.pay.branch', module: 'payments', description: 'Synthetic receipt permission' } });
+  const a = await fixture('A', [permission.id, paymentPermission.id]);
+  const b = await fixture('B', [permission.id, paymentPermission.id]);
   console.log('RELATIONAL_FIXTURES', JSON.stringify({
     companyA: a.company.id, companyB: b.company.id, companies: 2, branches: 4, warehouses: 4,
     users: 2, roles: 2, customers: 2, suppliers: 2, products: 2, categories: 2, units: 2,
@@ -181,7 +183,8 @@ it('validates relational chains in order and stops at first unmet invariant', as
   }));
   const response = await issueGiftCard(new NextRequest('http://localhost/api/v1/gift-cards', {
     method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': randomUUID() },
-    body: JSON.stringify({ face_value: 100.25 }),
+    body: JSON.stringify({ face_value: '100.25', mode: 'sold', branch_id: a.branches[0].id,
+      financial_account_id: a.financialAccount.id, cash_received: true }),
   }));
   expect(response.status, 'authorized valid gift issuance must succeed').toBe(201);
   const body = await response.json();

@@ -26,17 +26,7 @@ vi.mock('@/lib/db/transaction', async importOriginal => {
           throw new Error('SYNTHETIC_PRIVATE_DRIVER_DETAILS');
         };
       } });
-    } }))).catch((error: unknown) => {
-      const e = error as { code?: string; name?: string; message?: string };
-      console.log('ISSUANCE_ERROR_CLASS', e.name, e.code, {
-        deadlock: /deadlock/i.test(e.message ?? ''), unique: /unique|duplicate/i.test(e.message ?? ''),
-        timeout: /timeout/i.test(e.message ?? ''), tenant: /TENANT/i.test(e.message ?? ''),
-        transaction: /transaction/i.test(e.message ?? ''),
-        changed: /Record has changed/i.test(e.message ?? ''),
-        driverCodes: e.message?.match(/(?:code: \d+|state: "[A-Z0-9]+")/g),
-      });
-      throw error;
-    }) };
+    } }))) };
 });
 import { POST } from '@/app/api/v1/gift-cards/route';
 
@@ -235,4 +225,33 @@ it('requires funding/posting permission in addition to gift-card issuance permis
   await db.rolePermission.delete({ where: { roleId_permissionId: { roleId: a.role.id, permissionId: permission.id } } });
   try { expect((await request(promo())).status).toBe(403); expect(await counts()).toEqual(before); }
   finally { await db.rolePermission.create({ data: { roleId: a.role.id, permissionId: permission.id } }); }
+});
+
+it('rejects issuance while mandatory accounting policy is missing', async () => {
+  const policy = await db.accountingPolicy.findUniqueOrThrow({ where: { companyId: companyA } });
+  const before = await counts();
+  await db.accountingPolicy.delete({ where: { companyId: companyA } });
+  try {
+    const result = await request(sold());
+    expect(result.status).toBe(409);
+    expect(result.body.error.message).toBe('Active gift-card liability mapping required');
+    expect(await counts()).toEqual(before);
+  } finally { await db.accountingPolicy.create({ data: policy }); }
+});
+
+it('rejects same-company branch without user assignment', async () => {
+  const assignment = await db.userBranchAccess.findFirstOrThrow({ where: { userId: a.user.id, branchId: a.branches[1].id } });
+  const before = await counts();
+  await db.userBranchAccess.delete({ where: { userId_branchId: assignment } });
+  try { expect((await request(promo({ branch_id: a.branches[1].id }))).status).toBe(403); expect(await counts()).toEqual(before); }
+  finally { await db.userBranchAccess.create({ data: assignment }); }
+});
+
+it('has no orphan/cross-company issuance ledger and posting-event links', async () => {
+  const rows = await db.$queryRaw<Array<{ orphanCount: bigint }>>`
+    SELECT COUNT(*) AS orphanCount FROM gift_card_transactions t
+    LEFT JOIN gift_cards c ON c.id = t.gift_card_id AND c.company_id = t.company_id
+    LEFT JOIN business_events e ON e.id = t.event_id AND e.company_id = t.company_id
+    WHERE t.company_id = ${companyA} AND t.entry_type = 'issue' AND (c.id IS NULL OR e.id IS NULL)`;
+  expect(Number(rows[0].orphanCount)).toBe(0);
 });
