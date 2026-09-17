@@ -21,6 +21,7 @@ import { db } from '../db';
 import { DomainError } from '../errors/codes';
 import { getTenantContext } from '../db/transaction';
 import { recordSecurityEvent } from '../audit';
+import type { Prisma } from '@prisma/client';
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
@@ -56,16 +57,20 @@ export async function withIdempotency<T extends Response>(
     deviceId?: string;
   },
   work: () => Promise<{ status: number; body: unknown; resourceType?: string; resourceId?: string }>,
+  transactionClient?: Prisma.TransactionClient,
 ): Promise<{ status: number; body: unknown; isReplay: boolean }> {
   const ctx = getTenantContext();
   if (!ctx) throw new Error('withIdempotency requires tenant context');
+  // Opt-in: persist the replay response atomically with the business writes.
+  // Existing callers retain their independent reservation behavior.
+  const client = transactionClient ?? db;
 
   // 1. Try to insert a fresh idempotency_requests row.
   //    If the key already exists, we either replay or 409.
   const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
   let row;
   try {
-    row = await db.idempotencyRequest.create({
+    row = await client.idempotencyRequest.create({
       data: {
         companyId: params.companyId,
         userId: params.userId ?? null,
@@ -90,9 +95,10 @@ export async function withIdempotency<T extends Response>(
       errStr.includes('1062') ||
       errStr.includes('Duplicate entry');
     if (!isUnique) {
+      if (transactionClient) throw e;
       throw new DomainError('INTERNAL_ERROR', `Idempotency create failed: ${errStr}`, {}, 500);
     }
-    const existing = await db.idempotencyRequest.findFirst({
+    const existing = await client.idempotencyRequest.findFirst({
       where: { companyId: params.companyId, idempotencyKey: params.idempotencyKey },
     });
     if (!existing) {
@@ -149,7 +155,7 @@ export async function withIdempotency<T extends Response>(
   // 2. Run the actual work.
   try {
     const result = await work();
-    await db.idempotencyRequest.update({
+    await client.idempotencyRequest.update({
       where: { id: row.id },
       data: {
         status: result.status < 400 ? 'succeeded' : 'failed',
@@ -162,13 +168,16 @@ export async function withIdempotency<T extends Response>(
     });
     return { status: result.status, body: result.body, isReplay: false };
   } catch (e) {
+    // The owner rolls back the reservation and business writes together. Do not
+    // issue another query on an aborted transaction or mask its conflict code.
+    if (transactionClient) throw e;
     const err = e instanceof DomainError ? e : new DomainError(
       'INTERNAL_ERROR',
       e instanceof Error ? e.message : 'Unknown error',
       {},
       500,
     );
-    await db.idempotencyRequest.update({
+    await client.idempotencyRequest.update({
       where: { id: row.id },
       data: {
         status: 'failed',
