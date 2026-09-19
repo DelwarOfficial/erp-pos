@@ -109,56 +109,100 @@ export async function issueGiftCard(
 }
 
 // ── RedeemGiftCard ──
+// Blueprint: gift-card balance is SUM(gift_card_transactions.amount_delta); the GiftCard
+// master row carries no balance and face_value stays immutable after issuance.
+// Redemption locks the card row (§13.2) and appends a negative 'redeem' ledger entry.
 export async function redeemGiftCard(
   tx: Prisma.TransactionClient,
   params: { companyId: string; code: string; amount: number; redeemedBy: string },
   correlationId: string,
 ): Promise<{ giftCardId: string; remainingBalance: number; status: string }> {
-  const card = await tx.giftCard.findFirst({
-    where: { companyId: params.companyId, code: params.code, status: 'active' },
-  });
-  if (!card) throw new DomainError('GIFT_CARD_EXPIRED', 'Gift card not found or not active', {}, 404);
+  if (!Number.isFinite(params.amount)) {
+    throw new DomainError('VALIDATION_FAILED', 'Redemption amount must be a finite number', {}, 400);
+  }
+  const amount = new Prisma.Decimal(params.amount);
+  if (amount.lte(0) || amount.dp() > 2) {
+    throw new DomainError('VALIDATION_FAILED', 'Positive amount with at most 2 decimal places required', {}, 400);
+  }
+  const card = await tx.giftCard.findFirst({ where: { companyId: params.companyId, code: params.code } });
+  if (!card || card.status !== 'active') {
+    throw new DomainError('GIFT_CARD_EXPIRED', 'Gift card not found or not active', {}, 404);
+  }
   if (card.expiresAt && card.expiresAt < new Date()) {
     throw new DomainError('GIFT_CARD_EXPIRED', 'Gift card has expired', {}, 409);
   }
-  const faceValue = parseFloat(card.faceValue.toString());
-  if (params.amount > faceValue) {
-    throw new DomainError('GIFT_CARD_INSUFFICIENT', `Insufficient balance: ${faceValue} < ${params.amount}`, {}, 409);
+  // Redemption locks the card row AND reads the ledger with a locking SUM:
+  // under REPEATABLE READ a plain aggregate would return the pre-lock snapshot
+  // and allow concurrent redemptions to overspend (§13.2 ledger balance lock).
+  await tx.$queryRaw`SELECT id FROM gift_cards WHERE id = ${card.id} FOR UPDATE`;
+  const ledgerRows = await tx.$queryRaw<Array<{ total: string | null }>>`
+    SELECT COALESCE(SUM(amount_delta), 0) AS total FROM gift_card_transactions
+    WHERE gift_card_id = ${card.id} FOR UPDATE`;
+  const balance = new Prisma.Decimal(ledgerRows[0]?.total ?? 0);
+  if (amount.gt(balance)) {
+    throw new DomainError('GIFT_CARD_INSUFFICIENT', `Insufficient balance: ${balance.toFixed(2)} < ${amount.toFixed(2)}`, {}, 409);
   }
-  const remaining = faceValue - params.amount;
-  const newStatus = remaining <= 0 ? 'redeemed' : 'active';
-  await tx.giftCard.update({
-    where: { id: card.id },
-    data: { faceValue: remaining, status: newStatus },
-  });
+  const remaining = balance.minus(amount);
+  const event = await tx.businessEvent.create({ data: {
+    companyId: params.companyId, eventType: 'gift_card.redeemed', sourceType: 'gift_card_redeem',
+    sourceId: randomUUID(), correlationId,
+  } });
+  await tx.giftCardTransaction.create({ data: {
+    companyId: params.companyId, giftCardId: card.id, entryType: 'redeem',
+    amountDelta: amount.negated(), eventId: event.id, createdBy: params.redeemedBy,
+  } });
+  await tx.giftCard.update({ where: { id: card.id }, data: { status: remaining.eq(0) ? 'redeemed' : 'active' } });
   await tx.auditLog.create({
     data: { companyId: params.companyId, userId: params.redeemedBy, correlationId,
       action: 'gift_card.redeem', entityType: 'gift_card', entityId: card.id,
-      afterValue: JSON.stringify({ amount: params.amount, remaining }) },
+      afterValue: JSON.stringify({ amount: amount.toFixed(2), ledger_balance_before: balance.toFixed(2), remaining: remaining.toFixed(2) }) },
   });
-  return { giftCardId: card.id, remainingBalance: remaining, status: newStatus };
+  return { giftCardId: card.id, remainingBalance: remaining.toNumber(), status: remaining.eq(0) ? 'redeemed' : 'active' };
 }
 
 // ── PostGiftCardRefund ──
+// Same ledger authority: a refund appends a positive 'refund' entry referencing the
+// originating sale return (§7.6/§20.D17); face_value stays immutable. The liability
+// journal reversal is posted by the sale-return accounting layer.
 export async function postGiftCardRefund(
   tx: Prisma.TransactionClient,
   params: { companyId: string; giftCardId: string; saleReturnId: string; amount: number; refundedBy: string },
   correlationId: string,
 ): Promise<{ giftCardId: string; newBalance: number }> {
+  if (!Number.isFinite(params.amount)) {
+    throw new DomainError('VALIDATION_FAILED', 'Refund amount must be a finite number', {}, 400);
+  }
+  const amount = new Prisma.Decimal(params.amount);
+  if (amount.lte(0) || amount.dp() > 2) {
+    throw new DomainError('VALIDATION_FAILED', 'Positive amount with at most 2 decimal places required', {}, 400);
+  }
+  const saleReturn = await tx.saleReturn.findFirst({ where: { id: params.saleReturnId, companyId: params.companyId } });
+  if (!saleReturn) {
+    throw new DomainError('VALIDATION_FAILED', 'Valid sale return required for gift-card refund', {}, 400);
+  }
   const card = await tx.giftCard.findFirst({ where: { id: params.giftCardId, companyId: params.companyId } });
   if (!card) throw new DomainError('RESOURCE_NOT_FOUND', 'Gift card not found', {}, 404);
-  const currentBalance = parseFloat(card.faceValue.toString());
-  const newBalance = currentBalance + params.amount;
-  await tx.giftCard.update({
-    where: { id: card.id },
-    data: { faceValue: newBalance, status: 'active' },
-  });
+  await tx.$queryRaw`SELECT id FROM gift_cards WHERE id = ${card.id} FOR UPDATE`;
+  const ledgerRows = await tx.$queryRaw<Array<{ total: string | null }>>`
+    SELECT COALESCE(SUM(amount_delta), 0) AS total FROM gift_card_transactions
+    WHERE gift_card_id = ${card.id} FOR UPDATE`;
+  const balance = new Prisma.Decimal(ledgerRows[0]?.total ?? 0);
+  const newBalance = balance.plus(amount);
+  const event = await tx.businessEvent.create({ data: {
+    companyId: params.companyId, eventType: 'gift_card.refunded', sourceType: 'gift_card_refund',
+    sourceId: randomUUID(), correlationId,
+  } });
+  await tx.giftCardTransaction.create({ data: {
+    companyId: params.companyId, giftCardId: card.id, entryType: 'refund',
+    amountDelta: amount, saleReturnId: saleReturn.id, eventId: event.id, createdBy: params.refundedBy,
+  } });
+  await tx.giftCard.update({ where: { id: card.id }, data: { status: 'active' } });
   await tx.auditLog.create({
     data: { companyId: params.companyId, userId: params.refundedBy, correlationId,
       action: 'gift_card.refund', entityType: 'gift_card', entityId: card.id,
-      afterValue: JSON.stringify({ sale_return_id: params.saleReturnId, refund_amount: params.amount, new_balance: newBalance }) },
+      afterValue: JSON.stringify({ sale_return_id: params.saleReturnId, refund_amount: amount.toFixed(2), new_balance: newBalance.toFixed(2) }) },
   });
-  return { giftCardId: card.id, newBalance };
+  return { giftCardId: card.id, newBalance: newBalance.toNumber() };
 }
 
 // ── RedeemCoupon ── (simplified — no coupon model in schema yet; returns validation result)
