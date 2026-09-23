@@ -1060,7 +1060,7 @@
     "file": "v1/offline/sync/route.ts",
     "method": "POST",
     "permissions": [
-      "device.read"
+      "sale.post"
     ],
     "exception": null
   },

@@ -8,6 +8,8 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
+import { createHash } from 'node:crypto';
+import { applyOfflineCommand } from '@/domain/offline/applyOfflineCommand';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'device.read');
+    await requirePermission(auth, 'sale.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = SyncSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/offline/sync', body });
@@ -56,9 +58,23 @@ export async function POST(req: NextRequest) {
 
             let syncedCount = 0;
             let conflictCount = 0;
-            const results: Array<{ sequence: number; status: string; conflict?: string }> = [];
+            let appliedCount = 0;
+            const results: Array<{ sequence: number; status: string; conflict?: string; resource_id?: string }> = [];
 
             for (const cmd of body.commands) {
+              // The hash is recomputed here: deduplication and conflict
+              // detection key on it, so accepting the client's value let a
+              // tampered or buggy terminal have a different payload classified
+              // as an already-seen duplicate and silently discarded.
+              const computedHash = createHash('sha256')
+                .update(JSON.stringify(cmd.payload))
+                .digest('hex');
+              if (computedHash !== cmd.payload_hash) {
+                throw new DomainError('VALIDATION_FAILED',
+                  `Payload hash mismatch for sequence ${cmd.sequence_number}`,
+                  { sequence_number: cmd.sequence_number }, 400);
+              }
+
               // Check for duplicate sequence
               const existing = await tx.offlineCommand.findFirst({
                 where: { deviceId: device.id, sequenceNumber: cmd.sequence_number },
@@ -77,7 +93,7 @@ export async function POST(req: NextRequest) {
                       commandType: cmd.command_type,
                       sequenceNumber: cmd.sequence_number,
                       payload: JSON.stringify(cmd.payload),
-                      payloadHash: cmd.payload_hash,
+                      payloadHash: computedHash,
                       idempotencyKey: cmd.idempotency_key,
                       status: 'conflict',
                       conflictReason: 'Same sequence number, different payload hash',
@@ -91,22 +107,35 @@ export async function POST(req: NextRequest) {
                 }
               }
 
-              // Store the command
+              // Apply the command through the same domain command the online
+              // path uses, inside this transaction. A failure aborts the whole
+              // batch rather than recording a command that was never applied.
+              const outcome = await applyOfflineCommand(tx, {
+                companyId: auth.companyId,
+                userId: auth.userId!,
+                commandType: cmd.command_type,
+                payload: cmd.payload,
+              }, correlationId);
+
               await tx.offlineCommand.create({
                 data: {
                   companyId: auth.companyId, deviceId: device.id,
                   commandType: cmd.command_type,
                   sequenceNumber: cmd.sequence_number,
                   payload: JSON.stringify(cmd.payload),
-                  payloadHash: cmd.payload_hash,
+                  payloadHash: computedHash,
                   idempotencyKey: cmd.idempotency_key,
-                  status: 'synced',
+                  status: outcome.status === 'applied' ? 'applied' : 'synced',
+                  conflictReason: outcome.status === 'stored' ? outcome.reason : null,
                   syncBatchId: batch.id,
                   syncedAt: new Date(),
                 },
               });
               syncedCount++;
-              results.push({ sequence: cmd.sequence_number, status: 'synced' });
+              if (outcome.status === 'applied') appliedCount++;
+              results.push(outcome.status === 'applied'
+                ? { sequence: cmd.sequence_number, status: 'applied', resource_id: outcome.resourceId }
+                : { sequence: cmd.sequence_number, status: 'stored' });
             }
 
             // Update batch
@@ -132,6 +161,7 @@ export async function POST(req: NextRequest) {
               body: {
                 batch_id: batch.id,
                 synced_count: syncedCount,
+                applied_count: appliedCount,
                 conflict_count: conflictCount,
                 status: conflictCount > 0 ? 'partial' : 'completed',
                 results,

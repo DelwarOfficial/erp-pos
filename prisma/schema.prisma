@@ -4214,7 +4214,7 @@ model OfflineCommand {
   payload         String   @default("{}") // JSONB — signed command data
   payloadHash     String   @map("payload_hash")
   idempotencyKey  String   @map("idempotency_key")
-  status          String   @default("pending") // pending/synced/conflict/cancelled
+  status          String   @default("pending") // pending/synced/applied/conflict/cancelled
   conflictReason  String?  @map("conflict_reason")
   syncedAt        DateTime? @map("synced_at")
   syncBatchId     String?  @map("sync_batch_id")
