@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // ── Phase 1: Validate + record refund intent INSIDE a transaction ──
     // No external calls — just DB validation + audit log that commits atomically.
-    await runInTenantContext(auth.ctx, () =>
+    const reservation = await runInTenantContext(auth.ctx, () =>
       withIdempotency(
         { idempotencyKey, operation: 'payment.refund', requestHash, companyId: auth.companyId, userId: auth.userId },
         async () => {
@@ -80,6 +80,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
       ),
     );
+
+    // A replayed key means this refund was already carried out. The gateway
+    // call below is NOT idempotent on the provider side, and the reversal row
+    // collides on @@unique([companyId, referenceNo]) — so continuing would
+    // refund the customer a second time and then fail to record it. Return the
+    // stored response instead, before any network call.
+    if (reservation.isReplay) {
+      return NextResponse.json(reservation.body, { status: reservation.status });
+    }
 
     // ── Phase 2: Fetch payment + call gateway OUTSIDE the transaction ──
     // Network call does not hold any DB locks.
@@ -138,13 +147,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             }) },
         });
 
-        return NextResponse.json({
+        const responseBody = {
           payment_id: payment.id,
           refund_id: refundResult.refundId,
           refund_status: refundResult.status,
           reversal_payment_id: reversalPayment.id,
           amount: body.amount,
-        }, { status: 200 });
+        };
+
+        // Phase 1 stored a placeholder so the key was reserved before the
+        // gateway call. Replace it with the real outcome so a retry replays
+        // the refund details rather than the placeholder.
+        await db.idempotencyRequest.updateMany({
+          where: { companyId: auth.companyId, idempotencyKey },
+          data: {
+            responseStatus: 200,
+            responseBody: JSON.stringify(responseBody),
+            resourceType: 'payment_refund',
+            resourceId: reversalPayment.id,
+          },
+        });
+
+        return NextResponse.json(responseBody, { status: 200 });
       });
     } catch (gatewayError) {
       // Gateway call failed — record audit with error
