@@ -42,3 +42,8 @@ playwright-report/
 .env.staging
 .env.sqlite-backup
 .env.uat
+
+# Captured HTTP artifacts — may contain live session tokens (audit F-02)
+cookies.txt
+headers.txt
+*.cookies.txt
