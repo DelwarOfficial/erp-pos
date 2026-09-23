@@ -46,8 +46,8 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
     const existing = await db.userBranchAccess.findFirst({ where: { userId: user.id, branchId: branch.id } });
     if (!existing) await db.userBranchAccess.create({ data: { userId: user.id, branchId: branch.id } });
   }
-  const coa = async (code: string, name: string, accountClass: 'asset' | 'liability' | 'expense',
-    subtype: 'current_asset' | 'current_liability' | 'operating_expense', normalBalance: 'D' | 'C',
+  const coa = async (code: string, name: string, accountClass: 'asset' | 'liability' | 'expense' | 'revenue',
+    subtype: 'current_asset' | 'current_liability' | 'operating_expense' | 'operating_revenue', normalBalance: 'D' | 'C',
     extra: { allowManualPosting?: boolean } = {}) => {
     let account: ChartOfAccount | null = await db.chartOfAccount.findFirst({ where: { companyId: company.id, code } });
     if (!account) account = await db.chartOfAccount.create({ data: {
@@ -58,6 +58,11 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
   const cash = await coa('cash', 'Synthetic cash', 'asset', 'current_asset', 'D');
   const liability = await coa('giftLiability', 'Synthetic gift-card liability', 'liability', 'current_liability', 'C');
   const expense = await coa('giftMarketing', 'Synthetic marketing', 'expense', 'operating_expense', 'D', { allowManualPosting: true });
+  // Sales revenue MUST be a different account from the gift-card liability:
+  // redemption posts Dr liability / Cr revenue, and mapping both roles to one
+  // account makes that entry net to zero, so the liability is never
+  // extinguished and no correct implementation can satisfy the gate.
+  const revenue = await coa('revenue', 'Synthetic revenue', 'revenue', 'operating_revenue', 'C');
   let financialAccount: FinancialAccount | null = await db.financialAccount.findFirst({ where: {
     companyId: company.id, branchId: branches[0].id, accountType: 'cash',
   } });
@@ -68,7 +73,7 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
   const policy = await db.accountingPolicy.findUnique({ where: { companyId: company.id } });
   if (!policy) await db.accountingPolicy.create({ data: {
     companyId: company.id, inventoryAccountId: cash.id, cogsAccountId: expense.id,
-    salesRevenueAccountId: liability.id, arAccountId: cash.id, apAccountId: liability.id,
+    salesRevenueAccountId: revenue.id, arAccountId: cash.id, apAccountId: liability.id,
     customerAdvanceAccountId: liability.id, supplierAdvanceAccountId: cash.id,
     purchaseVarianceAccountId: expense.id, giftCardLiabilityAccountId: liability.id,
   } });
