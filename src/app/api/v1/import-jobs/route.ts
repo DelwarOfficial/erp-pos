@@ -23,9 +23,12 @@ export async function GET(req: NextRequest) {
   try {
     await requirePermission(auth, 'import.execute.company');
   } catch (e) {
-    if (e instanceof DomainError && !auth.isGlobal) {
+    if (e instanceof DomainError) {
       return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     }
+    // Never continue unauthorized: a non-DomainError means the permission
+    // lookup itself failed, so the check did not run. Fail closed.
+    throw e;
   }
 
   const url = new URL(req.url);
@@ -90,9 +93,12 @@ export async function POST(req: NextRequest) {
   try {
     await requirePermission(auth, 'import.execute.company');
   } catch (e) {
-    if (e instanceof DomainError && !auth.isGlobal) {
+    if (e instanceof DomainError) {
       return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     }
+    // Never continue unauthorized: a non-DomainError means the permission
+    // lookup itself failed, so the check did not run. Fail closed.
+    throw e;
   }
 
   try {
