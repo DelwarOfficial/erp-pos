@@ -89,7 +89,7 @@ export default function HRPage() {
                 </thead>
                 <tbody>
                   {items.map(e => (
-                    <tr key={e.id} className="border-b hover:bg-slate-50">
+                    <tr key={e.id} className="border-b hover:bg-muted">
                       <td className="py-2 pr-3 font-mono whitespace-nowrap">{e.employee_no}</td>
                       <td className="pr-3 font-medium">{e.name}</td>
                       <td className="pr-3 whitespace-nowrap">{e.branch.name}</td>

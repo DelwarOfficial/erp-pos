@@ -50,7 +50,8 @@ export function DataTable<T extends { id?: string }>({
   }, [data, sortKey, sortDir]);
 
   const totalPages = Math.ceil(sorted.length / pageSize);
-  const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
+  const currentPage = Math.min(page, Math.max(0, totalPages - 1));
+  const paged = sorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   function toggleSort(key: string) {
     if (sortKey === key) {
@@ -75,15 +76,14 @@ export function DataTable<T extends { id?: string }>({
                 <TableHead
                   key={col.key}
                   className={col.className}
-                  onClick={col.sortable ? () => toggleSort(col.key) : undefined}
-                  style={col.sortable ? { cursor: 'pointer', userSelect: 'none' } : undefined}
+                  aria-sort={col.sortable ? sortKey === col.key ? sortDir === 'asc' ? 'ascending' : 'descending' : 'none' : undefined}
                 >
-                  <div className="flex items-center gap-1">
+                  {col.sortable ? <button type="button" onClick={() => toggleSort(col.key)} className="flex min-h-9 items-center gap-1 rounded-sm font-medium">
                     {col.header}
-                    {col.sortable && sortKey === col.key && (
-                      sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                    {sortKey === col.key && (
+                      sortDir === 'asc' ? <ChevronUp className="h-3 w-3" aria-hidden="true" /> : <ChevronDown className="h-3 w-3" aria-hidden="true" />
                     )}
-                  </div>
+                  </button> : col.header}
                 </TableHead>
               ))}
             </TableRow>
@@ -93,6 +93,12 @@ export function DataTable<T extends { id?: string }>({
               <TableRow
                 key={row.id ?? i}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={onRowClick ? event => {
+                  if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault(); onRowClick(row);
+                  }
+                } : undefined}
                 style={onRowClick ? { cursor: 'pointer' } : undefined}
               >
                 {columns.map(col => (
@@ -106,15 +112,15 @@ export function DataTable<T extends { id?: string }>({
         </Table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
-            Page {page + 1} of {totalPages} ({sorted.length} total)
+            Page {currentPage + 1} of {totalPages} ({sorted.length} total)
           </span>
           <div className="flex gap-1">
-            <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            <Button aria-label="Previous page" size="sm" variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+            <Button aria-label="Next page" size="sm" variant="outline" disabled={currentPage >= totalPages - 1} onClick={() => setPage(currentPage + 1)}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

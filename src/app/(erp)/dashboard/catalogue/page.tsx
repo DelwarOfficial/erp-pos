@@ -16,7 +16,7 @@ export default function CataloguePage() {
       <div>
         <h1 className="text-2xl font-bold">Catalogue Management</h1>
         <p className="text-muted-foreground">
-          Manage categories, brands, units, and tax components inline. Each item supports create + (future) edit/delete.
+          View and add categories, brands, units and tax components.
         </p>
       </div>
 

@@ -14,7 +14,7 @@ export default function AccountingPage() {
           <Scale className="h-6 w-6" /> Accounting
         </h1>
         <p className="text-muted-foreground">
-          Double-entry ledger, fiscal periods, expenses, and financial reports (Phase M4).
+          Journal entries, account balances, expenses and fiscal periods.
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export default function AccountingPage() {
             <CardDescription>Post operational expenses with GL integration.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/accounting/expenses"><Button>View Expenses →</Button></Link>
+            <Link href="/dashboard/expenses"><Button>View Expenses →</Button></Link>
           </CardContent>
         </Card>
 

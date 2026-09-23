@@ -466,7 +466,7 @@ export default function PaymentsPage() {
                           {p.direction === 'outgoing' ? (
                             <ArrowUpRight className="inline-block ml-1 h-3 w-3 text-destructive" aria-label="Outgoing" />
                           ) : (
-                            <ArrowDownToLine className="inline-block ml-1 h-3 w-3 text-emerald-600" aria-label="Incoming" />
+                            <ArrowDownToLine className="inline-block ml-1 h-3 w-3 text-success-foreground" aria-label="Incoming" />
                           )}
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate text-sm" title={counterparty}>

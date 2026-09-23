@@ -18,7 +18,12 @@ const mocks = vi.hoisted(() => ({
   refund: vi.fn(),
   getPayment: vi.fn(),
   paymentFindFirst: vi.fn(),
+  paymentAggregate: vi.fn(),
+  paymentUpdateMany: vi.fn(),
   paymentCreate: vi.fn(),
+  financialAccountFindFirst: vi.fn(),
+  policyFindUnique: vi.fn(),
+  postJournalEntry: vi.fn(),
   auditCreate: vi.fn(),
   idempotencyUpdateMany: vi.fn(),
   registerProviders: vi.fn(),
@@ -34,7 +39,12 @@ vi.mock('@/lib/db/transaction', () => ({
 }));
 vi.mock('@/lib/db', () => ({
   db: {
-    payment: { findFirst: mocks.paymentFindFirst, create: mocks.paymentCreate },
+    payment: {
+      findFirst: mocks.paymentFindFirst, create: mocks.paymentCreate,
+      aggregate: mocks.paymentAggregate, updateMany: mocks.paymentUpdateMany,
+    },
+    financialAccount: { findFirst: mocks.financialAccountFindFirst },
+    accountingPolicy: { findUnique: mocks.policyFindUnique },
     auditLog: { create: mocks.auditCreate },
     idempotencyRequest: { updateMany: mocks.idempotencyUpdateMany },
   },
@@ -45,6 +55,7 @@ vi.mock('@/lib/idempotency', () => ({
   requireIdempotencyKey: () => 'k'.repeat(16),
 }));
 vi.mock('@/adapters', () => ({ providerRegistry: { getPayment: mocks.getPayment } }));
+vi.mock('@/domain/commands/m4/PostJournalEntry', () => ({ postJournalEntry: mocks.postJournalEntry }));
 vi.mock('@/adapters/providers', () => ({ registerProviders: mocks.registerProviders }));
 
 import { POST as refundRoute } from '@/app/api/v1/payments/[id]/refund/route';
@@ -61,7 +72,7 @@ function request() {
   return new NextRequest('http://localhost/api/v1/payments/pay-1/refund', {
     method: 'POST',
     headers: { 'idempotency-key': 'k'.repeat(16), 'content-type': 'application/json' },
-    body: JSON.stringify({ amount: 500, provider_code: 'bkash', gateway_txn_id: 'TXN-1' }),
+    body: JSON.stringify({ amount: '500.00', provider_code: 'bkash', gateway_txn_id: 'TXN-1' }),
   });
 }
 
@@ -73,16 +84,24 @@ describe('payment refund idempotency', () => {
     mocks.scope.mockImplementation(async (_ctx: unknown, work: () => Promise<unknown>) => work());
     mocks.tenant.mockImplementation(async (_ctx: unknown, work: (tx: unknown) => Promise<unknown>) =>
       work({
-        payment: { findFirst: mocks.paymentFindFirst },
+        payment: {
+          findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
+          updateMany: mocks.paymentUpdateMany,
+        },
         auditLog: { create: mocks.auditCreate },
       }));
     mocks.paymentFindFirst.mockResolvedValue({
       id: 'pay-1', companyId: 'company-a', branchId: 'branch-a',
-      referenceNo: 'PMT-000001', amount: '1000.00', exchangeRate: 1,
+      referenceNo: 'PMT-000001', amount: '1000.00', exchangeRate: 1, businessDate: new Date('2026-09-01'),
       currencyCode: 'BDT', paymentStatus: 'posted', financialAccountId: 'fa-1',
       customerId: 'cust-1', saleReturnId: null, cashierShiftId: null,
     });
+    mocks.paymentAggregate.mockResolvedValue({ _sum: { amount: null } });
+    mocks.paymentUpdateMany.mockResolvedValue({ count: 1 });
     mocks.paymentCreate.mockResolvedValue({ id: 'reversal-1' });
+    mocks.financialAccountFindFirst.mockResolvedValue({ chartOfAccountId: 'coa-cash' });
+    mocks.policyFindUnique.mockResolvedValue({ arAccountId: 'coa-ar', apAccountId: 'coa-ap', customerAdvanceAccountId: 'coa-adv' });
+    mocks.postJournalEntry.mockResolvedValue({ journalEntryId: 'je-1', entryNo: 'JE-1' });
     mocks.auditCreate.mockResolvedValue({});
     mocks.idempotencyUpdateMany.mockResolvedValue({ count: 1 });
     mocks.refund.mockResolvedValue({ refundId: 'RFND-1', status: 'completed' });
@@ -94,7 +113,7 @@ describe('payment refund idempotency', () => {
     // response recorded by the first, successful attempt.
     mocks.idempotency.mockResolvedValue({
       status: 200,
-      body: { payment_id: 'pay-1', refund_id: 'RFND-1', reversal_payment_id: 'reversal-1', amount: 500 },
+      body: { payment_id: 'pay-1', refund_id: 'RFND-1', reversal_payment_id: 'reversal-1', amount: '500.00' },
       isReplay: true,
     });
 

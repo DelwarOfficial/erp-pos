@@ -100,7 +100,7 @@ export default function CRMPage() {
                       {l.assignee && <span>👤 {l.assignee.name}</span>}
                     </div>
                     {l.next_action_at && (
-                      <div className="text-xs text-amber-600 mt-1">
+                      <div className="text-xs text-warning-foreground mt-1">
                         ⏰ Next action: {new Date(l.next_action_at).toLocaleString()}
                       </div>
                     )}

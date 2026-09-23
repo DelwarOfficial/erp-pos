@@ -113,7 +113,7 @@ export default function SalesPage() {
                 </thead>
                 <tbody>
                   {sales.map(s => (
-                    <tr key={s.id} className="border-b hover:bg-slate-50">
+                    <tr key={s.id} className="border-b hover:bg-muted">
                       <td className="py-2 pr-3 font-mono whitespace-nowrap">{s.reference_no}</td>
                       <td className="pr-3 truncate max-w-[160px]">{s.customer?.name ?? 'Walk-in'}</td>
                       <td className="pr-3 text-xs truncate max-w-[120px]">{s.biller?.name ?? '—'}</td>

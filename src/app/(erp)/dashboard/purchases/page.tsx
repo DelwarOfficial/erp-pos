@@ -106,7 +106,7 @@ export default function PurchasesPage() {
                 </thead>
                 <tbody>
                   {purchases.map(p => (
-                    <tr key={p.id} className="border-b hover:bg-slate-50">
+                    <tr key={p.id} className="border-b hover:bg-muted">
                       <td className="py-2 font-mono">{p.reference_no}</td>
                       <td>{p.supplier.name}</td>
                       <td>{p.warehouse.name}</td>

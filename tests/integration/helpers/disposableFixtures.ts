@@ -63,6 +63,13 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
   // account makes that entry net to zero, so the liability is never
   // extinguished and no correct implementation can satisfy the gate.
   const revenue = await coa('revenue', 'Synthetic revenue', 'revenue', 'operating_revenue', 'C');
+  // Each policy role needs its own account. Mapping several roles onto one
+  // account makes a two-line entry net to zero on that account, which hides
+  // whether the posting happened at all.
+  const inventory = await coa('inventory', 'Synthetic inventory', 'asset', 'current_asset', 'D');
+  const receivable = await coa('ar', 'Synthetic receivable', 'asset', 'current_asset', 'D');
+  const payable = await coa('ap', 'Synthetic payable', 'liability', 'current_liability', 'C');
+  const cogs = await coa('cogs', 'Synthetic cost of sales', 'expense', 'operating_expense', 'D');
   let financialAccount: FinancialAccount | null = await db.financialAccount.findFirst({ where: {
     companyId: company.id, branchId: branches[0].id, accountType: 'cash',
   } });
@@ -70,13 +77,20 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
     companyId: company.id, branchId: branches[0].id, name: 'Synthetic cash box', accountType: 'cash',
     currencyCode: 'BDT', chartOfAccountId: cash.id, isActive: true,
   } });
-  const policy = await db.accountingPolicy.findUnique({ where: { companyId: company.id } });
-  if (!policy) await db.accountingPolicy.create({ data: {
-    companyId: company.id, inventoryAccountId: cash.id, cogsAccountId: expense.id,
-    salesRevenueAccountId: revenue.id, arAccountId: cash.id, apAccountId: liability.id,
+  // Upsert, not create-if-absent: a company provisioned by an earlier version
+  // of this helper keeps its old mappings otherwise, and several roles sharing
+  // one account make two-line entries net to zero on it.
+  const policyAccounts = {
+    companyId: company.id, inventoryAccountId: inventory.id, cogsAccountId: cogs.id,
+    salesRevenueAccountId: revenue.id, arAccountId: receivable.id, apAccountId: payable.id,
     customerAdvanceAccountId: liability.id, supplierAdvanceAccountId: cash.id,
     purchaseVarianceAccountId: expense.id, giftCardLiabilityAccountId: liability.id,
-  } });
+  };
+  await db.accountingPolicy.upsert({
+    where: { companyId: company.id },
+    update: policyAccounts,
+    create: policyAccounts,
+  });
   const y = new Date().getUTCFullYear();
   const period = await db.fiscalPeriod.findFirst({ where: {
     companyId: company.id, status: 'open', periodStart: { lte: new Date() }, periodEnd: { gte: new Date() },

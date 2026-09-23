@@ -110,12 +110,12 @@ export default function OnboardingPage() {
       </div>
 
       {result && (
-        <Card className="border-green-200 bg-green-50">
+        <Card className="border-success-foreground/20 bg-success">
           <CardHeader>
-            <CardTitle className="text-green-800 flex items-center gap-2">
+            <CardTitle className="text-success-foreground flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5" /> Onboarded Successfully
             </CardTitle>
-            <CardDescription className="text-green-700">
+            <CardDescription className="text-success-foreground">
               Company is in <strong>suspended</strong> status. Activate after admin completes MFA setup.
             </CardDescription>
           </CardHeader>

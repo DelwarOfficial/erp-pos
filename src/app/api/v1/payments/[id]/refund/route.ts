@@ -17,6 +17,8 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
+import { Prisma } from '@prisma/client';
+import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { providerRegistry } from '@/adapters';
 import { registerProviders } from '@/adapters/providers';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -24,7 +26,9 @@ import { getCorrelationId } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
 
 const RefundSchema = z.object({
-  amount: z.number().positive(),
+  // A decimal string, not a float: `10.005` used to be accepted and stored,
+  // and money compared with parseFloat cannot be capped exactly.
+  amount: z.string().regex(/^\d{1,12}(\.\d{1,2})?$/, 'Amount must be a decimal string with at most 2 decimal places'),
   provider_code: z.string().min(1),
   gateway_txn_id: z.string().min(1),
   reason: z.string().max(500).optional(),
@@ -54,8 +58,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (payment.paymentStatus === 'reversed') {
               throw new DomainError('VALIDATION_FAILED', 'Cannot refund a reversed payment', {}, 409);
             }
-            if (body.amount > parseFloat(payment.amount.toString())) {
-              throw new DomainError('VALIDATION_FAILED', 'Refund amount exceeds payment amount', {}, 400);
+
+            // Cap against the payment less everything already refunded. The
+            // previous check compared this one refund against the full payment
+            // amount, so two partial refunds of 60 against a 100 payment both
+            // passed and returned 120 in total.
+            const priorRefunds = await tx.payment.aggregate({
+              where: { companyId: auth.companyId, reversedPaymentId: payment.id, paymentStatus: { not: 'failed' } },
+              _sum: { amount: true },
+            });
+            const alreadyRefunded = new Prisma.Decimal(priorRefunds._sum.amount ?? 0);
+            const refundAmount = new Prisma.Decimal(body.amount);
+            const refundable = new Prisma.Decimal(payment.amount.toString()).minus(alreadyRefunded);
+            if (refundAmount.gt(refundable)) {
+              throw new DomainError('VALIDATION_FAILED',
+                `Refund amount exceeds the refundable balance of ${refundable.toFixed(2)}`,
+                { payment_amount: payment.amount.toString(), already_refunded: alreadyRefunded.toFixed(2) }, 400);
+            }
+
+            // Claim the payment before the gateway is called. The guard above
+            // was unreachable because nothing ever set this status, so only the
+            // referenceNo unique constraint stopped a second refund -- after
+            // the money had already left.
+            const claimed = await tx.payment.updateMany({
+              where: { id: payment.id, companyId: auth.companyId, paymentStatus: { not: 'reversed' } },
+              data: { paymentStatus: 'reversed' },
+            });
+            if (claimed.count !== 1) {
+              throw new DomainError('CONCURRENT_MODIFICATION', 'Payment was reversed concurrently', {}, 409);
             }
 
             // Validate provider exists (cheap registry lookup, no network call)
@@ -109,7 +139,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       const refundResult = await provider.refund({
         gatewayTxnId: body.gateway_txn_id,
-        amount: body.amount,
+        // The provider interface takes a number; the decimal string is the
+        // authoritative value and is what gets stored and posted.
+        amount: Number(body.amount),
       });
 
       // ── Phase 3: Record refund result in a new short transaction ──
@@ -126,7 +158,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             financialAccountId: payment.financialAccountId,
             cashierShiftId: payment.cashierShiftId ?? null,
             currencyCode: payment.currencyCode, exchangeRate: payment.exchangeRate,
-            amount: body.amount, baseAmount: body.amount,
+            amount: new Prisma.Decimal(body.amount), baseAmount: new Prisma.Decimal(body.amount),
             paymentMethod: body.provider_code, methodReference: refundResult.refundId,
             chequeStatus: 'not_applicable',
             paymentStatus: refundResult.status === 'completed' ? 'posted' : 'failed',
@@ -135,6 +167,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             createdBy: auth.userId!, notes: `Refund: ${body.reason ?? 'customer request'}`,
           },
         });
+
+        // The refund leaves the bank: credit cash, debit the counterparty
+        // control account. Without this the payments subledger showed the
+        // outflow and the GL did not, so bank reconciliation could not balance.
+        const financialAccount = await db.financialAccount.findFirst({
+          where: { id: payment.financialAccountId, companyId: auth.companyId },
+          select: { chartOfAccountId: true },
+        });
+        const policies = await db.accountingPolicy.findUnique({ where: { companyId: auth.companyId } });
+        if (!financialAccount || !policies) {
+          throw new DomainError('VALIDATION_FAILED',
+            'A financial account and accounting policies are required to post a refund', {}, 409);
+        }
+        const refundBase = new Prisma.Decimal(body.amount);
+        await postJournalEntry(db as unknown as Prisma.TransactionClient, {
+          companyId: auth.companyId,
+          entryDate: payment.businessDate,
+          postingKind: 'sale_refund',
+          sourceType: 'payment', sourceId: reversalPayment.id,
+          description: `Gateway refund of ${payment.referenceNo}`,
+          currencyCode: payment.currencyCode,
+          exchangeRate: parseFloat(payment.exchangeRate.toString()),
+          createdBy: auth.userId!,
+          lines: [
+            { chartOfAccountId: policies.arAccountId, debit: refundBase, credit: 0,
+              branchId: payment.branchId, memo: `Refund ${refundResult.refundId}` },
+            { chartOfAccountId: financialAccount.chartOfAccountId, debit: 0, credit: refundBase,
+              branchId: payment.branchId, memo: `Cash out for refund ${refundResult.refundId}` },
+          ],
+        }, correlationId);
 
         await db.auditLog.create({
           data: { companyId: auth.companyId, userId: auth.userId, correlationId,

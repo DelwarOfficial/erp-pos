@@ -63,15 +63,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">ERP Sign In</CardTitle>
+          <CardTitle><h1 className="text-2xl font-semibold tracking-tight">ERP Sign In</h1></CardTitle>
           <CardDescription>
             Bangladesh multi-tenant ERP/POS — Phase M0 (Foundation)
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-6" aria-busy={loading}>
           <CardContent className="space-y-4">
             {formError ? (
               <p role="alert" aria-live="assertive" className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
@@ -106,12 +106,13 @@ export default function LoginPage() {
               <Label htmlFor="company_code">Company Code (optional)</Label>
               <Input
                 id="company_code"
+                aria-describedby="company-code-help"
                 type="text"
                 value={companyCode}
                 onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
                 placeholder="e.g. ACME"
               />
-              <p className="text-xs text-muted-foreground">
+              <p id="company-code-help" className="text-xs text-muted-foreground">
                 Leave blank if your email belongs to only one company.
               </p>
             </div>

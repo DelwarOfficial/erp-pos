@@ -67,13 +67,13 @@ export default function TrialBalancePage() {
                 </thead>
                 <tbody>
                   {accounts.map(a => (
-                    <tr key={a.account_id} className="border-b hover:bg-slate-50">
+                    <tr key={a.account_id} className="border-b hover:bg-muted">
                       <td className="py-2 font-mono">{a.code}</td>
                       <td>{a.name}</td>
                       <td><Badge variant="outline" className="text-xs">{a.account_class}</Badge></td>
                       <td className="text-right font-mono">{parseFloat(a.total_debit).toFixed(2)}</td>
                       <td className="text-right font-mono">{parseFloat(a.total_credit).toFixed(2)}</td>
-                      <td className={`text-right font-mono font-medium ${a.balance_type === 'Debit' ? 'text-blue-600' : 'text-green-600'}`}>
+                      <td className={`text-right font-mono font-medium ${a.balance_type === 'Debit' ? 'text-info-foreground' : 'text-success-foreground'}`}>
                         {a.balance_type === 'Debit' ? 'Dr' : 'Cr'} {Math.abs(parseFloat(a.balance)).toFixed(2)}
                       </td>
                     </tr>

@@ -40,17 +40,17 @@ interface ExportJob {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  uploaded: 'bg-gray-100 text-gray-800',
-  validating: 'bg-blue-100 text-blue-800',
-  invalid: 'bg-red-100 text-red-800',
-  ready: 'bg-yellow-100 text-yellow-800',
-  importing: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  partial: 'bg-orange-100 text-orange-800',
-  failed: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-800',
-  running: 'bg-blue-100 text-blue-800',
-  expired: 'bg-gray-100 text-gray-800',
+  uploaded: 'bg-muted text-muted-foreground',
+  validating: 'bg-info text-info-foreground',
+  invalid: 'bg-destructive/10 text-destructive',
+  ready: 'bg-warning text-warning-foreground',
+  importing: 'bg-info text-info-foreground',
+  completed: 'bg-success text-success-foreground',
+  partial: 'bg-warning text-warning-foreground',
+  failed: 'bg-destructive/10 text-destructive',
+  cancelled: 'bg-muted text-muted-foreground',
+  running: 'bg-info text-info-foreground',
+  expired: 'bg-muted text-muted-foreground',
 };
 
 export default function ImportExportPage() {
@@ -185,9 +185,9 @@ export default function ImportExportPage() {
                         <TableCell className="text-xs">{new Date(job.createdAt).toLocaleString()}</TableCell>
                         <TableCell><Badge variant="outline">{job.jobType}</Badge></TableCell>
                         <TableCell className="text-xs">{job.fileName}</TableCell>
-                        <TableCell><Badge className={STATUS_COLORS[job.status] ?? 'bg-gray-100'}>{job.status}</Badge></TableCell>
+                        <TableCell><Badge className={STATUS_COLORS[job.status] ?? 'bg-muted'}>{job.status}</Badge></TableCell>
                         <TableCell className="text-right font-mono text-xs">{job.validRows}/{job.totalRows}</TableCell>
-                        <TableCell className="text-right">{job.errorCount > 0 ? <span className="text-red-600">{job.errorCount}</span> : '—'}</TableCell>
+                        <TableCell className="text-right">{job.errorCount > 0 ? <span className="text-destructive">{job.errorCount}</span> : '—'}</TableCell>
                         <TableCell>{job.dryRun ? <Badge variant="secondary">dry-run</Badge> : <Badge variant="outline">live</Badge>}</TableCell>
                         <TableCell>
                           {job.errorCount > 0 && (
@@ -263,9 +263,9 @@ export default function ImportExportPage() {
                         <TableCell><Badge variant="outline">{job.reportCode}</Badge></TableCell>
                         <TableCell><Badge variant="secondary">{job.format}</Badge></TableCell>
                         <TableCell>
-                          {job.status === 'completed' ? <CheckCircle2 className="h-4 w-4 text-green-600" /> :
-                           job.status === 'failed' ? <XCircle className="h-4 w-4 text-red-600" /> :
-                           job.status === 'expired' ? <AlertCircle className="h-4 w-4 text-gray-400" /> :
+                          {job.status === 'completed' ? <CheckCircle2 className="h-4 w-4 text-success-foreground" /> :
+                           job.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" /> :
+                           job.status === 'expired' ? <AlertCircle className="h-4 w-4 text-muted-foreground" /> :
                            <Loader2 className="h-4 w-4 animate-spin" />}
                           <span className="ml-1 text-xs">{job.status}</span>
                         </TableCell>

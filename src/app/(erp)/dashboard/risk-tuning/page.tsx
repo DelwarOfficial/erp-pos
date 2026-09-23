@@ -86,19 +86,19 @@ interface RiskReport {
 }
 
 const DECISION_COLORS: Record<string, string> = {
-  allow: 'bg-green-100 text-green-800',
-  review: 'bg-yellow-100 text-yellow-800',
-  block: 'bg-red-100 text-red-800',
-  unavailable: 'bg-gray-100 text-gray-800',
+  allow: 'bg-success text-success-foreground',
+  review: 'bg-warning text-warning-foreground',
+  block: 'bg-destructive/10 text-destructive',
+  unavailable: 'bg-muted text-muted-foreground',
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
-  completed: 'bg-green-100 text-green-800',
-  no_issue: 'bg-green-100 text-green-800',
-  returned: 'bg-yellow-100 text-yellow-800',
-  charged_back: 'bg-red-100 text-red-800',
-  refunded: 'bg-orange-100 text-orange-800',
-  fraud_confirmed: 'bg-red-100 text-red-800',
+  completed: 'bg-success text-success-foreground',
+  no_issue: 'bg-success text-success-foreground',
+  returned: 'bg-warning text-warning-foreground',
+  charged_back: 'bg-destructive/10 text-destructive',
+  refunded: 'bg-warning text-warning-foreground',
+  fraud_confirmed: 'bg-destructive/10 text-destructive',
 };
 
 const PIE_COLORS = ['#10b981', '#22c55e', '#ef4444', '#f97316']; // TP, TN, FP, FN
@@ -217,7 +217,7 @@ function ReportView({ report }: { report: RiskReport }) {
           label="Total Assessments"
           value={summary.totalAssessments}
           sub={`${summary.pendingReview} pending review`}
-          icon={<Activity className="h-5 w-5 text-blue-500" />}
+          icon={<Activity className="h-5 w-5 text-info-foreground" />}
         />
         <KpiTile
           label="Precision"
@@ -229,13 +229,13 @@ function ReportView({ report }: { report: RiskReport }) {
           label="Recall"
           value={summary.recall !== null ? `${(summary.recall * 100).toFixed(1)}%` : '—'}
           sub="TP / (TP + FN)"
-          icon={<TrendingUp className="h-5 w-5 text-green-500" />}
+          icon={<TrendingUp className="h-5 w-5 text-success-foreground" />}
         />
         <KpiTile
           label="FN Loss Amount"
           value={`৳ ${summary.lossAmount.falseNegatives.toLocaleString()}`}
           sub={`TP loss: ৳ ${summary.lossAmount.truePositives.toLocaleString()}`}
-          icon={<TrendingDown className="h-5 w-5 text-red-500" />}
+          icon={<TrendingDown className="h-5 w-5 text-destructive" />}
         />
       </div>
 
@@ -280,23 +280,23 @@ function ReportView({ report }: { report: RiskReport }) {
               <div className="font-medium">Actual Positive</div>
 
               <div className="font-medium text-right pr-2">Flagged</div>
-              <div className="p-3 bg-red-50 border rounded">
-                <div className="text-2xl font-bold text-red-700">{summary.falsePositives}</div>
-                <div className="text-xs text-red-600">False Positive</div>
+              <div className="p-3 bg-destructive/10 border rounded">
+                <div className="text-2xl font-bold text-destructive">{summary.falsePositives}</div>
+                <div className="text-xs text-destructive">False Positive</div>
               </div>
-              <div className="p-3 bg-green-50 border rounded">
-                <div className="text-2xl font-bold text-green-700">{summary.truePositives}</div>
-                <div className="text-xs text-green-600">True Positive</div>
+              <div className="p-3 bg-success border rounded">
+                <div className="text-2xl font-bold text-success-foreground">{summary.truePositives}</div>
+                <div className="text-xs text-success-foreground">True Positive</div>
               </div>
 
               <div className="font-medium text-right pr-2">Allowed</div>
-              <div className="p-3 bg-green-50 border rounded">
-                <div className="text-2xl font-bold text-green-700">{summary.trueNegatives}</div>
-                <div className="text-xs text-green-600">True Negative</div>
+              <div className="p-3 bg-success border rounded">
+                <div className="text-2xl font-bold text-success-foreground">{summary.trueNegatives}</div>
+                <div className="text-xs text-success-foreground">True Negative</div>
               </div>
-              <div className="p-3 bg-orange-50 border rounded">
-                <div className="text-2xl font-bold text-orange-700">{summary.falseNegatives}</div>
-                <div className="text-xs text-orange-600">False Negative</div>
+              <div className="p-3 bg-warning border rounded">
+                <div className="text-2xl font-bold text-warning-foreground">{summary.falseNegatives}</div>
+                <div className="text-xs text-warning-foreground">False Negative</div>
               </div>
             </div>
           </CardContent>
@@ -345,10 +345,10 @@ function ReportView({ report }: { report: RiskReport }) {
                   <TableRow key={r.reasonCode}>
                     <TableCell className="font-mono text-xs">{r.reasonCode}</TableCell>
                     <TableCell className="text-right">{r.count}</TableCell>
-                    <TableCell className="text-right text-green-600">{r.tp}</TableCell>
-                    <TableCell className="text-right text-green-600">{r.tn}</TableCell>
-                    <TableCell className="text-right text-red-600">{r.fp}</TableCell>
-                    <TableCell className="text-right text-orange-600">{r.fn}</TableCell>
+                    <TableCell className="text-right text-success-foreground">{r.tp}</TableCell>
+                    <TableCell className="text-right text-success-foreground">{r.tn}</TableCell>
+                    <TableCell className="text-right text-destructive">{r.fp}</TableCell>
+                    <TableCell className="text-right text-warning-foreground">{r.fn}</TableCell>
                     <TableCell className="text-right">
                       {r.falsePositiveRate !== null ? `${(r.falsePositiveRate * 100).toFixed(0)}%` : '—'}
                     </TableCell>
@@ -398,11 +398,11 @@ function ReportView({ report }: { report: RiskReport }) {
                 {report.thresholdChanges.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="text-xs">{new Date(c.changedAt).toLocaleString()}</TableCell>
-                    <TableCell><code className="text-xs bg-slate-100 px-2 py-0.5 rounded">RISK_{c.thresholdKey}</code></TableCell>
+                    <TableCell><code className="text-xs bg-muted px-2 py-0.5 rounded">RISK_{c.thresholdKey}</code></TableCell>
                     <TableCell className="font-mono text-xs">
-                      <span className="text-red-600">{c.oldValue ?? '—'}</span>
+                      <span className="text-destructive">{c.oldValue ?? '—'}</span>
                       <span className="mx-2">→</span>
-                      <span className="text-green-600">{c.newValue}</span>
+                      <span className="text-success-foreground">{c.newValue}</span>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{c.reason ?? '—'}</TableCell>
                     <TableCell className="text-xs">{c.changedBy === 'unknown' ? '—' : c.changedBy.slice(0, 8)}</TableCell>
@@ -518,7 +518,7 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge className={DECISION_COLORS[a.decision] ?? 'bg-gray-100'}>{a.decision}</Badge>
+                    <Badge className={DECISION_COLORS[a.decision] ?? 'bg-muted'}>{a.decision}</Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono">{a.score ?? '—'}</TableCell>
                   <TableCell>
@@ -531,7 +531,7 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                   </TableCell>
                   <TableCell>
                     {a.outcomes.length > 0 ? (
-                      <Badge className={OUTCOME_COLORS[a.outcomes[0].outcomeType] ?? 'bg-gray-100'}>
+                      <Badge className={OUTCOME_COLORS[a.outcomes[0].outcomeType] ?? 'bg-muted'}>
                         {a.outcomes[0].outcomeType}
                       </Badge>
                     ) : (
@@ -549,7 +549,7 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                   </TableCell>
                 </TableRow>
                 {recordingId === a.id && (
-                  <TableRow key={a.id + '-form'} className="bg-slate-50">
+                  <TableRow key={a.id + '-form'} className="bg-muted">
                     <TableCell colSpan={7} className="p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                         <div>
@@ -661,8 +661,8 @@ function ThresholdsView({ config }: { config: RiskConfig }) {
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Env-Configurable</AlertTitle>
         <AlertDescription>
-          All thresholds are tunable via environment variables with the <code className="bg-slate-100 px-1 rounded">RISK_</code> prefix.
-          Example: set <code className="bg-slate-100 px-1 rounded">RISK_VELOCITY_COUNT_THRESHOLD=10</code> to trip
+          All thresholds are tunable via environment variables with the <code className="bg-muted px-1 rounded">RISK_</code> prefix.
+          Example: set <code className="bg-muted px-1 rounded">RISK_VELOCITY_COUNT_THRESHOLD=10</code> to trip
           HIGH_ORDER_VELOCITY at 10 orders instead of 20. Restart the app after changing env vars.
         </AlertDescription>
       </Alert>
@@ -685,7 +685,7 @@ function ThresholdsView({ config }: { config: RiskConfig }) {
                           : item.value}
                       </TableCell>
                       <TableCell className="text-right py-2">
-                        <code className="text-xs bg-slate-100 px-2 py-0.5 rounded">RISK_{item.key}</code>
+                        <code className="text-xs bg-muted px-2 py-0.5 rounded">RISK_{item.key}</code>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -711,20 +711,20 @@ function ThresholdsView({ config }: { config: RiskConfig }) {
               <span>100 (max)</span>
             </div>
             <div className="relative h-8 rounded overflow-hidden flex">
-              <div className="bg-green-500 flex items-center justify-center text-xs text-white" style={{ width: '35%' }}>
+              <div className="bg-success flex items-center justify-center text-xs text-white" style={{ width: '35%' }}>
                 Allow
               </div>
-              <div className="bg-yellow-500 flex items-center justify-center text-xs text-white" style={{ width: '35%' }}>
+              <div className="bg-warning flex items-center justify-center text-xs text-white" style={{ width: '35%' }}>
                 Review
               </div>
-              <div className="bg-red-500 flex items-center justify-center text-xs text-white" style={{ width: '30%' }}>
+              <div className="bg-destructive/10 flex items-center justify-center text-xs text-white" style={{ width: '30%' }}>
                 Block
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               An assessment's final score (sum of all triggered rule increments) determines the decision.
-              Tune <code className="bg-slate-100 px-1 rounded">RISK_DECISION_REVIEW_THRESHOLD</code> and{' '}
-              <code className="bg-slate-100 px-1 rounded">RISK_DECISION_BLOCK_THRESHOLD</code> to shift these boundaries.
+              Tune <code className="bg-muted px-1 rounded">RISK_DECISION_REVIEW_THRESHOLD</code> and{' '}
+              <code className="bg-muted px-1 rounded">RISK_DECISION_BLOCK_THRESHOLD</code> to shift these boundaries.
             </p>
           </div>
         </CardContent>

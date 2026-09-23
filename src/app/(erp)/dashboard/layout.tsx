@@ -9,12 +9,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote } from 'lucide-react';
+import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetTitle, SheetHeader } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription } from '@/components/ui/sheet';
 import { DashboardSession, type DashboardUser } from '@/components/dashboard/session';
+import { ThemeControl } from '@/components/theme-control';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { apiFetch } from '@/lib/api/client';
 
 const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: string }>; label: string; requiresPermission?: string }> = [
@@ -68,6 +70,21 @@ const NAV_PERMISSIONS: Record<string, string> = {
   '/dashboard/reports': 'report.execute',
 };
 
+const NAV_GROUPS = [
+  { label: 'Overview', routes: [''] },
+  { label: 'Sales', routes: ['pos', 'sales', 'cashier', 'payments', 'gift-cards'] },
+  { label: 'Catalogue & stock', routes: ['products', 'catalogue', 'inventory'] },
+  { label: 'Procurement & contacts', routes: ['purchases', 'parties'] },
+  { label: 'Finance', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
+  { label: 'Operations', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'reports'] },
+  { label: 'Access control', routes: ['access/users', 'access/roles', 'access/permissions'] },
+  { label: 'Administration', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
+];
+
+function isActiveRoute(pathname: string, href: string) {
+  return pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -115,9 +132,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // ── Loading state ──
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-3">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading dashboard…</p>
+        <p role="status" className="text-sm text-muted-foreground">Loading dashboard…</p>
       </div>
     );
   }
@@ -125,9 +142,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // ── Error state ──
   if (authError && !user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4 px-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 px-4">
         <AlertCircle className="h-10 w-10 text-destructive" />
-        <div className="text-center max-w-md">
+        <div role="alert" className="text-center max-w-md">
           <h2 className="text-lg font-semibold">Session error</h2>
           <p className="text-sm text-muted-foreground mt-1">{authError}</p>
         </div>
@@ -147,33 +164,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const initials = user.name.split(' ').map(p => p?.[0]).slice(0, 2).join('').toUpperCase();
 
   const SidebarContent = (
-    <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary">
-      {NAV_ITEMS.map(item => {
-        const permission = item.requiresPermission ?? NAV_PERMISSIONS[item.href];
-        if (permission && !user.is_global && !user.permissions.includes(permission)) return null;
-        const active = pathname === item.href || pathname.startsWith(item.href + '/');
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? 'page' : undefined}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-slate-100 transition-colors min-h-[40px] ${
-              active ? 'bg-slate-100 font-medium text-foreground' : 'text-foreground/80'
-            }`}
-          >
-            <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="truncate">{item.label}</span>
-          </Link>
-        );
+    <nav className="space-y-2 p-3" aria-label="Primary">
+      {NAV_GROUPS.map(group => {
+        const items = group.routes.flatMap(route => {
+          const item = NAV_ITEMS.find(item => item.href === `/dashboard${route ? '/' + route : ''}`);
+          if (!item) return [];
+          const permission = item.requiresPermission ?? NAV_PERMISSIONS[item.href];
+          return permission && !user.is_global && !user.permissions.includes(permission) ? [] : [item];
+        });
+        if (!items.length) return null;
+        const groupActive = items.some(item => isActiveRoute(pathname, item.href));
+        return <Collapsible key={group.label} defaultOpen className="group/nav">
+          <CollapsibleTrigger className={`flex min-h-9 w-full items-center justify-between rounded-md px-3 text-xs font-semibold transition-colors hover:bg-sidebar-accent ${groupActive ? 'text-sidebar-primary' : 'text-muted-foreground'}`}>
+            {group.label}<ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=closed]/nav:-rotate-90" aria-hidden="true" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-0.5">
+            {items.map(item => {
+              const active = isActiveRoute(pathname, item.href);
+              const Icon = item.icon;
+              return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
+                className={`flex min-h-10 items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors ${active ? 'border-sidebar-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground' : 'border-transparent text-sidebar-foreground hover:bg-sidebar-accent'}`}>
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label.replace('Access Control ? ', '').replace('CRM ? ', '').replace('HR ? ', '')}</span>
+              </Link>;
+            })}
+          </CollapsibleContent>
+        </Collapsible>;
       })}
     </nav>
   );
 
+  const branches = (user.branches ?? []).filter(branch => user.branch_ids.includes(branch.id));
+  const branchLabel = user.is_global ? 'Platform / Global' : user.access_scope === 'global' ? 'All company branches'
+    : branches.length === 1 ? branches[0].name : `${user.branch_ids.length} assigned branches`;
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <header className="border-b bg-white sticky top-0 z-30">
-        <div className="flex h-14 items-center justify-between px-4 gap-3">
+    <div className="min-h-dvh flex flex-col bg-background">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
+      <header className="border-b bg-card sticky top-0 z-30">
+        <div className="flex min-h-16 items-center justify-between px-3 py-2 sm:px-5 gap-2">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger — mobile only */}
             <Button
@@ -185,22 +214,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
-            <span className="font-semibold truncate">{user.company_name}</span>
+            <Building2 className="hidden sm:block h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
+            <div className="min-w-0"><div className="font-semibold truncate" title={user.company_name}>{user.company_name}</div>
+              <div className="text-xs font-medium text-muted-foreground truncate" title={branchLabel}>{branchLabel}</div></div>
             <Badge variant="outline" className="text-xs hidden sm:inline-flex">{user.company_code}</Badge>
-            {user.is_global && <Badge variant="secondary" className="text-xs hidden sm:inline-flex">GLOBAL</Badge>}
+            
             {user.mfa_enabled && user.mfa_verified && (
               <Badge variant="secondary" className="text-xs gap-1 hidden md:inline-flex">
                 <ShieldCheck className="h-3 w-3" /> MFA
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+            <ThemeControl />
             <div className="text-right text-sm hidden sm:block">
               <div className="font-medium truncate max-w-[160px]">{user.name}</div>
               <div className="text-xs text-muted-foreground truncate max-w-[160px]">{user.email}</div>
             </div>
-            <Avatar className="flex-shrink-0">
+            <Avatar className="hidden sm:flex flex-shrink-0">
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign out" aria-label="Sign out">
@@ -212,8 +243,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="w-60 border-r bg-white hidden md:block flex-shrink-0">
-          <div className="overflow-y-auto max-h-[calc(100vh-3.5rem)] sticky top-14">
+        <aside className="w-60 lg:w-64 border-r bg-card hidden md:block flex-shrink-0">
+          <div className="overflow-y-auto h-[calc(100dvh-4rem)] sticky top-16 overscroll-contain">
             {SidebarContent}
           </div>
         </aside>
@@ -226,15 +257,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Building2 className="h-5 w-5 text-primary" />
                 <span className="truncate">{user.company_name}</span>
               </SheetTitle>
+              <SheetDescription>{branchLabel}</SheetDescription>
             </SheetHeader>
-            <div className="overflow-y-auto flex-1">
+            <div className="overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {SidebarContent}
             </div>
           </SheetContent>
         </Sheet>
 
-        <main className="flex-1 p-4 md:p-6 overflow-auto min-w-0">
-          <DashboardSession.Provider value={user}>{children}</DashboardSession.Provider>
+        <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-5 lg:p-6 min-w-0">
+          <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div></DashboardSession.Provider>
         </main>
       </div>
     </div>

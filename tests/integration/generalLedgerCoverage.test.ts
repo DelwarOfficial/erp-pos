@@ -19,6 +19,7 @@ import { receivePurchase } from '@/domain/commands/m2/ReceivePurchase';
 import { postSale } from '@/domain/commands/m3/PostSale';
 import { voidSale } from '@/domain/commands/m3/VoidSale';
 import { postSaleReturn } from '@/domain/commands/m3/PostSaleReturn';
+import { reversePayment } from '@/domain/commands/m3/Payments';
 import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const db = new PrismaClient();
@@ -170,6 +171,38 @@ describe('every money and stock movement reaches the general ledger', () => {
         // The decisive assertion: the void nets the sale's GL effect to zero.
         expect(original.plus(reversal).toFixed(2), `${label} did not net to zero after void`).toBe('0.00');
       }
+    });
+  });
+
+  it('F-05: reversing a payment reverses its cash movement in the ledger', async () => {
+    await probe(async tx => {
+      const policy = await tx.accountingPolicy.findUniqueOrThrow({ where: { companyId: COMPANY_ID } });
+      const cashAccount = await tx.financialAccount.findFirstOrThrow({
+        where: { id: fixture.cash.id }, select: { chartOfAccountId: true },
+      });
+
+      const payment = await tx.payment.create({
+        data: {
+          companyId: COMPANY_ID, branchId: fixture.branches[0].id,
+          referenceNo: `PMT-${randomUUID().slice(0, 8)}`, clientTxnId: randomUUID(),
+          paymentType: 'sale_receipt', direction: 'incoming',
+          financialAccountId: fixture.cash.id, currencyCode: 'BDT', exchangeRate: 1,
+          amount: 250, baseAmount: 250, paymentMethod: 'cash', chequeStatus: 'not_applicable',
+          paymentStatus: 'posted', businessDate: new Date(), receivedOrPaidAt: new Date(),
+          postedAt: new Date(), createdBy: fixture.user.id,
+        },
+      });
+
+      const result = await reversePayment(tx, {
+        companyId: COMPANY_ID, paymentId: payment.id, reversedBy: fixture.user.id, reason: 'probe',
+      }, randomUUID());
+
+      // Cash out, receivable back on. Before the fix the subledger moved and
+      // the ledger did not, so bank reconciliation could never balance.
+      const cash = await netMovement(tx, cashAccount.chartOfAccountId, 'payment', [result.reversedPaymentId]);
+      const receivable = await netMovement(tx, policy.arAccountId, 'payment', [result.reversedPaymentId]);
+      expect(cash.toFixed(2)).toBe('-250.00');
+      expect(receivable.toFixed(2)).toBe('250.00');
     });
   });
 

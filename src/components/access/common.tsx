@@ -12,7 +12,7 @@ export type Role = { id: string; name: string; description: string | null; compa
 export type User = { id: string; name: string; email: string; companyId: string; company: Company; accessScope: string; isActive: boolean;
   mfaEnabled: boolean; lockedUntil: string | null; lastLoginAt: string | null; createdAt: string;
   roles: { role: Pick<Role, 'id' | 'name' | 'isSystemRole'> }[]; branchAccess: { branch: Branch }[] };
-export const control = 'rounded-md border bg-background px-3 py-2 min-h-10';
+export const control = 'rounded-md border border-input bg-background px-3 py-2 min-h-10 max-w-full text-sm disabled:opacity-50';
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } });
   const result = await response.json().catch(() => null);
@@ -41,7 +41,7 @@ export function useAccess(companyOverride?: string) {
 export function AccessHeading({ title }: { title: string }) {
   const user = useDashboardSession();
   const can = (permission: string) => user?.is_global || user?.permissions.includes(permission);
-  return <header className="space-y-3"><h1 className="text-2xl font-bold">{title}</h1><nav aria-label="Access Control" className="flex gap-4">
+  return <header className="space-y-3"><h1 className="text-2xl font-bold">{title}</h1><nav aria-label="Access Control" className="flex flex-wrap gap-2 border-b pb-3 [&>a]:rounded-md [&>a]:px-3 [&>a]:py-2 [&>a]:text-sm [&>a]:font-medium [&>a:hover]:bg-accent">
     {can('user.read') && <Link href="/dashboard/access/users">Users</Link>}
     {can('role.read') && <><Link href="/dashboard/access/roles">Roles</Link><Link href="/dashboard/access/permissions">Permissions</Link></>}
   </nav></header>;

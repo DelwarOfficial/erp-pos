@@ -132,8 +132,8 @@ export default function IntegrationsPage() {
             Offline sync batches are managed via the <code className="font-mono text-xs">POST /api/v1/offline/sync</code> API.
             Conflict resolution is handled through the admin dashboard.
           </div>
-          <div className="mt-3 p-3 border rounded bg-amber-50 text-sm">
-            <AlertTriangle className="h-4 w-4 inline mr-1 text-amber-600" />
+          <div className="mt-3 p-3 border rounded bg-warning text-sm">
+            <AlertTriangle className="h-4 w-4 inline mr-1 text-warning-foreground" />
             Offline POS is pilot-only per §20.D07. Feature flag <code className="font-mono text-xs">offline_pos_enabled</code> must be enabled by platform operations.
           </div>
         </CardContent>

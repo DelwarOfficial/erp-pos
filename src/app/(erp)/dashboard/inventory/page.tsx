@@ -81,7 +81,7 @@ export default function InventoryPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardDescription>Low Stock</CardDescription></CardHeader>
-          <CardContent><CardTitle className="text-2xl text-amber-600">{lowStockCount}</CardTitle></CardContent>
+          <CardContent><CardTitle className="text-2xl text-warning-foreground">{lowStockCount}</CardTitle></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardDescription>Inventory Value (BDT)</CardDescription></CardHeader>
@@ -141,14 +141,14 @@ export default function InventoryPage() {
                 </thead>
                 <tbody>
                   {items.map(s => (
-                    <tr key={s.id} className="border-b hover:bg-slate-50">
+                    <tr key={s.id} className="border-b hover:bg-muted">
                       <td className="py-2 pr-3">
                         <div className="font-medium truncate max-w-[200px]">{s.product.name}</div>
                         <div className="text-xs text-muted-foreground font-mono">{s.product.code}</div>
                       </td>
                       <td className="pr-3 whitespace-nowrap">{s.warehouse.name}</td>
                       <td className="pr-3 text-right font-mono whitespace-nowrap">{s.qty_on_hand} {s.product.unit.code}</td>
-                      <td className="pr-3 text-right font-mono text-amber-600 whitespace-nowrap">{s.qty_reserved}</td>
+                      <td className="pr-3 text-right font-mono text-warning-foreground whitespace-nowrap">{s.qty_reserved}</td>
                       <td className="pr-3 text-right font-mono whitespace-nowrap">{s.qty_available}</td>
                       <td className="pr-3 text-right font-mono whitespace-nowrap">৳ {parseFloat(s.moving_average_cost).toFixed(6)}</td>
                       <td className="pr-3 text-right font-mono whitespace-nowrap">৳ {parseFloat(s.inventory_value).toFixed(2)}</td>

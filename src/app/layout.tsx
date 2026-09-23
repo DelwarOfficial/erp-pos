@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { OfflineSyncProvider } from "@/components/pwa/OfflineSyncProvider";
 
@@ -43,8 +45,6 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1, // POS UI is fixed-scale — prevents accidental pinch zoom
-  userScalable: false,
 };
 
 export default function RootLayout({
@@ -53,15 +53,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="bn" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <OfflineSyncProvider>
+        <ThemeProvider><OfflineSyncProvider>
           {children}
           <Toaster />
+          <SonnerToaster closeButton />
           <ServiceWorkerRegister />
-        </OfflineSyncProvider>
+        </OfflineSyncProvider></ThemeProvider>
       </body>
     </html>
   );

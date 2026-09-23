@@ -294,7 +294,7 @@ export default function BankReconciliationPage() {
                   <button
                     key={r.id}
                     onClick={() => loadDetail(r.id)}
-                    className={`w-full text-left border rounded p-3 hover:bg-slate-50 transition-colors ${selectedId === r.id ? 'border-primary bg-slate-50' : ''}`}
+                    className={`w-full text-left border rounded p-3 hover:bg-muted transition-colors ${selectedId === r.id ? 'border-primary bg-muted' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
@@ -308,7 +308,7 @@ export default function BankReconciliationPage() {
                     <div className="mt-1 text-xs flex justify-between text-muted-foreground">
                       <span>System: ৳ {parseFloat(r.system_closing_balance).toFixed(2)}</span>
                       <span>Stmt: ৳ {parseFloat(r.statement_closing_balance).toFixed(2)}</span>
-                      <span className={parseFloat(r.variance) === 0 ? 'text-emerald-600' : 'text-amber-600'}>
+                      <span className={parseFloat(r.variance) === 0 ? 'text-success-foreground' : 'text-warning-foreground'}>
                         Var: ৳ {parseFloat(r.variance).toFixed(2)}
                       </span>
                     </div>
@@ -347,7 +347,7 @@ export default function BankReconciliationPage() {
                   </div>
                   <div className="border rounded p-2">
                     <div className="text-muted-foreground">Variance</div>
-                    <div className={`font-mono font-medium ${parseFloat(detail.variance) === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    <div className={`font-mono font-medium ${parseFloat(detail.variance) === 0 ? 'text-success-foreground' : 'text-warning-foreground'}`}>
                       ৳ {parseFloat(detail.variance).toFixed(2)}
                     </div>
                   </div>
@@ -390,7 +390,7 @@ export default function BankReconciliationPage() {
                             l.match_status === 'unmatched'
                               ? systemLineSelected === l.id
                                 ? 'border-primary bg-primary/5'
-                                : 'hover:bg-slate-50 cursor-pointer'
+                                : 'hover:bg-muted cursor-pointer'
                               : 'opacity-60 cursor-default'
                           }`}
                         >
@@ -400,7 +400,7 @@ export default function BankReconciliationPage() {
                           </div>
                           <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
                             <span>{l.reference_no ?? '—'}</span>
-                            <span className={l.match_status === 'unmatched' ? 'text-amber-600' : 'text-emerald-600'}>{l.match_status}</span>
+                            <span className={l.match_status === 'unmatched' ? 'text-warning-foreground' : 'text-success-foreground'}>{l.match_status}</span>
                           </div>
                         </button>
                       ))}
@@ -418,7 +418,7 @@ export default function BankReconciliationPage() {
                           disabled={l.match_status !== 'unmatched' || !systemLineSelected}
                           className={`w-full text-left border rounded p-2 text-xs ${
                             l.match_status === 'unmatched' && systemLineSelected
-                              ? 'hover:bg-slate-50 cursor-pointer'
+                              ? 'hover:bg-muted cursor-pointer'
                               : 'opacity-60 cursor-default'
                           }`}
                         >
@@ -428,7 +428,7 @@ export default function BankReconciliationPage() {
                           </div>
                           <div className="mt-0.5 flex justify-between text-[10px] text-muted-foreground">
                             <span>{l.reference_no ?? '—'}</span>
-                            <span className={l.match_status === 'unmatched' ? 'text-amber-600' : 'text-emerald-600'}>
+                            <span className={l.match_status === 'unmatched' ? 'text-warning-foreground' : 'text-success-foreground'}>
                               {l.match_status === 'unmatched' && systemLineSelected ? (
                                 <span className="flex items-center gap-1"><Link2 className="h-3 w-3" /> click to match</span>
                               ) : l.match_status}

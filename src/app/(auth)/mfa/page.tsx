@@ -50,15 +50,15 @@ export default function MfaPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Two-Factor Authentication</CardTitle>
           <CardDescription>Enter the 6-digit code from your authenticator app</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-6" aria-busy={loading}>
           <CardContent className="flex justify-center py-6">
-            <InputOTP maxLength={6} value={code} onChange={(v) => setCode(v)}>
+            <InputOTP aria-label="6-digit authentication code" autoComplete="one-time-code" maxLength={6} value={code} onChange={(v) => setCode(v)}>
               <InputOTPGroup>
                 <InputOTPSlot index={0} />
                 <InputOTPSlot index={1} />

@@ -128,8 +128,8 @@ export default function AuditPage() {
                     <button
                       key={l.id}
                       onClick={() => setSelected(l)}
-                      className={`w-full text-left p-2 border rounded hover:bg-slate-50 transition-colors min-h-[44px] ${
-                        selected?.id === l.id ? 'bg-slate-100 border-slate-400' : ''
+                      className={`w-full text-left p-2 border rounded hover:bg-muted transition-colors min-h-[44px] ${
+                        selected?.id === l.id ? 'bg-muted border-border' : ''
                       }`}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
@@ -173,7 +173,7 @@ export default function AuditPage() {
                 {selected.before_value !== null && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">Before</Label>
-                    <pre className="text-xs p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
+                    <pre className="text-xs p-2 bg-muted rounded font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(selected.before_value, null, 2)}
                     </pre>
                   </div>
@@ -181,7 +181,7 @@ export default function AuditPage() {
                 {selected.after_value !== null && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">After</Label>
-                    <pre className="text-xs p-2 bg-slate-50 rounded font-mono overflow-x-auto max-h-40">
+                    <pre className="text-xs p-2 bg-muted rounded font-mono overflow-x-auto max-h-40">
                       {JSON.stringify(selected.after_value, null, 2)}
                     </pre>
                   </div>

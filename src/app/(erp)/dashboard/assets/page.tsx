@@ -399,7 +399,7 @@ export default function FixedAssetsPage() {
                 </thead>
                 <tbody>
                   {items.map(a => (
-                    <tr key={a.id} className="border-b hover:bg-slate-50">
+                    <tr key={a.id} className="border-b hover:bg-muted">
                       <td className="py-2 pr-3 font-mono text-xs">{a.asset_code}</td>
                       <td className="py-2 pr-3">{a.name}</td>
                       <td className="py-2 pr-3 text-xs text-muted-foreground">{a.branch?.code ?? '—'}</td>

@@ -110,8 +110,8 @@ export default function MfaSetupPage() {
   const preparing = !otpauthUrl && !formError;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-200 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Set up two-factor authentication</CardTitle>
           <CardDescription>

@@ -101,7 +101,9 @@ export async function reversePayment(
 
   const { documentNumber: refNo } = await nextDocumentNumber(tx, {
     companyId: params.companyId, branchId: payment.branchId,
-    documentType: 'PAYMENT_REVERSAL', fiscalYear: new Date().getFullYear(), prefix: 'PMT-REV-',
+    // The business date of the document being reversed, not today: a December
+    // payment reversed on 2 January belongs to December's sequence.
+    documentType: 'PAYMENT_REVERSAL', fiscalYear: payment.businessDate.getFullYear(), prefix: 'PMT-REV-',
   });
 
   const reversedPayment = await tx.payment.create({
@@ -119,6 +121,51 @@ export async function reversePayment(
   });
 
   await tx.payment.update({ where: { id: payment.id }, data: { paymentStatus: 'reversed' } });
+
+  // Reverse the cash movement in the general ledger.
+  //
+  // This command previously moved the payments subledger and left the GL
+  // untouched, so every cheque bounce and manual reversal put the cash and
+  // counterparty balances permanently out of step with the subledger and bank
+  // reconciliation could not balance.
+  //
+  // The legs mirror the original posting (see the manual payment route): the
+  // cash or bank account against the counterparty control account, swapped.
+  const financialAccount = await tx.financialAccount.findFirst({
+    where: { id: payment.financialAccountId, companyId: params.companyId },
+    select: { chartOfAccountId: true },
+  });
+  const policies = await tx.accountingPolicy.findUnique({ where: { companyId: params.companyId } });
+  if (!financialAccount || !policies) {
+    throw new DomainError('VALIDATION_FAILED',
+      'A financial account and accounting policies are required to reverse a payment', {}, 409);
+  }
+
+  let counterAccountId = policies.arAccountId;
+  if (payment.paymentType === 'purchase_payment') counterAccountId = policies.apAccountId;
+  else if (payment.paymentType === 'customer_advance') counterAccountId = policies.customerAdvanceAccountId;
+  else if (payment.paymentType === 'supplier_advance') counterAccountId = policies.supplierAdvanceAccountId;
+
+  // The original debited cash when incoming; the reversal credits it.
+  const cashCredit = payment.direction === 'incoming' ? payment.baseAmount : new Prisma.Decimal(0);
+  const cashDebit = payment.direction === 'outgoing' ? payment.baseAmount : new Prisma.Decimal(0);
+
+  await postJournalEntry(tx, {
+    companyId: params.companyId,
+    entryDate: payment.businessDate,
+    postingKind: 'payment_reversal',
+    sourceType: 'payment', sourceId: reversedPayment.id,
+    description: `Payment reversal ${refNo}: ${params.reason}`,
+    currencyCode: payment.currencyCode,
+    exchangeRate: parseFloat(payment.exchangeRate.toString()),
+    createdBy: params.reversedBy,
+    lines: [
+      { chartOfAccountId: financialAccount.chartOfAccountId, debit: cashDebit, credit: cashCredit,
+        branchId: payment.branchId, memo: `Reversal of ${payment.referenceNo}` },
+      { chartOfAccountId: counterAccountId, debit: cashCredit, credit: cashDebit,
+        branchId: payment.branchId, memo: `Counterparty for ${refNo}` },
+    ],
+  }, correlationId);
 
   await tx.auditLog.create({
     data: { companyId: params.companyId, userId: params.reversedBy, correlationId,

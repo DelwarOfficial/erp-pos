@@ -24,10 +24,10 @@ interface SecurityEvent {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { icon: ShieldX, color: 'text-red-600', bg: 'bg-red-50', badge: 'destructive' },
-  high: { icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-50', badge: 'destructive' },
-  warning: { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-50', badge: 'secondary' },
-  info: { icon: Info, color: 'text-blue-600', bg: 'bg-blue-50', badge: 'outline' },
+  critical: { icon: ShieldX, color: 'text-destructive', bg: 'bg-destructive/10', badge: 'destructive' },
+  high: { icon: AlertCircle, color: 'text-warning-foreground', bg: 'bg-warning', badge: 'destructive' },
+  warning: { icon: AlertTriangle, color: 'text-warning-foreground', bg: 'bg-warning', badge: 'secondary' },
+  info: { icon: Info, color: 'text-info-foreground', bg: 'bg-info', badge: 'outline' },
 };
 
 export default function SecurityPage() {
@@ -119,7 +119,7 @@ export default function SecurityPage() {
                       {e.ip_address && ` • IP: ${e.ip_address}`}
                     </div>
                     {Object.keys(e.metadata).length > 0 && (
-                      <pre className="text-xs mt-2 p-2 bg-white/50 rounded font-mono overflow-x-auto">
+                      <pre className="text-xs mt-2 p-2 bg-card/50 rounded font-mono overflow-x-auto">
                         {JSON.stringify(e.metadata, null, 2)}
                       </pre>
                     )}

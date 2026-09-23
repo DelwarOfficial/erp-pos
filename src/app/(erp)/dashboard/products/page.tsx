@@ -140,7 +140,7 @@ export default function ProductsPage() {
                 <Link
                   key={p.id}
                   href={`/dashboard/products/${p.id}`}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 border rounded-md hover:bg-slate-50 transition-colors min-h-[44px]"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 border rounded-md hover:bg-muted transition-colors min-h-[44px]"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-medium">{p.name}</div>

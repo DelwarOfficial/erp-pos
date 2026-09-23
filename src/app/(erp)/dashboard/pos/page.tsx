@@ -299,8 +299,8 @@ export default function POSPage() {
         <p className="text-muted-foreground text-sm">
           Scan or search products, build the cart, checkout with payment.
           <span className="hidden md:inline ml-2 text-xs">
-            <kbd className="px-1.5 py-0.5 border rounded bg-slate-50">Enter</kbd> to checkout •
-            <kbd className="px-1.5 py-0.5 border rounded bg-slate-50 ml-1">Esc</kbd> to clear search
+            <kbd className="px-1.5 py-0.5 border rounded bg-muted">Enter</kbd> to checkout •
+            <kbd className="px-1.5 py-0.5 border rounded bg-muted ml-1">Esc</kbd> to clear search
           </span>
         </p>
       </div>
@@ -343,10 +343,10 @@ export default function POSPage() {
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="p-2 flex items-center justify-between animate-pulse">
                       <div className="space-y-1.5">
-                        <div className="h-3 w-40 bg-slate-200 rounded" />
-                        <div className="h-2 w-24 bg-slate-100 rounded" />
+                        <div className="h-3 w-40 bg-muted rounded" />
+                        <div className="h-2 w-24 bg-muted rounded" />
                       </div>
-                      <div className="h-4 w-16 bg-slate-100 rounded" />
+                      <div className="h-4 w-16 bg-muted rounded" />
                     </div>
                   ))}
                 </div>
@@ -370,7 +370,7 @@ export default function POSPage() {
                       role="option"
                       aria-selected="false"
                       onClick={() => addToCart(p)}
-                      className="w-full flex items-center justify-between p-2.5 hover:bg-slate-50 border-b last:border-b-0 text-left min-h-[44px] transition-colors"
+                      className="w-full flex items-center justify-between p-2.5 hover:bg-muted border-b last:border-b-0 text-left min-h-[44px] transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="font-medium text-sm truncate">{p.name}</div>
@@ -399,12 +399,12 @@ export default function POSPage() {
                 <div className="space-y-2">
                   {cart.map(item => (
                     <div key={item.productId} className="border rounded p-2.5 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm truncate">{item.name}</div>
                           <div className="text-xs text-muted-foreground font-mono truncate">{item.code}</div>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {!item.isSerialized && (
                             <>
                               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => updateQty(item.productId, item.qty - 1)} aria-label="Decrease quantity">
@@ -417,7 +417,7 @@ export default function POSPage() {
                             </>
                           )}
                           {item.isSerialized && <Badge variant="secondary" className="text-xs">{item.serials.length} serials</Badge>}
-                          <span className="font-mono text-sm w-20 text-right">৳ {item.lineTotal.toFixed(2)}</span>
+                          <span className="font-mono text-sm min-w-20 text-right tabular-nums">৳ {item.lineTotal.toFixed(2)}</span>
                           <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => removeFromCart(item.productId)} aria-label="Remove item">
                             <Trash2 className="h-3 w-3 text-destructive" />
                           </Button>
@@ -569,7 +569,7 @@ export default function POSPage() {
 
       {/* Sticky mobile cart total bar */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 md:hidden bg-white border-t shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 z-20 md:hidden bg-card border-t shadow-lg pb-[env(safe-area-inset-bottom)]">
           <div className="flex items-center justify-between p-3 gap-3">
             <div className="min-w-0">
               <div className="text-xs text-muted-foreground">

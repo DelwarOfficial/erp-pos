@@ -170,7 +170,7 @@ export default function CashierPage() {
                       <span>Float: ৳ {parseFloat(s.opening_float).toFixed(2)}</span>
                       {s.expected_closing_cash && <span>Expected: ৳ {parseFloat(s.expected_closing_cash).toFixed(2)}</span>}
                       {s.variance && (
-                        <span className={parseFloat(s.variance) < 0 ? 'text-red-600' : 'text-green-600'}>
+                        <span className={parseFloat(s.variance) < 0 ? 'text-destructive' : 'text-success-foreground'}>
                           Variance: ৳ {parseFloat(s.variance).toFixed(2)}
                         </span>
                       )}

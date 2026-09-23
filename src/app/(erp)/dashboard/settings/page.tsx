@@ -120,7 +120,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {!hasWebAuthnSupport && (
-            <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded border border-amber-200">
+            <div className="text-sm text-warning-foreground bg-warning p-3 rounded border border-warning-foreground/20">
               Your browser does not support WebAuthn. Use a modern browser (Chrome, Safari, Firefox, Edge) to register passkeys.
             </div>
           )}
