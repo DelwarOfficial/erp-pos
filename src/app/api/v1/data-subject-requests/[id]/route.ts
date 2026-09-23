@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { isUnderLegalHold } from '@/lib/retention/legalHold';
 import { getCorrelationId } from '@/lib/http';
 import { requireIdempotencyKey } from '@/lib/idempotency';
 import { z } from 'zod';
@@ -42,6 +43,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { id } = await params;
     const body = PatchSchema.parse(await req.json());
+
+    // An erasure request cannot be completed while a legal hold covers the
+    // subject. Marking it completed previously wrote a durable record
+    // asserting fulfilment regardless of any hold.
+    if (body.status === 'completed') {
+      const request = await runInTenantContext(auth.ctx, async () =>
+        db.dataSubjectRequest.findFirst({
+          where: { id, companyId: auth.companyId },
+          select: { requestType: true, customerId: true, supplierId: true },
+        }));
+      if (request?.requestType === 'erasure') {
+        const subject = request.customerId
+          ? { type: 'customer', id: request.customerId }
+          : request.supplierId ? { type: 'supplier', id: request.supplierId } : null;
+        if (subject && await isUnderLegalHold(auth.companyId, subject.type, subject.id)) {
+          throw new DomainError('VALIDATION_FAILED',
+            'An active legal hold covers this subject; the erasure request cannot be completed',
+            { entity_type: subject.type, entity_id: subject.id }, 409);
+        }
+      }
+    }
 
     const item = await runInTenantContext(auth.ctx, async () => {
       return db.dataSubjectRequest.updateMany({
