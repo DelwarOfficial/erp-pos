@@ -18,6 +18,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
 import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
+import { computeLineTax } from '@/domain/tax/computeLineTax';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 
@@ -142,6 +143,9 @@ export async function postSale(
       taxComponentId: string;
       componentCode: string;
       rate: Prisma.Decimal;
+      /** The base this component was charged on — larger than the line's taxable amount when compounded. */
+      taxableBase: Prisma.Decimal;
+      taxAmount: Prisma.Decimal;
       outputAccountId: string | null;
     }>;
   }> = [];
@@ -201,19 +205,29 @@ export async function postSale(
 
     const grossAmount = new Prisma.Decimal(item.qty).mul(item.unitPrice);
     const discountAmount = new Prisma.Decimal(item.discountAmount ?? 0);
-    if (!discountAmount.isFinite() || discountAmount.lt(0) || discountAmount.gt(grossAmount)) {
-      throw new DomainError('VALIDATION_FAILED', 'Discount must be between zero and line gross amount', {}, 400);
-    }
-    const taxableAmount = grossAmount.minus(discountAmount);
 
-    let lineTaxAmount = new Prisma.Decimal(0);
-    if (product.defaultTaxCode && taxableAmount.gt(0)) {
-      for (const tc of product.defaultTaxCode.components) {
-        lineTaxAmount = lineTaxAmount.plus(taxableAmount.mul(tc.taxComponent.rate).div(100));
-      }
-    }
+    // Honours priceIncludesTax, calculationOrder, compoundOnPrevious and the
+    // component effective window, all resolved as of the business date.
+    const lineTax = computeLineTax({
+      grossAmount,
+      discountAmount,
+      components: (product.defaultTaxCode?.components ?? []).map(tc => ({
+        taxComponentId: tc.taxComponentId,
+        componentCode: tc.taxComponent.componentCode,
+        rate: tc.taxComponent.rate,
+        calculationOrder: tc.taxComponent.calculationOrder,
+        compoundOnPrevious: tc.taxComponent.compoundOnPrevious,
+        effectiveFrom: tc.taxComponent.effectiveFrom,
+        effectiveTo: tc.taxComponent.effectiveTo,
+        outputAccountId: tc.taxComponent.outputAccountId,
+      })),
+      priceIncludesTax: product.defaultTaxCode?.priceIncludesTax ?? false,
+      asOf: input.businessDate,
+    });
 
-    const lineTotal = taxableAmount.plus(lineTaxAmount);
+    const taxableAmount = lineTax.taxableAmount;
+    const lineTaxAmount = lineTax.taxAmount;
+    const lineTotal = lineTax.lineTotal;
 
     let serialIds: string[] = [];
     if (product.isSerialized && isStockProduct) {
@@ -250,12 +264,17 @@ export async function postSale(
       serials: serialIds,
       productType: product.productType,
       warrantyPeriodMonths: product.warrantyPeriodMonths,
-      taxComponents: product.defaultTaxCode?.components.map(tc => ({
-        taxComponentId: tc.taxComponentId,
-        componentCode: tc.taxComponent.componentCode,
-        rate: tc.taxComponent.rate,
-        outputAccountId: tc.taxComponent.outputAccountId,
-      })) ?? [],
+      // Per-component amounts come from the computation, so the stored
+      // breakdown always sums to the line's tax — including the compounded
+      // bases and the inclusive-price residual.
+      taxComponents: lineTax.components.map(component => ({
+        taxComponentId: component.taxComponentId,
+        componentCode: component.componentCode,
+        rate: component.rate,
+        taxableBase: component.taxableBase,
+        taxAmount: component.taxAmount,
+        outputAccountId: component.outputAccountId,
+      })),
     });
 
     subtotal = subtotal.plus(grossAmount);
@@ -413,12 +432,11 @@ export async function postSale(
 
     if (itemData.taxComponents.length > 0 && itemData.taxAmount.gt(0)) {
       for (const tc of itemData.taxComponents) {
-        const componentTax = itemData.taxableAmount.mul(tc.rate).div(100);
         await tx.saleItemTax.create({
           data: {
             companyId: input.companyId, saleItemId: saleItem.id, taxComponentId: tc.taxComponentId,
             componentCodeSnapshot: tc.componentCode, rateSnapshot: tc.rate,
-            taxableBase: itemData.taxableAmount, taxAmount: componentTax,
+            taxableBase: tc.taxableBase, taxAmount: tc.taxAmount,
           },
         });
       }
@@ -569,7 +587,9 @@ export async function postSale(
     const taxByAccount = new Map<string, Prisma.Decimal>();
     for (const item of saleItemsData) {
       for (const component of item.taxComponents) {
-        const amount = item.taxableAmount.mul(component.rate).div(100);
+        // The computed per-component amount, not a re-derivation: compounded
+        // components sit on a larger base than the line's taxable amount.
+        const amount = component.taxAmount;
         if (amount.isZero()) continue;
         if (!component.outputAccountId) {
           throw new DomainError('VALIDATION_FAILED', 'Every charged tax component requires an output account', {}, 409);
