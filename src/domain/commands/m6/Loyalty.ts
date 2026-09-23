@@ -143,10 +143,59 @@ export async function redeemGiftCard(
     throw new DomainError('GIFT_CARD_INSUFFICIENT', `Insufficient balance: ${balance.toFixed(2)} < ${amount.toFixed(2)}`, {}, 409);
   }
   const remaining = balance.minus(amount);
+
+  // Redemption extinguishes part of the liability that issuance recognised.
+  // Without this posting the ledger fell while the GL liability stayed at the
+  // full face value, so the liability was overstated by every redemption.
+  //
+  //   Dr Gift-card liability   amount
+  //     Cr Sales revenue       amount
+  //
+  // This command has no sale context -- POS gift-card tender is rejected in
+  // PostSale -- so the settlement is recognised as revenue. When gift-card
+  // tender is enabled, redemption must instead settle against that sale and
+  // this credit moves to the sale's own revenue posting.
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId: params.companyId } });
+  const liabilityAccount = policy && await tx.chartOfAccount.findFirst({
+    where: {
+      id: policy.giftCardLiabilityAccountId, companyId: params.companyId, isActive: true,
+      accountClass: 'liability', normalBalance: 'C',
+    },
+  });
+  if (!policy || !liabilityAccount) {
+    throw new DomainError('VALIDATION_FAILED', 'Active gift-card liability mapping required', {}, 409);
+  }
+  // Both sides of this entry come from the accounting policy, which does not
+  // currently enforce that distinct roles map to distinct accounts. If they are
+  // the same account the entry nets to zero and the liability is never
+  // extinguished, which is silently wrong -- so refuse rather than post it.
+  if (policy.salesRevenueAccountId === policy.giftCardLiabilityAccountId) {
+    throw new DomainError('VALIDATION_FAILED',
+      'Accounting policy maps gift-card liability and sales revenue to the same account; redemption cannot be posted',
+      { account_id: policy.giftCardLiabilityAccountId }, 409);
+  }
+
   const event = await tx.businessEvent.create({ data: {
     companyId: params.companyId, eventType: 'gift_card.redeemed', sourceType: 'gift_card_redeem',
     sourceId: randomUUID(), correlationId,
   } });
+
+  await postJournalEntry(tx, {
+    companyId: params.companyId,
+    entryDate: new Date(),
+    postingKind: 'gift_card_redeem',
+    // The journal points at the card; the event is keyed per redemption, since
+    // one card is redeemed many times and issuance already holds (gift_card, card.id).
+    sourceType: 'gift_card', sourceId: card.id, eventSourceId: `${card.id}:redeem:${event.id}`,
+    description: `Gift card redeemed: ${card.code}`,
+    currencyCode: 'BDT',
+    exchangeRate: 1,
+    createdBy: params.redeemedBy,
+    lines: [
+      { chartOfAccountId: liabilityAccount.id, debit: amount, credit: 0, memo: `Gift card redemption ${card.code}` },
+      { chartOfAccountId: policy.salesRevenueAccountId, debit: 0, credit: amount, memo: `Gift card settlement ${card.code}` },
+    ],
+  }, correlationId);
   await tx.giftCardTransaction.create({ data: {
     companyId: params.companyId, giftCardId: card.id, entryType: 'redeem',
     amountDelta: amount.negated(), eventId: event.id, createdBy: params.redeemedBy,

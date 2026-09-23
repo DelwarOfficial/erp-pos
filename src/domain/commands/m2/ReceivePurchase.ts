@@ -16,6 +16,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { db } from '@/lib/db';
 import { postStockMovement } from '@/domain/inventory/stockMovement';
+import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 
@@ -118,6 +119,8 @@ export async function receivePurchase(
   // 6. Process each receiving line
   let eventLineNo = 1;
   const resultItems: ReceivePurchaseResult['items'] = [];
+  // Accumulated in base currency for the inventory debit posted after the loop.
+  let receivedValueBase = new Prisma.Decimal(0);
 
   for (const item of input.items) {
     const purchaseItem = purchase.items.find(pi => pi.id === item.purchaseItemId);
@@ -229,6 +232,12 @@ export async function receivePurchase(
       },
     });
 
+    receivedValueBase = receivedValueBase.plus(
+      new Prisma.Decimal(purchaseItem.unitCost.toString())
+        .mul(purchase.exchangeRate.toString())
+        .mul(item.qtyReceivedNow),
+    );
+
     // 10. Update purchase_items.qty_received
     await tx.purchaseItem.update({
       where: { id: item.purchaseItemId },
@@ -243,6 +252,49 @@ export async function receivePurchase(
     });
 
     eventLineNo++;
+  }
+
+  // 10b. Post the inventory debit.
+  //
+  // Sales credit the inventory account (PostSale COGS journal) and purchase
+  // returns credit it again, while receiving posted nothing at all — so the
+  // inventory account was only ever credited and drifted permanently negative,
+  // and the liability for goods received was never recognised.
+  //
+  // Dr Inventory / Cr GRNI at receipt. The payable and its input tax are
+  // recognised against the supplier invoice, not here; where no goods-received
+  // clearing account is configured, fall back to AP.
+  if (receivedValueBase.gt(0)) {
+    const policies = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
+    if (!policies) {
+      throw new DomainError('VALIDATION_FAILED', 'Accounting policies are not configured for this company', {}, 409);
+    }
+    const clearingAccountId = policies.grniAccountId ?? policies.apAccountId;
+    await postJournalEntry(tx, {
+      companyId: input.companyId,
+      entryDate: input.businessDate,
+      postingKind: 'purchase_receive',
+      sourceType: 'purchase_receiving',
+      sourceId: receiving.id,
+      description: `Goods received ${referenceNo}`,
+      currencyCode: 'BDT',
+      exchangeRate: 1,
+      createdBy: input.receivedBy,
+      lines: [
+        {
+          chartOfAccountId: policies.inventoryAccountId,
+          debit: receivedValueBase, credit: 0,
+          branchId: input.branchId,
+          memo: `Inventory received ${referenceNo}`,
+        },
+        {
+          chartOfAccountId: clearingAccountId,
+          debit: 0, credit: receivedValueBase,
+          branchId: input.branchId,
+          memo: policies.grniAccountId ? `Goods received not invoiced ${referenceNo}` : `Payable for ${referenceNo}`,
+        },
+      ],
+    }, correlationId);
   }
 
   // 11. Update purchase order_status

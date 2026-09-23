@@ -18,6 +18,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
+import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 
@@ -47,7 +48,7 @@ export async function postSaleReturn(
   const sale = await tx.sale.findFirst({
     where: { id: input.saleId, companyId: input.companyId },
     include: {
-      items: { include: { serials: { include: { serial: true } } } },
+      items: { include: { serials: { include: { serial: true } }, taxes: { include: { taxComponent: true } } } },
       returns: { where: { status: { in: ['posted', 'approved'] } }, include: { items: true } },
     },
   });
@@ -76,17 +77,20 @@ export async function postSaleReturn(
   });
 
   // 4. Process each return line — validate qty + serials
-  let subtotalCredit = 0;
-  let taxCredit = 0;
+  let subtotalCredit = new Prisma.Decimal(0);
+  let discountCreditTotal = new Prisma.Decimal(0);
+  let taxCredit = new Prisma.Decimal(0);
+  /** Prorated output tax per GL account, so the reversal lands where it was charged. */
+  const taxCreditByAccount = new Map<string, Prisma.Decimal>();
   let eventLineNo = 1;
   const returnItemsData: Array<{
     saleItemId: string;
     qtyReturned: number;
-    unitPriceCredit: number;
-    unitCostSnapshot: number;
-    discountCredit: number;
-    taxCredit: number;
-    lineCredit: number;
+    unitPriceCredit: Prisma.Decimal;
+    unitCostSnapshot: Prisma.Decimal;
+    discountCredit: Prisma.Decimal;
+    taxCredit: Prisma.Decimal;
+    lineCredit: Prisma.Decimal;
     condition: string;
     serialIds: string[];
   }> = [];
@@ -143,12 +147,16 @@ export async function postSaleReturn(
       }
     }
 
-    const unitPriceCredit = parseFloat(saleItem.unitPriceSnapshot.toString());
-    const unitCostSnapshot = parseFloat(saleItem.unitCostSnapshot.toString());
-    const discountCredit = parseFloat(saleItem.discountAmount.toString()) * (item.qtyReturned / originalQty);
-    const taxableBase = unitPriceCredit * item.qtyReturned - discountCredit;
-    const lineTaxCredit = parseFloat(saleItem.taxAmount.toString()) * (item.qtyReturned / originalQty);
-    const lineCredit = taxableBase + lineTaxCredit;
+    // Prorated in Decimal. The previous implementation multiplied floats by
+    // (qtyReturned / originalQty), so returning a line in parts did not sum
+    // back to the original and the credit could not be reconciled to the sale.
+    const returnedShare = new Prisma.Decimal(item.qtyReturned).div(originalQty);
+    const unitPriceCredit = new Prisma.Decimal(saleItem.unitPriceSnapshot.toString());
+    const unitCostSnapshot = new Prisma.Decimal(saleItem.unitCostSnapshot.toString());
+    const discountCredit = new Prisma.Decimal(saleItem.discountAmount.toString()).mul(returnedShare);
+    const taxableBase = unitPriceCredit.mul(item.qtyReturned).minus(discountCredit);
+    const lineTaxCredit = new Prisma.Decimal(saleItem.taxAmount.toString()).mul(returnedShare);
+    const lineCredit = taxableBase.plus(lineTaxCredit);
 
     returnItemsData.push({
       saleItemId: item.saleItemId,
@@ -162,11 +170,26 @@ export async function postSaleReturn(
       serialIds,
     });
 
-    subtotalCredit += unitPriceCredit * item.qtyReturned;
-    taxCredit += lineTaxCredit;
+    subtotalCredit = subtotalCredit.plus(unitPriceCredit.mul(item.qtyReturned));
+    discountCreditTotal = discountCreditTotal.plus(discountCredit);
+    taxCredit = taxCredit.plus(lineTaxCredit);
+    for (const lineTax of saleItem.taxes) {
+      const accountId = lineTax.taxComponent.outputAccountId;
+      if (!accountId) {
+        throw new DomainError('VALIDATION_FAILED',
+          `Tax component ${lineTax.componentCodeSnapshot} has no output account; the return cannot be posted`,
+          { component: lineTax.componentCodeSnapshot }, 409);
+      }
+      const share = new Prisma.Decimal(lineTax.taxAmount.toString()).mul(returnedShare);
+      taxCreditByAccount.set(accountId, (taxCreditByAccount.get(accountId) ?? new Prisma.Decimal(0)).plus(share));
+    }
   }
 
-  const totalCredit = subtotalCredit - 0 + taxCredit;  // subtotal already includes discount as reduction
+  // subtotalCredit is gross of discount, so the prorated discount must come
+  // off. It previously did not: `subtotal - 0 + tax` refunded the customer a
+  // discount they never paid.
+  const netCredit = subtotalCredit.minus(discountCreditTotal);
+  const totalCredit = netCredit.plus(taxCredit);
   const baseTotalCredit = totalCredit;  // same currency
 
   // 5. Create the sale_return header
@@ -230,7 +253,7 @@ export async function postSaleReturn(
           warehouseId: input.warehouseId, productId: saleItem.productId,
           movementType: 'sale_return_receive',
           qtyDelta: itemData.qtyReturned,
-          unitCost: itemData.unitCostSnapshot,  // original cost, recalculates MAC
+          unitCost: itemData.unitCostSnapshot.toNumber(),  // original cost, recalculates MAC
           referenceType: 'sale_return', referenceId: saleReturn.id, sourceLineId: returnItem.id,
           effectiveAt: input.businessDate, createdBy: input.postedBy,
           metadata: { sale_return_ref: referenceNo, original_sale: input.saleId },
@@ -274,7 +297,7 @@ export async function postSaleReturn(
           stockBucket: 'damaged',
           movementType: 'sale_return_receive',
           qtyDelta: itemData.qtyReturned,
-          unitCost: itemData.unitCostSnapshot,
+          unitCost: itemData.unitCostSnapshot.toNumber(),
           referenceType: 'sale_return', referenceId: saleReturn.id, sourceLineId: returnItem.id,
           effectiveAt: input.businessDate, createdBy: input.postedBy,
           metadata: { sale_return_ref: referenceNo, condition: 'damaged' },
@@ -315,6 +338,76 @@ export async function postSaleReturn(
     }
 
     lineNo++;
+  }
+
+  // 6b. Post the return's general-ledger entries.
+  //
+  // A return previously restocked the goods and credited the customer while
+  // revenue, output tax and COGS stayed on the books, so every return
+  // overstated both revenue and VAT payable.
+  //
+  //   Dr Sales revenue        net credit        (revenue comes back off)
+  //   Dr Output tax           prorated per account
+  //     Cr AR / cash clearing total credit      (what the customer is owed)
+  //
+  //   Dr Inventory            returned cost     (only for goods put back)
+  //     Cr COGS               returned cost
+  const policies = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
+  if (!policies) {
+    throw new DomainError('VALIDATION_FAILED', 'Accounting policies are not configured for this company', {}, 409);
+  }
+
+  if (totalCredit.gt(0)) {
+    const creditLines: JournalLineInput[] = [
+      { chartOfAccountId: policies.salesRevenueAccountId, debit: netCredit, credit: 0,
+        branchId: input.branchId, memo: `Sales return ${referenceNo}` },
+    ];
+    for (const [chartOfAccountId, amount] of taxCreditByAccount) {
+      if (amount.isZero()) continue;
+      creditLines.push({ chartOfAccountId, debit: amount, credit: 0,
+        branchId: input.branchId, memo: `Output tax reversed ${referenceNo}` });
+    }
+    creditLines.push({ chartOfAccountId: policies.arAccountId, debit: 0, credit: totalCredit,
+      branchId: input.branchId, memo: `Customer credit ${referenceNo}` });
+
+    await postJournalEntry(tx, {
+      companyId: input.companyId,
+      entryDate: input.businessDate,
+      postingKind: 'sale_return_credit',
+      sourceType: 'sale_return', sourceId: `${saleReturn.id}:credit`,
+      description: `Sales return: ${referenceNo}`,
+      currencyCode: sale.currencyCode,
+      exchangeRate: parseFloat(sale.exchangeRate.toString()),
+      createdBy: input.postedBy,
+      lines: creditLines,
+    }, correlationId);
+  }
+
+  // Cost of the goods actually returned to stock. Scrapped goods never
+  // re-enter inventory, so their cost stays in COGS.
+  let returnedCost = new Prisma.Decimal(0);
+  if (input.disposition !== 'scrap') {
+    for (const itemData of returnItemsData) {
+      returnedCost = returnedCost.plus(itemData.unitCostSnapshot.mul(itemData.qtyReturned));
+    }
+  }
+  if (returnedCost.gt(0)) {
+    await postJournalEntry(tx, {
+      companyId: input.companyId,
+      entryDate: input.businessDate,
+      postingKind: 'sale_return_cogs',
+      sourceType: 'sale_return', sourceId: `${saleReturn.id}:cogs`,
+      description: `Sales return COGS: ${referenceNo}`,
+      currencyCode: sale.currencyCode,
+      exchangeRate: parseFloat(sale.exchangeRate.toString()),
+      createdBy: input.postedBy,
+      lines: [
+        { chartOfAccountId: policies.inventoryAccountId, debit: returnedCost, credit: 0,
+          branchId: input.branchId, memo: `Inventory returned ${referenceNo}` },
+        { chartOfAccountId: policies.cogsAccountId, debit: 0, credit: returnedCost,
+          branchId: input.branchId, memo: `COGS reversed ${referenceNo}` },
+      ],
+    }, correlationId);
   }
 
   // 7. Update sale status

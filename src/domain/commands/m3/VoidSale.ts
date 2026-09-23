@@ -13,6 +13,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { reverseStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
+import { reverseJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
 
 export interface VoidSaleInput {
@@ -161,6 +162,30 @@ export async function voidSale(
         },
       });
     }
+  }
+
+  // Reverse the sale's general-ledger postings.
+  //
+  // Voiding previously reversed stock, serials and payments but left revenue,
+  // output tax and COGS on the books permanently, so every void overstated
+  // revenue and VAT payable. PostSale writes two entries for a sale, keyed
+  // `${sale.id}:revenue` and `${sale.id}:cogs`; reverse whatever is present.
+  const saleJournals = await tx.journalEntry.findMany({
+    where: {
+      companyId: input.companyId,
+      sourceType: 'sale',
+      sourceId: { in: [`${sale.id}:revenue`, `${sale.id}:cogs`] },
+      status: 'posted',
+    },
+    select: { id: true },
+  });
+  for (const journal of saleJournals) {
+    await reverseJournalEntry(tx, {
+      journalEntryId: journal.id,
+      companyId: input.companyId,
+      reversedBy: input.voidedBy,
+      reason: `Sale void: ${input.reason}`,
+    }, correlationId);
   }
 
   // Mark sale as voided

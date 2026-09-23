@@ -39,6 +39,14 @@ export interface PostJournalEntryInput {
   exchangeRate: number;
   createdBy: string;
   reversalOfEntryId?: string;
+  /**
+   * Source id for the business event only. business_events is unique on
+   * (company, event_type, source_type, source_id), so a source document that
+   * is posted to more than once -- a gift card issued and then redeemed
+   * repeatedly -- needs a distinct event key while the journal entries keep
+   * pointing at the document itself.
+   */
+  eventSourceId?: string;
   lines: JournalLineInput[];
 }
 
@@ -154,7 +162,7 @@ export async function postJournalEntry(
       companyId: input.companyId,
       eventType: 'journal_entry.posted',
       sourceType: input.sourceType,
-      sourceId: input.sourceId,
+      sourceId: input.eventSourceId ?? input.sourceId,
       correlationId,
       occurredAt: new Date(),
     },
