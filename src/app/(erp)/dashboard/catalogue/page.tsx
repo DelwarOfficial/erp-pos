@@ -143,9 +143,7 @@ export default function CataloguePage() {
           <CardDescription>Master product list with activation workflow.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/dashboard/products">
-            <Button>Go to Products →</Button>
-          </Link>
+          <Button asChild><Link href="/dashboard/products">Go to Products →</Link></Button>
         </CardContent>
       </Card>
     </div>

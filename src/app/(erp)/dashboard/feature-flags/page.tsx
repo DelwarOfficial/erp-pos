@@ -63,7 +63,7 @@ export default function FeatureFlagsPage() {
           <Flag className="h-6 w-6" /> Feature Flags
         </h1>
         <p className="text-muted-foreground">
-          Per §20.D02 — optional modules are disabled by default. Core modules are always enabled and not listed here.
+          optional modules are disabled by default. Core modules are always enabled and not listed here.
         </p>
       </div>
 

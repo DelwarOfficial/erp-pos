@@ -67,6 +67,7 @@ interface CashierShiftOption {
 
 export default function POSPage() {
   const [search, setSearch] = useState('');
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
@@ -169,7 +170,7 @@ export default function POSPage() {
         .finally(() => setSearching(false));
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search]);
+  }, [search, searchAttempt]);
 
   function addToCart(product: Product) {
     const existing = cart.find(c => c.productId === product.id);
@@ -333,7 +334,7 @@ export default function POSPage() {
                 <div className="mt-2 flex items-center gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded p-2">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   <span className="flex-1">{searchError}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setSearch(s => s)}>Retry</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSearchAttempt(attempt => attempt + 1)}>Retry</Button>
                 </div>
               )}
 
@@ -363,12 +364,11 @@ export default function POSPage() {
 
               {/* Results list */}
               {!searching && !searchError && products.length > 0 && (
-                <div className="mt-2 border rounded max-h-72 overflow-y-auto" role="listbox" aria-label="Product search results">
+                <div className="mt-2 border rounded max-h-72 overflow-y-auto" role="group" aria-label="Product search results">
                   {products.map(p => (
                     <button
                       key={p.id}
-                      role="option"
-                      aria-selected="false"
+                      type="button"
                       onClick={() => addToCart(p)}
                       className="w-full flex items-center justify-between p-2.5 hover:bg-muted border-b last:border-b-0 text-left min-h-[44px] transition-colors"
                     >

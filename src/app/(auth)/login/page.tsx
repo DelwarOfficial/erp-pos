@@ -68,7 +68,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-1">
           <CardTitle><h1 className="text-2xl font-semibold tracking-tight">ERP Sign In</h1></CardTitle>
           <CardDescription>
-            Bangladesh multi-tenant ERP/POS — Phase M0 (Foundation)
+            Sign in to manage your business workspace.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit} className="space-y-6" aria-busy={loading}>

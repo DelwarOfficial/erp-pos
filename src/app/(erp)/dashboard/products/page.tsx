@@ -79,11 +79,9 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Package className="h-6 w-6" /> Products
           </h1>
-          <p className="text-muted-foreground">Master product catalogue — Phase M1.</p>
+          <p className="text-muted-foreground">Manage your product catalogue.</p>
         </div>
-        <Link href="/dashboard/products/new">
-          <Button className="min-h-[44px]"><Plus className="h-4 w-4 mr-2" /> New Product</Button>
-        </Link>
+        <Button className="min-h-[44px]" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" /> New Product</Link></Button>
       </div>
 
       <Card>
@@ -129,9 +127,7 @@ export default function ProductsPage() {
               icon={<Package className="h-8 w-8 text-muted-foreground/50" />}
               message={<>No products yet. Click <strong>&ldquo;New Product&rdquo;</strong> to create one.</>}
               action={
-                <Link href="/dashboard/products/new">
-                  <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-2" /> New Product</Button>
-                </Link>
+                <Button size="sm" variant="outline" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" /> New Product</Link></Button>
               }
             />
           ) : (

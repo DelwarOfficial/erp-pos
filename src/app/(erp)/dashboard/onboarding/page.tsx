@@ -105,7 +105,7 @@ export default function OnboardingPage() {
         </h1>
         <p className="text-muted-foreground">
           Platform operations only. Creates a new company in <code>suspended</code> status.
-          Per §20.D01 — no public signup.
+          New organizations are created by platform administrators.
         </p>
       </div>
 

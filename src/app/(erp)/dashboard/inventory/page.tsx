@@ -64,9 +64,7 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Warehouse stock projections with moving-average cost.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Link href="/dashboard/inventory/opening-stock">
-            <Button variant="outline" className="min-h-[44px]">Post Opening Stock</Button>
-          </Link>
+          <Button variant="outline" className="min-h-[44px]" asChild><Link href="/dashboard/inventory/opening-stock">Post Opening Stock</Link></Button>
           <Button variant={lowStockOnly ? 'default' : 'outline'} onClick={() => setLowStockOnly(!lowStockOnly)} className="min-h-[44px]">
             <AlertTriangle className="h-4 w-4 mr-2" />
             Low Stock ({lowStockCount})
@@ -105,7 +103,7 @@ export default function InventoryPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Stock on Hand</CardTitle>
-            <CardDescription>Moving-average cost recalculated on inbound; outbound uses pre-movement average (§5.5).</CardDescription>
+            <CardDescription>Current warehouse quantities, reserved stock and moving-average cost.</CardDescription>
           </div>
           {!loading && !error && <Button size="sm" variant="ghost" onClick={load}>Refresh</Button>}
         </CardHeader>
@@ -119,9 +117,7 @@ export default function InventoryPage() {
               icon={<Package className="h-8 w-8 text-muted-foreground/50" />}
               message={<>No stock records {lowStockOnly ? 'matching the low-stock filter' : 'yet'}. Post opening stock to initialize a warehouse.</>}
               action={
-                <Link href="/dashboard/inventory/opening-stock">
-                  <Button size="sm" variant="outline">Post Opening Stock</Button>
-                </Link>
+                <Button size="sm" variant="outline" asChild><Link href="/dashboard/inventory/opening-stock">Post Opening Stock</Link></Button>
               }
             />
           ) : (
@@ -165,12 +161,10 @@ export default function InventoryPage() {
       <Card>
         <CardHeader>
           <CardTitle>Stock Movements Ledger</CardTitle>
-          <CardDescription>Immutable audit trail of every stock change. <Link href="/dashboard/inventory/movements" className="text-primary hover:underline">View full ledger →</Link></CardDescription>
+          <CardDescription>The stock movement ledger is not available in this workspace yet.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Link href="/dashboard/inventory/movements">
-            <Button variant="outline" className="min-h-[44px]">Open Stock Ledger <ArrowRight className="h-4 w-4 ml-2" /></Button>
-          </Link>
+          <p className="text-sm text-muted-foreground">Current stock quantities and values are shown above.</p>
         </CardContent>
       </Card>
     </div>

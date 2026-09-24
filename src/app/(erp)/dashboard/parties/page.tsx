@@ -61,7 +61,7 @@ export default function PartiesPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base"><Users className="h-5 w-5" /> Customers ({customers.length})</CardTitle>
-              <CardDescription>Walk-in sales use NULL customer_id.</CardDescription>
+              <CardDescription>Walk-in sales do not require a customer account.</CardDescription>
             </div>
             <Button size="icon" variant="outline" onClick={() => setShowCustomerForm(!showCustomerForm)} aria-label="Add customer" className="min-h-[40px] min-w-[40px]">
               <Plus className="h-4 w-4" />

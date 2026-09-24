@@ -88,7 +88,7 @@ export default function DeliveriesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Truck className="h-6 w-6" /> Deliveries</h1>
-        <p className="text-muted-foreground">Delivery orders linked to posted sales (last 30 days). Feature-flagged per §20.D14.</p>
+        <p className="text-muted-foreground">Delivery orders linked to posted sales from the last 30 days.</p>
       </div>
 
       <Card>

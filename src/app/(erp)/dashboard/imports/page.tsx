@@ -124,8 +124,8 @@ export default function ImportExportPage() {
           <FileText className="h-6 w-6" /> Import / Export
         </h1>
         <p className="text-muted-foreground">
-          Per §9.5 — versioned templates, staged validation, dry-run, row error download, control totals.
-          CSV/Excel exports escape formula-leading cells per §6.8.
+          Validate import files, review row errors and track import jobs.
+          CSV/Excel exports escape formula-leading cells.
         </p>
       </div>
 
@@ -211,7 +211,7 @@ export default function ImportExportPage() {
               <CardTitle>Create Export</CardTitle>
               <CardDescription>
                 Exports respect row scope + sensitive-field permissions (cost/margin/payroll/PII omitted unless authorized).
-                CSV exports escape formula-leading cells per §6.8. Exports expire after 7 days.
+                CSV exports escape formula-leading cells. Exports expire after 7 days.
               </CardDescription>
             </CardHeader>
             <CardContent>

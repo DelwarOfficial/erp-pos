@@ -25,7 +25,7 @@ export default function AccountingPage() {
             <CardDescription>Post manual journal entries. Balanced debit/credit enforced.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/accounting/journal"><Button>View Journal →</Button></Link>
+            <Button asChild><Link href="/dashboard/accounting/journal">View Journal →</Link></Button>
           </CardContent>
         </Card>
 
@@ -35,7 +35,7 @@ export default function AccountingPage() {
             <CardDescription>Account balances computed from posted journal lines.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/accounting/trial-balance"><Button>View Trial Balance →</Button></Link>
+            <Button asChild><Link href="/dashboard/accounting/trial-balance">View Trial Balance →</Link></Button>
           </CardContent>
         </Card>
 
@@ -45,7 +45,7 @@ export default function AccountingPage() {
             <CardDescription>Post operational expenses with GL integration.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/dashboard/expenses"><Button>View Expenses →</Button></Link>
+            <Button asChild><Link href="/dashboard/expenses">View Expenses →</Link></Button>
           </CardContent>
         </Card>
 

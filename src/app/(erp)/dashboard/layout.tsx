@@ -13,7 +13,7 @@ import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, P
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription, SheetTrigger } from '@/components/ui/sheet';
 import { DashboardSession, type DashboardUser } from '@/components/dashboard/session';
 import { ThemeControl } from '@/components/theme-control';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -185,7 +185,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
                 className={`flex min-h-10 items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors ${active ? 'border-sidebar-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground' : 'border-transparent text-sidebar-foreground hover:bg-sidebar-accent'}`}>
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{item.label.replace('Access Control ? ', '').replace('CRM ? ', '').replace('HR ? ', '')}</span>
+                <span>{item.label.replace('Access Control \u2014 ', '').replace('CRM \u2014 ', '').replace('HR \u2014 ', '')}</span>
               </Link>;
             })}
           </CollapsibleContent>
@@ -199,21 +199,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : branches.length === 1 ? branches[0].name : `${user.branch_ids.length} assigned branches`;
 
   return (
+    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
     <div className="min-h-dvh flex flex-col bg-background">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
       <header className="border-b bg-card sticky top-0 z-30">
         <div className="flex min-h-16 items-center justify-between px-3 py-2 sm:px-5 gap-2">
           <div className="flex items-center gap-3 min-w-0">
             {/* Hamburger — mobile only */}
-            <Button
+            <SheetTrigger asChild><Button
               variant="ghost"
               size="icon"
               className="md:hidden flex-shrink-0"
-              onClick={() => setMobileOpen(true)}
               aria-label="Open navigation menu"
             >
               <Menu className="h-5 w-5" />
-            </Button>
+            </Button></SheetTrigger>
             <Building2 className="hidden sm:block h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             <div className="min-w-0"><div className="font-semibold truncate" title={user.company_name}>{user.company_name}</div>
               <div className="text-xs font-medium text-muted-foreground truncate" title={branchLabel}>{branchLabel}</div></div>
@@ -250,7 +250,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </aside>
 
         {/* Mobile drawer */}
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-72 p-0 max-w-[85vw]">
             <SheetHeader className="border-b">
               <SheetTitle className="flex items-center gap-2">
@@ -263,12 +262,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {SidebarContent}
             </div>
           </SheetContent>
-        </Sheet>
 
         <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-5 lg:p-6 min-w-0">
           <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div></DashboardSession.Provider>
         </main>
       </div>
     </div>
+    </Sheet>
   );
 }

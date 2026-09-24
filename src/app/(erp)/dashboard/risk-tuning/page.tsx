@@ -109,15 +109,22 @@ export default function RiskTuningPage() {
   const [report, setReport] = useState<RiskReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
+    setLoadError(null);
     try {
       const [configRes, assessRes, reportRes] = await Promise.all([
         apiFetch('/api/v1/admin/risk-config'),
         apiFetch('/api/v1/admin/risk-assessments?limit=50'),
         apiFetch('/api/v1/admin/risk-assessments/report'),
       ]);
+      if ([configRes, assessRes, reportRes].some(response => !response.ok)) {
+        setLoadError([configRes, assessRes, reportRes].some(response => response.status === 403)
+          ? 'Some risk data is restricted for your current access level.'
+          : 'Some risk data could not be refreshed. Previously loaded information may be out of date. Refresh to retry.');
+      }
 
       if (configRes.ok) {
         const configData = await configRes.json();
@@ -132,6 +139,7 @@ export default function RiskTuningPage() {
         setReport(reportData);
       }
     } catch (e) {
+      setLoadError('Risk data could not be refreshed. Check your connection and try again.');
       toast.error(e instanceof Error ? e.message : 'Failed to load risk data');
     } finally {
       setRefreshing(false);
@@ -145,8 +153,8 @@ export default function RiskTuningPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div role="status" className="flex justify-center items-center gap-3 py-16">
+        <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" /><span>Loading risk data…</span>
       </div>
     );
   }
@@ -154,13 +162,13 @@ export default function RiskTuningPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <ShieldAlert className="h-6 w-6" /> Risk Threshold Tuning
           </h1>
           <p className="text-muted-foreground">
-            Per §20.D15 — monitor false-positive / false-negative rates and tune scoring thresholds.
+            Monitor false-positive / false-negative rates and tune scoring thresholds.
           </p>
         </div>
         <Button variant="outline" onClick={loadAll} disabled={refreshing}>
@@ -169,8 +177,9 @@ export default function RiskTuningPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="report">
-        <TabsList>
+      {loadError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{loadError}</p>}
+      <Tabs defaultValue="report" className="min-w-0">
+        <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="report"><Activity className="h-4 w-4 mr-2" />FP/FN Report</TabsTrigger>
           <TabsTrigger value="assessments"><Target className="h-4 w-4 mr-2" />Assessments ({assessments.length})</TabsTrigger>
           <TabsTrigger value="thresholds"><TrendingUp className="h-4 w-4 mr-2" />Current Thresholds</TabsTrigger>
@@ -178,7 +187,7 @@ export default function RiskTuningPage() {
 
         {/* ── Tab 1: FP/FN Report ── */}
         <TabsContent value="report" className="space-y-6">
-          {report && <ReportView report={report} />}
+          {report ? <ReportView report={report} /> : <p className="py-8 text-sm text-muted-foreground">No risk report is available.</p>}
         </TabsContent>
 
         {/* ── Tab 2: Recent Assessments ── */}
@@ -188,7 +197,7 @@ export default function RiskTuningPage() {
 
         {/* ── Tab 3: Current Thresholds ── */}
         <TabsContent value="thresholds" className="space-y-6">
-          {config && <ThresholdsView config={config} />}
+          {config ? <ThresholdsView config={config} /> : <p className="py-8 text-sm text-muted-foreground">Risk thresholds are unavailable.</p>}
         </TabsContent>
       </Tabs>
     </div>

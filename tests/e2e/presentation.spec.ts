@@ -1,0 +1,159 @@
+import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+// Presentation fixtures only. No database, credentials or business mutations.
+const user = {
+  id: 'presentation-user', name: 'Workspace operator', email: 'operator@example.invalid',
+  company_id: 'presentation-company', company_name: 'Dhaka Electronics — ঢাকা ইলেকট্রনিক্স', company_code: 'DHAKA',
+  access_scope: 'single_branch', is_global: false, mfa_enabled: true, mfa_verified: true,
+  branch_ids: ['branch-a'], branches: [{ id: 'branch-a', name: 'Dhaka branch', code: 'DHK' },
+    { id: 'branch-denied', name: 'Unassigned branch', code: 'DENIED' }], roles: [], permissions: ['product.read'],
+};
+
+async function fixtures(page: Page, overrides: Partial<typeof user> = {}) {
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/v1/me') return route.fulfill({ json: { user: { ...user, ...overrides } } });
+    return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: 'Access denied for this workspace.' } } });
+  });
+}
+
+async function fits(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+}
+
+test('restricted navigation, exact active route, branch context and keyboard skip link', async ({ page }) => {
+  await fixtures(page); await page.goto('/dashboard');
+  await expect(page.locator('main')).toContainText('Dhaka branch');
+  await expect(page.locator('main')).not.toContainText('Unassigned branch');
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Sales', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'System Health', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Tab'); await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+  await page.keyboard.press('Enter'); await expect(page.locator('main')).toBeFocused();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Products', exact: true }).click();
+  await page.waitForURL('**/dashboard/products', { timeout: 90_000 });
+  await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveText('Products');
+});
+
+test('platform context and navigation fit all target widths in both themes', async ({ page }) => {
+  await fixtures(page, { is_global: true }); await page.goto('/dashboard');
+  await expect(page.locator('main')).toContainText('Platform operations');
+  for (const theme of ['Light', 'Dark']) {
+    await page.getByRole('button', { name: 'Choose appearance' }).click();
+    await page.getByRole('menuitem', { name: theme, exact: true }).click();
+    await expect(page.locator('html')).toHaveClass(theme.toLowerCase());
+    for (const width of [320, 375, 430, 768, 1024, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+      await expect(page.locator('header').first().getByText('Platform / Global', { exact: true })).toBeVisible();
+      await fits(page);
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screenshot({ path: `.local/ui-platform-${theme.toLowerCase()}.png`, fullPage: true });
+  }
+  await page.reload(); await expect(page.locator('html')).toHaveClass('dark');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(375);
+  const opener = page.getByRole('button', { name: 'Open navigation menu' });
+  await opener.click(); await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('overview meets automated accessibility checks in both themes', async ({ page }) => {
+  await fixtures(page, { is_global: true }); await page.goto('/dashboard');
+  for (const theme of ['Light', 'Dark']) {
+    await page.getByRole('button', { name: 'Choose appearance' }).click();
+    await page.getByRole('menuitem', { name: theme, exact: true }).click();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+    expect(results.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) }))).toEqual([]);
+  }
+});
+
+test('session failure has retry and login actions', async ({ page }) => {
+  await fixtures(page);
+  await page.route('**/api/v1/me', route => route.fulfill({ status: 503, json: {} }));
+  await page.goto('/dashboard');
+  await expect(page.getByRole('alert').filter({ hasText: 'Session error' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Go to login' })).toBeVisible();
+});
+
+test('sign-in keeps validation and shows server error inline and in Sonner', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ status: 401, json: { error: { message: 'Invalid sign-in details.' } } }));
+  await page.setViewportSize({ width: 320, height: 740 }); await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill('operator@example.invalid');
+  await page.getByLabel('Password', { exact: true }).fill('incorrect-password');
+  await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Invalid sign-in details.' })).toBeVisible();
+  await expect(page.locator('[data-sonner-toast]')).toContainText('Invalid sign-in details.');
+  await fits(page);
+  expect(await page.locator('meta[name="viewport"]').getAttribute('content')).not.toMatch(/user-scalable=no|maximum-scale=1/);
+});
+
+test('POS retry repeats failed search without changing the query', async ({ page }) => {
+  await fixtures(page, { permissions: ['sale.post'] });
+  let attempts = 0;
+  await page.route('**/api/v1/products?*', route => {
+    attempts++;
+    return route.fulfill(attempts === 1 ? { status: 503, json: { error: { message: 'Search unavailable.' } } }
+      : { json: { items: [{ id: 'p1', name: 'Keyboard', code: 'KB1', default_price: '500.00', is_serialized: false, unit: { code: 'PCS', name: 'Piece' } }] } });
+  });
+  await page.goto('/dashboard/pos');
+  await page.getByRole('textbox', { name: 'Search products' }).fill('Keyboard');
+  await expect(page.getByText('Search unavailable.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Product search results' }).getByRole('button')).toHaveCount(1);
+  expect(attempts).toBe(2);
+});
+
+test('inventory preserves wide financial columns within local scrolling', async ({ page }) => {
+  await fixtures(page, { permissions: ['inventory.read'] });
+  await page.route('**/api/v1/inventory/stocks?*', route => route.fulfill({ json: { items: [{ id: 'stock-a',
+    product: { name: 'Long product name — বাংলা পণ্য', code: 'SKU-A', unit: { code: 'PCS' } },
+    warehouse: { name: 'Dhaka warehouse' }, qty_on_hand: '1000000.0000', qty_reserved: '125.0000',
+    qty_available: '999875.0000', moving_average_cost: '123456.123456', inventory_value: '123456123456.00', is_low_stock: false }] } }));
+  await page.setViewportSize({ width: 320, height: 800 }); await page.goto('/dashboard/inventory');
+  await expect(page.getByRole('columnheader', { name: 'Value', exact: true })).toBeAttached();
+  await expect(page.getByRole('cell', { name: '৳ 123456.123456', exact: true })).toBeAttached();
+  await fits(page);
+});
+
+for (const feature of ['accounting', 'assets', 'audit', 'bank-reconciliation', 'cashier', 'catalogue', 'communications',
+  'crm', 'deliveries', 'expenses', 'feature-flags', 'gift-cards', 'hr', 'imports', 'integrations', 'inventory', 'onboarding',
+  'parties', 'payments', 'pos', 'products', 'purchases', 'reports', 'risk-tuning', 'sales', 'security', 'service', 'settings',
+  'support', 'system', 'access/users', 'access/roles', 'access/permissions', 'accounting/journal', 'accounting/trial-balance',
+  'inventory/opening-stock', 'products/new', 'products/presentation-id', 'access/users/presentation-id', 'access/roles/presentation-id']) {
+  test(`module presentation handles denied API: ${feature}`, async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await fixtures(page, { is_global: true });
+    await page.setViewportSize({ width: 375, height: 812 });
+    const response = await page.goto(`/dashboard/${feature}`);
+    expect(response?.status()).toBe(200);
+    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('main')).not.toBeEmpty();
+    for (const theme of ['Light', 'Dark']) {
+      await page.getByRole('button', { name: 'Choose appearance' }).click();
+      await page.getByRole('menuitem', { name: theme, exact: true }).click();
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      for (const width of [320, 375, 430, 768, 1024, 1280, 1440, 1920]) {
+        await page.setViewportSize({ width, height: 812 });
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+        await fits(page);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const path of ['/mfa', '/mfa/setup', '/reset-password']) {
+  test(`authentication presentation: ${path}`, async ({ page }) => {
+    await page.route('**/api/**', route => route.fulfill({ status: 403, json: { error: { message: 'Authentication required.' } } }));
+    await page.setViewportSize({ width: 320, height: 812 });
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    expect((await page.goto(path))?.status()).toBe(200);
+    await fits(page); expect(errors).toEqual([]);
+  });
+}

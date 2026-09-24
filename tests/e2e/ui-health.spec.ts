@@ -59,7 +59,7 @@ test('Overview shows authoritative company/branch context, no invented KPIs', as
   await expect(page.locator('main')).toContainText('Branch A only');
   await expect(page.locator('main')).not.toContainText('Denied branch must not appear');
   await expect(page.locator('main')).not.toContainText('Company B operational workspace');
-  await expect(page.locator('main')).toContainText('No operational shortcuts available');
+  await expect(page.locator('main')).toContainText('No quick actions are available for your current access level.');
   await noEngineering(page);
   const me = await (await page.request.get('/api/v1/me')).json();
   expect(me.user.branch_ids).toEqual([branchA]);

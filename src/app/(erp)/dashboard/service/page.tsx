@@ -91,7 +91,7 @@ export default function ServicePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Wrench className="h-6 w-6" /> Service Requests</h1>
-          <p className="text-muted-foreground">Device intake, repair, warranty. Feature-flagged per §20.D15.</p>
+          <p className="text-muted-foreground">Manage device intake, repairs and warranty service.</p>
         </div>
         <Button onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-2" /> New Intake</Button>
       </div>
