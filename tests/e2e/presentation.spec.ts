@@ -109,6 +109,46 @@ test('POS retry repeats failed search without changing the query', async ({ page
   expect(attempts).toBe(2);
 });
 
+for (const status of [403, 503, 200]) {
+  test(`trial balance does not report financial state for failed or malformed response: ${status}`, async ({ page }) => {
+    await fixtures(page, { permissions: ['journal.read'] });
+    await page.route('**/api/v1/reports/trial-balance', route => route.fulfill({ status, json: {} }));
+    await page.goto('/dashboard/accounting/trial-balance');
+    await expect(page.locator('main').getByRole('alert')).toBeVisible();
+    await expect(page.locator('main')).not.toContainText('Out of Balance');
+    await expect(page.locator('main')).not.toContainText('Total Debit');
+    await expect(page.locator('main').getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+}
+
+test('trial balance preserves populated amounts and recovers through retry', async ({ page }) => {
+  await fixtures(page, { permissions: ['journal.read'] });
+  let attempts = 0;
+  await page.route('**/api/v1/reports/trial-balance', route => {
+    attempts++;
+    return route.fulfill(attempts === 1 ? { status: 503, json: {} } : { json: {
+      accounts: [{ account_id: 'a1', code: '1001', name: 'Cash account', account_class: 'asset', normal_balance: 'D',
+        total_debit: '123456789012.25', total_credit: '0.00', balance: '123456789012.25', balance_type: 'Debit' }],
+      summary: { total_accounts: 1, total_debit: '123456789012.25', total_credit: '123456789012.25', is_balanced: true },
+    } });
+  });
+  await page.goto('/dashboard/accounting/trial-balance');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('Balanced', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Dr 123456789012.25', exact: true })).toBeAttached();
+  for (const width of [320, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 812 }); await fits(page);
+  }
+  expect(attempts).toBe(2);
+});
+
+test('product details show recoverable errors rather than an endless spinner', async ({ page }) => {
+  await fixtures(page, { permissions: ['product.read'] });
+  await page.goto('/dashboard/products/presentation-id');
+  await expect(page.locator('main').getByRole('alert')).toContainText('Product details are unavailable.');
+  await expect(page.locator('main')).not.toContainText('Loading product');
+});
+
 test('inventory preserves wide financial columns within local scrolling', async ({ page }) => {
   await fixtures(page, { permissions: ['inventory.read'] });
   await page.route('**/api/v1/inventory/stocks?*', route => route.fulfill({ json: { items: [{ id: 'stock-a',
@@ -157,3 +197,34 @@ for (const path of ['/mfa', '/mfa/setup', '/reset-password']) {
     await fits(page); expect(errors).toEqual([]);
   });
 }
+
+test('MFA enrollment QR and manual-key controls fit phones without changing activation', async ({ page }) => {
+  const key = 'JBSWY3DPEHPK3PXP'; // Public synthetic fixture, not a real credential.
+  await page.route('**/api/**', route => route.fulfill({ status: 403, json: { error: { message: 'Authentication required.' } } }));
+  await page.route('**/api/v1/auth/mfa/setup', route => route.fulfill({ json: {
+    otpauth_url: `otpauth://totp/Example:fixture?secret=${key}&issuer=Example`, manual_key: key,
+  } }));
+  await page.setViewportSize({ width: 320, height: 812 }); await page.goto('/mfa/setup');
+  await expect(page.getByRole('img', { name: /Scan this QR code/ })).toBeVisible();
+  await expect(page.getByLabel('Manual setup key')).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: 'Show setup key' }).click();
+  await expect(page.getByLabel('Manual setup key')).toHaveValue(key);
+  await page.getByRole('button', { name: 'Hide setup key' }).click();
+  await expect(page.getByLabel('Manual setup key')).toHaveAttribute('type', 'password');
+  await fits(page);
+});
+
+test('POS populated cart keeps quantity actions visible on phones', async ({ page }) => {
+  await fixtures(page, { permissions: ['sale.post'] });
+  await page.route('**/api/v1/products?*', route => route.fulfill({ json: { items: [{ id: 'phone-product',
+    name: 'Long product name — বাংলা পণ্য', code: 'PHONE-ITEM', default_price: '123456.25', is_serialized: false,
+    unit: { code: 'PCS', name: 'Piece' } }] } }));
+  await page.setViewportSize({ width: 320, height: 812 }); await page.goto('/dashboard/pos');
+  await page.getByRole('textbox', { name: 'Search products' }).fill('Phone');
+  await page.getByRole('group', { name: 'Product search results' }).getByRole('button').click();
+  await page.getByRole('button', { name: 'Increase quantity' }).click();
+  await expect(page.getByRole('button', { name: 'Decrease quantity' })).toBeVisible();
+  await fits(page);
+  await page.getByRole('button', { name: 'Remove item' }).click();
+  await expect(page.getByText('Scan or search a product to start.', { exact: true })).toBeVisible();
+});

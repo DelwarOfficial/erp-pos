@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { ArrowLeft, QrCode, CheckCircle2, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface Product {
   id: string;
@@ -51,19 +52,38 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const [activating, setActivating] = useState(false);
   const [newBarcode, setNewBarcode] = useState({ code: '', symbology: 'CODE128', is_primary: false });
   const [addingBarcode, setAddingBarcode] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const [barcodesLoading, setBarcodesLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setLoadError(null); setBarcodeError(null); setBarcodesLoading(true);
     // Fetch product (we use the list endpoint with id filter — no detail endpoint yet)
     apiFetch(`/api/v1/products?limit=200`)
-      .then(r => r.json())
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403 ? 'You do not have permission to view this product.' : 'Product details could not be loaded.');
+        return response.json();
+      })
       .then(d => {
+        if (cancelled) return;
         const p = d.items?.find((x: Product) => x.id === id);
         setProduct(p ?? null);
-      });
+      })
+      .catch(() => { if (!cancelled) setLoadError('Product details are unavailable. Check your access or retry.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     apiFetch(`/api/v1/products/${id}/barcodes`)
-      .then(r => r.json())
-      .then(d => setBarcodes(d.items ?? []));
-  }, [id]);
+      .then(async response => {
+        if (!response.ok) throw new Error('Barcodes could not be loaded.');
+        return response.json();
+      })
+      .then(d => { if (!cancelled) setBarcodes(d.items ?? []); })
+      .catch(() => { if (!cancelled) setBarcodeError('Barcodes are unavailable. Check your access or retry.'); })
+      .finally(() => { if (!cancelled) setBarcodesLoading(false); });
+    return () => { cancelled = true; };
+  }, [id, attempt]);
 
   async function handleActivate() {
     setActivating(true);
@@ -84,6 +104,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       }
       toast.success('Product activated');
       setProduct(p => p ? { ...p, is_active: true } : p);
+    } catch {
+      toast.error('Activation could not be confirmed. Refresh the product before trying again.');
     } finally {
       setActivating(false);
     }
@@ -112,14 +134,17 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       setBarcodes(prev => [...prev, data]);
       setNewBarcode({ code: '', symbology: 'CODE128', is_primary: false });
       toast.success('Barcode added');
+    } catch {
+      toast.error('Barcode creation could not be confirmed. Refresh the product before trying again.');
     } finally {
       setAddingBarcode(false);
     }
   }
 
-  if (!product) {
-    return <div className="flex items-center justify-center min-h-96"><Loader2 className="h-6 w-6 animate-spin" /></div>;
-  }
+  if (loading) return <LoadingState label="Loading product…" />;
+  if (loadError) return <ErrorState message={loadError} onRetry={() => setAttempt(value => value + 1)} />;
+  if (!product) return <EmptyState message="This product was not found in the available product list."
+    action={<Button variant="outline" onClick={() => router.push('/dashboard/products')}>Back to products</Button>} />;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -127,10 +152,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         <ArrowLeft className="h-4 w-4 mr-2" /> Back to products
       </Button>
 
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">{product.name}</h1>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <Badge variant="outline" className="font-mono">{product.code}</Badge>
             <Badge variant="secondary">{product.product_type}</Badge>
             {product.is_serialized && <Badge variant="outline">serialized</Badge>}
@@ -168,7 +193,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             <CardDescription>One barcode can be primary. QR codes are server-generated signed payloads.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {barcodes.length === 0 ? (
+            {barcodesLoading ? <LoadingState label="Loading barcodes…" /> : barcodeError ? <ErrorState message={barcodeError} onRetry={() => setAttempt(value => value + 1)} /> : barcodes.length === 0 ? (
               <div className="text-sm text-muted-foreground">No barcodes yet.</div>
             ) : (
               <div className="space-y-1">
@@ -187,7 +212,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             <form onSubmit={handleAddBarcode} className="space-y-2 pt-2 border-t">
               <div className="grid grid-cols-2 gap-2">
                 <Select value={newBarcode.symbology} onValueChange={v => setNewBarcode({ ...newBarcode, symbology: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Barcode format"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="CODE128">CODE128</SelectItem>
                     <SelectItem value="CODE39">CODE39</SelectItem>
@@ -199,6 +224,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 </Select>
                 {newBarcode.symbology !== 'QR' && (
                   <Input
+                    aria-label="Barcode value"
                     placeholder="Barcode value"
                     value={newBarcode.code}
                     onChange={e => setNewBarcode({ ...newBarcode, code: e.target.value })}
@@ -229,9 +255,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex flex-wrap justify-between gap-x-4 gap-y-1">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="min-w-0 break-words font-medium">{value}</span>
     </div>
   );
 }

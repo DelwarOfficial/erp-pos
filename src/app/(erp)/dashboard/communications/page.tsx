@@ -46,7 +46,7 @@ function severityBadgeVariant(severity: string): 'default' | 'secondary' | 'dest
 
 export default function CommunicationsPage() {
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <MessageSquare className="h-6 w-6" /> Communications
@@ -57,7 +57,7 @@ export default function CommunicationsPage() {
       </div>
 
       <Tabs defaultValue="inbox">
-        <TabsList>
+        <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="inbox" className="min-h-[40px]">
             <Bell className="h-3 w-3 mr-1" /> Inbox
           </TabsTrigger>

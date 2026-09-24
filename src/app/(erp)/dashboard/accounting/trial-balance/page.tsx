@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Scale } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 
 interface TrialBalanceAccount {
   account_id: string; code: string; name: string;
@@ -20,17 +21,32 @@ export default function TrialBalancePage() {
   const [accounts, setAccounts] = useState<TrialBalanceAccount[]>([]);
   const [summary, setSummary] = useState({ total_accounts: 0, total_debit: '0', total_credit: '0', is_balanced: false });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     apiFetch('/api/v1/reports/trial-balance')
-      .then(r => r.json())
-      .then(d => {
-        setAccounts(d.accounts ?? []);
-        setSummary(d.summary ?? {});
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403
+          ? 'You do not have permission to view the trial balance.'
+          : 'The trial balance could not be loaded. Please retry.');
+        return response.json();
       })
-      .catch(e => toast.error(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .then(d => {
+        if (cancelled) return;
+        if (!Array.isArray(d.accounts) || typeof d.summary?.total_accounts !== 'number'
+          || typeof d.summary?.total_debit !== 'string' || typeof d.summary?.total_credit !== 'string'
+          || typeof d.summary?.is_balanced !== 'boolean') throw new Error('The trial balance response is incomplete. Please retry.');
+        setAccounts(d.accounts);
+        setSummary(d.summary);
+      })
+      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : 'The trial balance could not be loaded. Please retry.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [attempt]);
 
   return (
     <div className="space-y-6">
@@ -39,7 +55,7 @@ export default function TrialBalancePage() {
         <p className="text-muted-foreground">Account balances computed from posted journal lines as of today.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      {!loading && !error && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 [&_.text-2xl]:break-words [&_.text-2xl]:tabular-nums">
         <Card><CardContent className="pt-4"><div className="text-2xl font-bold">{summary.total_accounts}</div><div className="text-xs text-muted-foreground">Accounts</div></CardContent></Card>
         <Card><CardContent className="pt-4"><div className="text-2xl font-bold">৳ {parseFloat(summary.total_debit).toLocaleString()}</div><div className="text-xs text-muted-foreground">Total Debit</div></CardContent></Card>
         <Card><CardContent className="pt-4"><div className="text-2xl font-bold">৳ {parseFloat(summary.total_credit).toLocaleString()}</div><div className="text-xs text-muted-foreground">Total Credit</div></CardContent></Card>
@@ -48,13 +64,13 @@ export default function TrialBalancePage() {
             {summary.is_balanced ? 'Balanced' : 'Out of Balance'}
           </Badge>
         </CardContent></Card>
-      </div>
+      </div>}
 
       <Card>
         <CardHeader><CardTitle>Account Balances</CardTitle></CardHeader>
         <CardContent>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : accounts.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No posted journal entries yet.</div>
+          {loading ? <LoadingState label="Loading trial balance…" /> : error ? <ErrorState message={error} onRetry={() => setAttempt(value => value + 1)} /> : accounts.length === 0 ? (
+            <EmptyState message="No posted journal entries yet." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

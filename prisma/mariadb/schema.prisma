@@ -3373,6 +3373,14 @@ model JournalEntry {
   exchangeRate      Decimal  @default(1) @map("exchange_rate")
   description       String
   status            String   @default("posted") // draft/posted/reversed
+  /// Declared totals for the entry. A database CHECK enforces that these
+  /// balance, and a trigger on journal_lines verifies the lines match them.
+  totalDebit        Decimal  @default(0) @map("total_debit")
+  totalCredit       Decimal  @default(0) @map("total_credit")
+  /// How many lines this entry must have. The lines trigger validates the sums
+  /// once this many rows exist, which is the only point at which a row-at-a-time
+  /// insert can be known to be complete.
+  lineCount         Int      @default(0) @map("line_count")
   reversalOfEntryId String?  @map("reversal_of_entry_id")
   createdBy         String   @map("created_by")
   postedBy          String?  @map("posted_by")

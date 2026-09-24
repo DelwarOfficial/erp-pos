@@ -183,6 +183,12 @@ export async function postJournalEntry(
       exchangeRate: input.exchangeRate,
       description: input.description,
       status: 'posted',
+      // Declared up front so the database can verify the lines against it:
+      // a CHECK enforces that this balances, and a trigger on the append-only
+      // lines table compares the rows to it once lineCount of them exist.
+      totalDebit,
+      totalCredit,
+      lineCount: input.lines.length,
       createdBy: input.createdBy,
       postedBy: input.createdBy,
       postedAt: new Date(),

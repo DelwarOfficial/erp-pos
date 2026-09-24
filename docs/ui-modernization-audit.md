@@ -1,4 +1,4 @@
-# UI modernization audit ? 2026-09-23
+# UI modernization audit - started 2026-09-23
 
 ## Scope and evidence
 
@@ -35,7 +35,7 @@ No changes authorized here to prisma/, migrations/, src/app/api/, src/middleware
 
 ## Target design system (recommendations)
 
-Retain installed components and font assets. Neutral application background, white/dark elevated cards, restrained blue primary, semantic success/warning/information/danger with readable foreground/background pairs. Existing 4px spacing rhythm; 12/14px supporting text, 16px body, 24px page headings. Standard 36px desktop controls, 32px compact controls, 44px touch minimum. 6?10px radii; restrained shadows. Focus ring visible; reduced motion honored. Keep full financial columns with local horizontal scrolling. Font choices: existing Geist + Geist Mono (selected); system sans + system monospace (fallback); Noto Sans Bengali only as separately approved asset if Bengali glyph testing proves necessary.
+Retain installed components and font assets. Neutral application background, white/dark elevated cards, restrained blue primary, semantic success/warning/information/danger with readable foreground/background pairs. Existing 4px spacing rhythm; 12/14px supporting text, 16px body, 24px page headings. Standard 36px desktop controls, 32px compact controls, 44px touch minimum. 6-10px radii; restrained shadows. Focus ring visible; reduced motion honored. Keep full financial columns with local horizontal scrolling. Font choices: existing Geist + Geist Mono (selected); system sans + system monospace (fallback); Noto Sans Bengali is an alternative if glyph testing establishes a need. No new fonts added.
 
 ## Phased implementation and acceptance
 
