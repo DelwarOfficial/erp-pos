@@ -14,6 +14,11 @@
 //   F-11  E2E_TESTING or DISABLE_SECURE_COOKIES in the production environment
 //         stripped the Secure flag, downgraded SameSite to lax and (E2E_TESTING)
 //         bypassed mandatory MFA, from one variable nobody was prompted to check.
+//   F-58  APP_ENCRYPTION_KEY, BARCODE_SIGNING_KEY and the S3 credentials fell
+//         back to hard-coded values when unset. APP_ENCRYPTION_KEY encrypts
+//         every MFA seed and webhook secret; BARCODE_SIGNING_KEY signs QR
+//         payloads and the offline catalogue. An unset variable meant a public
+//         key, silently.
 //
 // The checks are pure functions over an environment object so they can be
 // tested without mutating process.env, and they collect every problem before
@@ -39,6 +44,10 @@ const PUBLISHED_SECRET_HASHES: Record<string, string> = {
   'ed3984a8738c622087938c65773af7714ff0ace8239155006359d29b999f6985': 'COURIER_WEBHOOK_TOKEN from .env.production.example',
   '5da0c7c819d23760b97564690a4a2bb7caada4565c005115eda7cfbddbc087b7': 'CRON_API_TOKEN from .env.production.example',
   '8830995c032f5273c155e5961d2b90b0148bbdb732499622e0481bd56b56fb53': 'the development fallback in src/lib/auth/jwt.ts',
+  '523d0c34c4e49fe8770474d8fe58ddf9b5f814fd8513605885942dc0a4c53aff': 'the development fallback in src/lib/crypto/index.ts',
+  '7343c4d49f4729045775cbb89cb2703a8360e4ba6badaadc0d9271a666e04e09': 'the development fallback in the offline bootstrap route',
+  '503fc3fa7ff89e266340d9270350cc7b9dfe54f2a66a2f6a0e4b1ee3eac0934b': 'the development fallback in src/domain/invariants/barcode.ts',
+  'ad9858116e63b0c5a4d7dc7f50f034c7247e56838dae22c1832712ffde48e694': 'the MinIO default credential',
 };
 
 const PLACEHOLDER = /change[_-]?me|your[_-]|example|placeholder|generate[_-]with|replace[_-]?me|^secret$|^password$|^test$/i;
@@ -58,21 +67,29 @@ function publishedAs(value: string): string | undefined {
   return PUBLISHED_SECRET_HASHES[createHash('sha256').update(value).digest('hex')];
 }
 
-/** Why this value is unacceptable as the token-signing key, or null if it is acceptable. */
-export function jwtSecretProblem(secret: string | undefined): string | null {
-  if (!secret) return 'JWT_SECRET is not set';
+/** Why this value is unacceptable as a secret key, or null if it is acceptable. */
+export function secretProblem(name: string, secret: string | undefined): string | null {
+  if (!secret) return `${name} is not set`;
   const published = publishedAs(secret);
-  if (published) return `JWT_SECRET is ${published}, which is public; generate a new one`;
-  if (PLACEHOLDER.test(secret)) return 'JWT_SECRET is a placeholder value';
+  if (published) return `${name} is ${published}, which is public; generate a new one`;
+  if (PLACEHOLDER.test(secret)) return `${name} is a placeholder value`;
   if (secret.length < MIN_SECRET_LENGTH) {
-    return `JWT_SECRET is ${secret.length} characters; at least ${MIN_SECRET_LENGTH} are required`;
+    return `${name} is ${secret.length} characters; at least ${MIN_SECRET_LENGTH} are required`;
   }
   // Long but repetitive -- 'aaaa…', '12341234…' -- is still guessable.
   if (new Set(secret).size < MIN_DISTINCT_CHARACTERS) {
-    return 'JWT_SECRET has too little variety to be a random key; generate one with `openssl rand -base64 48`';
+    return `${name} has too little variety to be a random key; generate one with \`openssl rand -base64 48\``;
   }
   return null;
 }
+
+/** Why this value is unacceptable as the token-signing key, or null if it is acceptable. */
+export function jwtSecretProblem(secret: string | undefined): string | null {
+  return secretProblem('JWT_SECRET', secret);
+}
+
+/** Keys that must be present and strong in production, and what each protects. */
+const REQUIRED_PRODUCTION_SECRETS = ['JWT_SECRET', 'APP_ENCRYPTION_KEY', 'BARCODE_SIGNING_KEY'] as const;
 
 export interface WebAuthnConfig {
   rpId: string;
@@ -130,14 +147,27 @@ export function productionSecurityProblems(env: Env): string[] {
   if (!isProduction(env)) return [];
   const problems: string[] = [];
 
-  const jwt = jwtSecretProblem(env.JWT_SECRET);
-  if (jwt) problems.push(jwt);
+  for (const name of REQUIRED_PRODUCTION_SECRETS) {
+    const problem = secretProblem(name, env[name]);
+    if (problem) problems.push(problem);
+  }
 
+  // Optional integration tokens: absent is fine, published is not.
   for (const name of SECRETS_CHECKED_FOR_PUBLICATION) {
-    if (name === 'JWT_SECRET') continue; // reported above with more detail
+    if ((REQUIRED_PRODUCTION_SECRETS as readonly string[]).includes(name)) continue;
     const value = env[name];
     const published = value ? publishedAs(value) : undefined;
     if (published) problems.push(`${name} is ${published}, which is public; generate a new one`);
+  }
+
+  // Object storage is optional, but once a bucket is configured its credentials
+  // must be real: they used to fall back to the MinIO default 'minioadmin'.
+  if (env.S3_BUCKET) {
+    for (const name of ['S3_ACCESS_KEY', 'S3_SECRET_KEY'] as const) {
+      const value = env[name];
+      if (!value) problems.push(`${name} is not set but S3_BUCKET is`);
+      else if (publishedAs(value) || PLACEHOLDER.test(value)) problems.push(`${name} is a default or placeholder value`);
+    }
   }
 
   problems.push(...resolveWebAuthnConfig(env).problems);

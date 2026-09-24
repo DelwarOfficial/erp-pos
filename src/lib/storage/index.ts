@@ -26,8 +26,10 @@ export class S3StorageAdapter implements StorageAdapter {
       endpoint,
       forcePathStyle: endpoint?.includes('localhost') || endpoint?.includes('minio'),
       credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY ?? 'minioadmin',
-        secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
+        // The MinIO default is for local development only; the production
+        // boot guard refuses it whenever S3_BUCKET is configured.
+        accessKeyId: process.env.S3_ACCESS_KEY ?? (process.env.NODE_ENV === 'production' ? '' : 'minioadmin'),
+        secretAccessKey: process.env.S3_SECRET_KEY ?? (process.env.NODE_ENV === 'production' ? '' : 'minioadmin'),
       },
     });
   }

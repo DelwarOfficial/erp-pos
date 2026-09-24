@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { hmacSha256 } from '@/lib/crypto';
+import { barcodeSigningKey } from '@/domain/invariants/barcode';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     // Sign the snapshot
     const snapshotJson = JSON.stringify(snapshot);
-    const signingKey = process.env.BARCODE_SIGNING_KEY ?? 'sandbox-signing-key-override';
+    const signingKey = barcodeSigningKey();
     const signature = hmacSha256(signingKey, snapshotJson);
 
     // Update device last_bootstrap_at

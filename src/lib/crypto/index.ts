@@ -11,6 +11,13 @@ const MASTER_KEY_ENV = process.env.APP_ENCRYPTION_KEY ?? 'sandbox-default-key-pl
 const KEY_VERSION = 1;
 
 function getMasterKey(): Buffer {
+  // Never the public fallback in production: this key encrypts every MFA seed
+  // and webhook secret. Checked here, when the key is used, rather than at
+  // module load -- next build evaluates modules with NODE_ENV=production and
+  // no runtime secrets, and must not fail for it.
+  if (process.env.NODE_ENV === 'production' && !process.env.APP_ENCRYPTION_KEY) {
+    throw new Error('APP_ENCRYPTION_KEY must be set in production');
+  }
   return scryptSync(MASTER_KEY_ENV, 'erp-pos-salt-v1', 32);
 }
 

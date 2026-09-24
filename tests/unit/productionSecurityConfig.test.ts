@@ -17,6 +17,8 @@ function goodProduction(overrides: Record<string, string | undefined> = {}) {
   return {
     NODE_ENV: 'production',
     JWT_SECRET: STRONG,
+    APP_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    BARCODE_SIGNING_KEY: randomBytes(32).toString('hex'),
     WEBAUTHN_RP_ID: 'erp.example.com',
     WEBAUTHN_ORIGIN: 'https://erp.example.com',
     ...overrides,
@@ -105,6 +107,56 @@ describe('F-54: the WebAuthn relying party', () => {
 
   it('accepts a parent domain as the RP ID', () => {
     expect(productionSecurityProblems(goodProduction({ WEBAUTHN_RP_ID: 'example.com' }))).toEqual([]);
+  });
+});
+
+describe('F-58: keys that used to fall back to public constants', () => {
+  it.each(['APP_ENCRYPTION_KEY', 'BARCODE_SIGNING_KEY'])('refuses to start without %s', name => {
+    expect(productionSecurityProblems(goodProduction({ [name]: undefined })).join('\n'))
+      .toMatch(new RegExp(`${name} is not set`));
+  });
+
+  it.each([
+    ['APP_ENCRYPTION_KEY', 'sandbox-default-key-please-override-in-production'],
+    ['BARCODE_SIGNING_KEY', 'sandbox-barcode-key-override-in-prod'],
+    ['BARCODE_SIGNING_KEY', 'sandbox-signing-key-override'],
+  ])('refuses %s set to its own development fallback', (name, fallback) => {
+    expect(productionSecurityProblems(goodProduction({ [name]: fallback })).join('\n')).toMatch(/public/);
+  });
+
+  it('refuses the MinIO default once a bucket is configured', () => {
+    const problems = productionSecurityProblems(goodProduction({
+      S3_BUCKET: 'erp-docs', S3_ACCESS_KEY: 'minioadmin', S3_SECRET_KEY: 'minioadmin',
+    }));
+    expect(problems.join('\n')).toMatch(/S3_ACCESS_KEY/);
+    expect(problems.join('\n')).toMatch(/S3_SECRET_KEY/);
+  });
+
+  it('does not require S3 credentials when no bucket is configured', () => {
+    expect(productionSecurityProblems(goodProduction())).toEqual([]);
+  });
+
+  it('refuses to encrypt in production without the key, at the point of use', async () => {
+    const saved = { ...process.env };
+    try {
+      vi.resetModules();
+      process.env = { ...saved, NODE_ENV: 'production' } as NodeJS.ProcessEnv;
+      delete process.env.APP_ENCRYPTION_KEY;
+      const { encrypt } = await import('@/lib/crypto');
+      // Previously this encrypted MFA seeds under a constant in the source.
+      expect(() => encrypt('totp-seed')).toThrow(/APP_ENCRYPTION_KEY/);
+    } finally {
+      process.env = saved;
+      vi.resetModules();
+    }
+  });
+
+  it('uses one signing key for barcodes and the offline catalogue', async () => {
+    const { readFileSync } = await import('node:fs');
+    const bootstrap = readFileSync('src/app/api/v1/offline/bootstrap/route.ts', 'utf8');
+    // The two sites used different fallbacks, so they could disagree.
+    expect(bootstrap).toMatch(/barcodeSigningKey\(\)/);
+    expect(bootstrap).not.toMatch(/BARCODE_SIGNING_KEY \?\?/);
   });
 });
 

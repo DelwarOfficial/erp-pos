@@ -14,6 +14,18 @@ import { hmacSha256 } from '@/lib/crypto';
 export const VALID_SYMBOLOGIES = ['CODE128', 'CODE39', 'EAN8', 'EAN13', 'UPCA', 'QR'] as const;
 export type Symbology = (typeof VALID_SYMBOLOGIES)[number];
 
+/**
+ * The key that signs QR payloads and the offline catalogue. It fell back to a
+ * public constant when unset -- two different constants in two files -- so an
+ * unset variable meant anyone could forge a signed barcode or catalogue.
+ */
+export function barcodeSigningKey(): string {
+  const key = process.env.BARCODE_SIGNING_KEY;
+  if (key) return key;
+  if (process.env.NODE_ENV === 'production') throw new Error('BARCODE_SIGNING_KEY must be set in production');
+  return 'sandbox-barcode-key-override-in-prod';
+}
+
 export function validateBarcodeFormat(code: string, symbology: Symbology): void {
   switch (symbology) {
     case 'EAN8':
@@ -62,7 +74,7 @@ export function generateSignedQrPayload(params: {
     b: params.barcodeId,
     ts,
   });
-  const key = process.env.BARCODE_SIGNING_KEY ?? 'sandbox-barcode-key-override-in-prod';
+  const key = barcodeSigningKey();
   const sig = hmacSha256(key, payload);
   // Base64url encode payload for URL safety
   const b64 = Buffer.from(payload).toString('base64url');
@@ -79,7 +91,7 @@ export function verifySignedQrPayload(signed: string): { companyId: string; prod
   }
   const [, b64, sig] = m;
   const payload = Buffer.from(b64, 'base64url').toString('utf8');
-  const key = process.env.BARCODE_SIGNING_KEY ?? 'sandbox-barcode-key-override-in-prod';
+  const key = barcodeSigningKey();
   const expected = hmacSha256(key, payload);
   if (sig !== expected) {
     throw new DomainError('INVALID_SIGNATURE', 'QR payload signature mismatch', {}, 401);
