@@ -937,6 +937,14 @@
     "exception": null
   },
   {
+    "file": "v1/data-subject-requests/[id]/export/route.ts",
+    "method": "GET",
+    "permissions": [
+      "dsr.manage.company"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/data-subject-requests/[id]/route.ts",
     "method": "GET",
     "permissions": [
