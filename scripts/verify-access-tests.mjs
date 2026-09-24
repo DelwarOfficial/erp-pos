@@ -7,7 +7,10 @@ import { spawn } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(join(root, '.local'), { recursive: true });
 const work = mkdtempSync(join(root, '.local', 'access-tests-'));
-for (const input of ['src', 'public', 'tests', 'prisma', 'scripts', 'package.json', 'tsconfig.json', 'vitest.config.ts', 'next.config.ts']) {
+// Root-level runtime files are part of the code under test: instrumentation.ts
+// and the Sentry configs are what Next.js loads on startup.
+for (const input of ['src', 'public', 'tests', 'prisma', 'scripts', 'package.json', 'tsconfig.json', 'vitest.config.ts', 'next.config.ts',
+  'instrumentation.ts', 'instrumentation-client.ts', 'sentry.server.config.ts', 'sentry.edge.config.ts', 'sentry.client.config.ts']) {
   if (existsSync(join(root, input))) cpSync(join(root, input), join(work, input), { recursive: true,
     filter: path => !/(?:^|[\\/])\.env(?:[.\\/]|$)|\.(?:db|sqlite|sqlite3)(?:[-.]|$)/i.test(path) });
 }

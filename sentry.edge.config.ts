@@ -1,4 +1,5 @@
 // sentry.edge.config.ts
+// Loaded by instrumentation.ts register() on the Edge runtime.
 // Sentry Edge runtime config — runs in Edge Functions (Vercel/Cloudflare).
 
 import * as Sentry from '@sentry/nextjs';
@@ -14,4 +15,3 @@ export function register() {
   });
 }
 
-export const onRequestError = Sentry.captureRequestError;

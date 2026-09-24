@@ -1,24 +1,22 @@
 // src/lib/telemetry/index.ts
 // OpenTelemetry tracing + Sentry error tracking per §1 monitoring requirements.
 // The actual OTel SDK is initialized in instrumentation.ts (Node.js startup hook).
-// Sentry is initialized in sentry.{server,client,edge}.config.ts.
+// Sentry is initialized by instrumentation.ts (server, edge) and
+// instrumentation-client.ts (browser), which load sentry.*.config.ts.
 
 import * as opentelemetry from '@opentelemetry/api';
-
-const SENTRY_DSN = process.env.SENTRY_DSN;
+import * as Sentry from '@sentry/nextjs';
 
 /**
- * Light init — the real SDK bootstrap happens in instrumentation.ts and
- * sentry.*.config.ts (auto-loaded by Next.js). This function exists so that
- * the worker process can call it as a sanity check on startup.
+ * Reports whether error tracking is ACTUALLY running in this process.
+ *
+ * This used to print "Sentry DSN detected — error tracking enabled" whenever
+ * SENTRY_DSN was set, which is not the same thing: the Sentry configs were
+ * never imported, so the DSN was present and nothing was initialised. It now
+ * asks the SDK whether a client exists.
  */
-export function initTelemetry(): void {
-  if (SENTRY_DSN) {
-    console.log('[telemetry] Sentry DSN detected — error tracking enabled');
-  } else {
-    console.log('[telemetry] No SENTRY_DSN — error tracking disabled (development mode)');
-  }
-  console.log('[telemetry] OpenTelemetry API available — tracing initialized via instrumentation.ts');
+export function isErrorTrackingActive(): boolean {
+  return Sentry.getClient() !== undefined;
 }
 
 // ── Correlation helpers ──

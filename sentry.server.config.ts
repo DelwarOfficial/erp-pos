@@ -1,4 +1,6 @@
 // sentry.server.config.ts
+// Loaded by instrumentation.ts register() on the Node.js runtime. Next.js does
+// not load this file by itself -- see instrumentation.ts for why that matters.
 // Sentry server-side config — runs in Node.js runtime.
 // Per §16 monitoring requirements: error tracking + performance monitoring.
 
@@ -12,6 +14,11 @@ export function register() {
 
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
+    // instrumentation.ts runs its own OpenTelemetry NodeSDK exporting OTLP.
+    // Sentry 10 would otherwise register a second tracer provider, and only
+    // one can be global, so spans would silently go to whichever won. Error
+    // capture does not depend on OTel and is unaffected.
+    skipOpenTelemetrySetup: true,
     environment: process.env.NODE_ENV ?? 'development',
     release: process.env.APP_VERSION ? `erp-pos@${process.env.APP_VERSION}` : undefined,
     tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
@@ -43,4 +50,3 @@ export function register() {
   });
 }
 
-export const onRequestError = Sentry.captureRequestError;

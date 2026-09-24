@@ -1,9 +1,21 @@
 // instrumentation.ts
 // Next.js 16 instrumentation hook — runs once on server startup.
-// Initializes OpenTelemetry tracing (OTLP exporter) per §1 + §16 monitoring requirements.
+//
+// Next.js loads `register` and `onRequestError` from THIS file only
+// (node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation.md).
+// Sentry was previously configured in sentry.server.config.ts and
+// sentry.edge.config.ts, each exporting its own register() and onRequestError,
+// and nothing imported either file -- so Sentry.init() never ran and no server
+// error was ever reported, while a log line claimed tracking was enabled.
+
+import * as Sentry from '@sentry/nextjs';
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Sentry first, so an error during OTel bootstrap is itself reported.
+    const { register: registerSentry } = await import('./sentry.server.config');
+    registerSentry();
+
     const { NodeSDK } = await import('@opentelemetry/sdk-node');
     const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-http');
     const { OTLPMetricExporter } = await import('@opentelemetry/exporter-metrics-otlp-http');
@@ -33,11 +45,20 @@ export async function register() {
       console.log('[instrumentation] OpenTelemetry SDK started');
     } catch (e) {
       console.error('[instrumentation] Failed to start OTel SDK:', e);
+      Sentry.captureException(e);
     }
 
-    // Register shutdown hooks
     process.on('SIGTERM', () => {
       sdk.shutdown().then(() => console.log('[instrumentation] OTel SDK shut down cleanly'));
     });
   }
+
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    const { register: registerSentryEdge } = await import('./sentry.edge.config');
+    registerSentryEdge();
+  }
 }
+
+// Next.js calls this for every server error it captures: route handlers,
+// server components, server actions and middleware.
+export const onRequestError = Sentry.captureRequestError;

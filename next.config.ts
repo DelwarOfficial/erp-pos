@@ -60,6 +60,8 @@ export default withSentryConfig(nextConfig, {
   silent: true,
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  // Auto-instrument router-level spans
-  autoInstrumentServerFunctions: true,
+  // autoInstrumentServerFunctions was set here. It is a webpack-only option,
+  // deprecated in @sentry/nextjs 10 and not supported with Turbopack -- which
+  // this project builds with -- so it did nothing. Server errors are captured
+  // through onRequestError in instrumentation.ts instead.
 });
