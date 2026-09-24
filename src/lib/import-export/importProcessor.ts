@@ -11,7 +11,9 @@
 // Sale/transfer imports create drafts only (per §9.5).
 // Serialized imports require one serial per row (per §9.5).
 
+import { createHash } from 'node:crypto';
 import { db } from '@/lib/db';
+import { DomainError } from '@/lib/errors/codes';
 import { parseCsv, rowToObject, validateRowColumns } from './csv';
 import { getTemplate, type ImportTemplate } from './templates';
 
@@ -186,18 +188,43 @@ export async function commitImport(
   template: ImportTemplate,
   duplicateStrategy: string,
 ): Promise<{ committedRows: number; skippedRows: number; failedRows: number }> {
+  // The content is supplied again at commit time, so it must be proved to be
+  // the content that was validated. Without this check validation was
+  // decorative: a client could validate one file and commit another, and every
+  // row of the second went in unchecked.
+  const job = await db.importJob.findFirst({
+    where: { id: jobId, companyId },
+    select: { fileSha256: true },
+  });
+  if (!job) throw new DomainError('RESOURCE_NOT_FOUND', 'Import job not found', {}, 404);
+  const suppliedSha256 = createHash('sha256').update(csvContent).digest('hex');
+  if (!job.fileSha256 || job.fileSha256 !== suppliedSha256) {
+    throw new DomainError('VALIDATION_FAILED',
+      'The file being committed is not the file that was validated; upload and validate it again',
+      { job_id: jobId }, 409);
+  }
+
+  // Claim the job before touching any row. The route's status check was a
+  // read-then-act with nothing between the read and the import, so two
+  // concurrent commits both saw 'ready' and both imported, doubling every row.
+  // Only one request can move the job out of 'ready'.
+  const claimed = await db.importJob.updateMany({
+    where: { id: jobId, companyId, status: 'ready' },
+    data: { status: 'importing' },
+  });
+  if (claimed.count !== 1) {
+    throw new DomainError('CONCURRENT_MODIFICATION',
+      'This import job is already being committed or is no longer ready', { job_id: jobId }, 409);
+  }
+
   const rows = parseCsv(csvContent);
   if (rows.length < 2) {
+    await db.importJob.update({ where: { id: jobId }, data: { status: 'completed', committedRows: 0, completedAt: new Date() } });
     return { committedRows: 0, skippedRows: 0, failedRows: 0 };
   }
 
   const headers = rows[0].map(h => h.trim().toLowerCase());
   const dataRows = rows.slice(1);
-
-  await db.importJob.update({
-    where: { id: jobId },
-    data: { status: 'importing' },
-  });
 
   let committed = 0;
   let skipped = 0;

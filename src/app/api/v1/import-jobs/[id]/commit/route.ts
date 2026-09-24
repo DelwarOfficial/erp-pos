@@ -11,8 +11,10 @@ import { commitImport } from '@/lib/import-export/importProcessor';
 // Actually inserts/updates records. Sale/transfer imports create drafts only.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let auth;
-    const idempotencyKey = requireIdempotencyKey(req);
   try {
+    // Inside the try: a missing header previously threw out of the handler as
+    // an unhandled 500 instead of the documented 400.
+    requireIdempotencyKey(req);
     auth = await authenticateRequest();
   } catch (e) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
@@ -67,16 +69,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // commitImport performs tenant-scoped writes internally: explicit context.
-  const result = await runInTenantContext(auth.ctx, async () => {
-    return commitImport(
-      id,
-      auth.companyId,
-      auth.userId ?? 'unknown',
-      csvContent,
-      template,
-      job.duplicateStrategy ?? 'skip',
-    );
-  });
+  // It refuses content that does not match the validated file and refuses a
+  // job another request has already claimed; both are DomainErrors that must
+  // reach the client as their own status, not as an unhandled 500.
+  let result;
+  try {
+    result = await runInTenantContext(auth.ctx, async () => {
+      return commitImport(
+        id,
+        auth.companyId,
+        auth.userId ?? 'unknown',
+        csvContent,
+        template,
+        job.duplicateStrategy ?? 'skip',
+      );
+    });
+  } catch (e) {
+    if (e instanceof DomainError) {
+      return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
+    }
+    throw e;
+  }
 
   return NextResponse.json({
     jobId: id,
