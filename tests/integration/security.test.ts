@@ -148,7 +148,10 @@ describe('Security: MFA Enforcement', () => {
     // The dev-only bypass must stay gated behind non-production; production
     // path always issues enrollment, never a session.
     expect(login).toContain('isSandboxBypass');
-    expect(login).toMatch(/NODE_ENV === 'development'[\s\S]*E2E_TESTING/);
+    expect(login).toMatch(/NODE_ENV === 'development'/);
+    // E2E_TESTING alone no longer bypasses MFA in production (F-11): it also
+    // needs the explicit acknowledgement the production boot guard enforces.
+    expect(login).toMatch(/E2E_TESTING === 'true'[\s\S]*insecureTestModeAcknowledged\(process\.env\)/);
   });
 
   it('action-time MFA module exists', () => {

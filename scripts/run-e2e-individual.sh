@@ -52,7 +52,7 @@ for test_spec in "${TESTS[@]}"; do
   HOSTNAME=0.0.0.0 PORT=3000 NODE_ENV=production \
   JWT_SECRET="e2e-testing-jwt-secret-32-chars-minimum-2026" \
   APP_ENCRYPTION_KEY="e2e-testing-encryption-key-32ch" \
-  E2E_TESTING=true nohup bun .next/standalone/server.js > /tmp/prod.log 2>&1 &
+  E2E_TESTING=true ERP_ALLOW_INSECURE_TEST_MODE=i-understand-this-disables-security-controls nohup bun .next/standalone/server.js > /tmp/prod.log 2>&1 &
   
   # Wait for server to be ready
   for i in $(seq 1 10); do

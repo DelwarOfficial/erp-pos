@@ -7,26 +7,29 @@ import { issueAccessToken, AccessClaims } from './jwt';
 import { issueRefreshToken, IssuedRefreshToken } from './refreshToken';
 import { issueMfaChallenge, readMfaChallenge, type MfaLoginChallenge } from './mfaChallenge';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, MFA_PENDING_COOKIE_NAME } from './cookieNames';
+import { insecureTestModeAcknowledged } from '@/lib/config/productionGuards';
 
+
+/**
+ * True when E2E_TESTING or DISABLE_SECURE_COOKIES may relax cookie security.
+ * Outside production they always may. In production they may only alongside
+ * ERP_ALLOW_INSECURE_TEST_MODE: previously either variable alone, set in a
+ * production environment, silently stripped Secure and downgraded SameSite.
+ * (The production boot guard also refuses to start in that state.)
+ */
+function testModeRelaxationAllowed(): boolean {
+  if (process.env.E2E_TESTING !== 'true' && process.env.DISABLE_SECURE_COOKIES !== 'true') return false;
+  return process.env.NODE_ENV !== 'production' || insecureTestModeAcknowledged(process.env);
+}
 
 function isProd() {
-  // In production with HTTPS, cookies should be Secure.
-  // But when E2E_TESTING=true or running on HTTP (staging), Secure cookies
-  // are rejected by the browser. Only set Secure when:
-  //   1. NODE_ENV=production AND
-  //   2. E2E_TESTING is not set AND
-  //   3. HTTPS is explicitly enabled (or not on localhost)
-  return process.env.NODE_ENV === 'production'
-    && process.env.E2E_TESTING !== 'true'
-    && process.env.DISABLE_SECURE_COOKIES !== 'true';
+  return process.env.NODE_ENV === 'production' && !testModeRelaxationAllowed();
 }
 
 function sameSiteMode(): 'strict' | 'lax' {
-  // In production: strict (most secure — cookie only sent on same-site requests)
-  // In E2E/staging: lax (allows top-level navigations, needed for Playwright)
-  return (process.env.E2E_TESTING === 'true' || process.env.DISABLE_SECURE_COOKIES === 'true')
-    ? 'lax'
-    : 'strict';
+  // Strict in production; lax only for a deliberately relaxed test run, where
+  // Playwright needs top-level navigations to carry the cookie.
+  return testModeRelaxationAllowed() ? 'lax' : 'strict';
 }
 
 export interface CookieAuthResult {

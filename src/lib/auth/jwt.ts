@@ -2,6 +2,7 @@
 // JWT issue/verify per §6 rule 1: 15min access JWT in HttpOnly+Secure+SameSite=Strict cookie.
 
 import { SignJWT, jwtVerify, errors } from 'jose';
+import { isProduction, jwtSecretProblem } from '@/lib/config/productionGuards';
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const ISSUER = 'erp-pos';
@@ -9,12 +10,16 @@ const AUDIENCE = 'erp-pos-clients';
 
 function getSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET must be set in production');
-    }
-    return new TextEncoder().encode('sandbox-dev-secret-override-in-prod');
+  // In production the key must be present AND strong. Presence alone was the
+  // old check, so `JWT_SECRET=secret` passed, and HS256 with a short key is
+  // brute-forceable offline from a single captured token -- after which any
+  // company_id and user_id can be minted.
+  if (isProduction(process.env)) {
+    const problem = jwtSecretProblem(secret);
+    if (problem) throw new Error(problem);
+    return new TextEncoder().encode(secret!);
   }
+  if (!secret) return new TextEncoder().encode('sandbox-dev-secret-override-in-prod');
   return new TextEncoder().encode(secret);
 }
 

@@ -4,6 +4,9 @@ cd /home/z/my-project
 
 export E2E_BASE_URL=http://localhost:3000
 export E2E_TESTING=true
+# The production build refuses the test-mode bypasses without this second
+# switch (src/lib/config/productionGuards.ts). Never set it on a real deployment.
+export ERP_ALLOW_INSECURE_TEST_MODE=i-understand-this-disables-security-controls
 export SKIP_WEBKIT=1
 export JWT_SECRET="e2e-testing-jwt-secret-32-chars-minimum-2026"
 export APP_ENCRYPTION_KEY="e2e-testing-encryption-key-32ch"
@@ -51,7 +54,7 @@ for spec in "${SPECS[@]}"; do
     HOSTNAME=0.0.0.0 PORT=3000 NODE_ENV=production \
     JWT_SECRET="e2e-testing-jwt-secret-32-chars-minimum-2026" \
     APP_ENCRYPTION_KEY="e2e-testing-encryption-key-32ch" \
-    E2E_TESTING=true nohup bun .next/standalone/server.js > /tmp/prod.log 2>&1 &
+    E2E_TESTING=true ERP_ALLOW_INSECURE_TEST_MODE=i-understand-this-disables-security-controls nohup bun .next/standalone/server.js > /tmp/prod.log 2>&1 &
     sleep 8
   fi
 done

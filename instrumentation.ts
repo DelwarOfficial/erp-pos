@@ -12,6 +12,12 @@ import * as Sentry from '@sentry/nextjs';
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Before anything else: a production server with a weak signing key, a
+    // published secret, a localhost passkey origin or a test-mode bypass
+    // switched on must not start and accept requests.
+    const { assertProductionSecurityConfig } = await import('@/lib/config/productionGuards');
+    assertProductionSecurityConfig();
+
     // Sentry first, so an error during OTel bootstrap is itself reported.
     const { register: registerSentry } = await import('./sentry.server.config');
     registerSentry();

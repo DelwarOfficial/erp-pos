@@ -3,6 +3,7 @@
 // if MFA is enabled, otherwise issues access+refresh cookies directly.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { insecureTestModeAcknowledged } from '@/lib/config/productionGuards';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { systemDb as db } from '@/lib/db';
@@ -143,7 +144,13 @@ export async function POST(req: NextRequest) {
 
     // Sandbox bypass: in development mode or when E2E_TESTING is set, allow
     // privileged users without MFA. Production strictly enforces MFA per §6 rule 2.
-    const isSandboxBypass = (process.env.NODE_ENV === 'development' || process.env.E2E_TESTING === 'true') && !user.mfaEnabled;
+    // E2E_TESTING alone used to bypass mandatory MFA for privileged users in
+    // any environment, production included. In production it now also needs
+    // the explicit acknowledgement, which the boot guard refuses to start with
+    // unless deliberately set.
+    const e2eBypassAllowed = process.env.E2E_TESTING === 'true'
+      && (process.env.NODE_ENV !== 'production' || insecureTestModeAcknowledged(process.env));
+    const isSandboxBypass = (process.env.NODE_ENV === 'development' || e2eBypassAllowed) && !user.mfaEnabled;
     if (hasPrivilegedRole && !user.mfaEnabled && !isSandboxBypass) {
       // Bootstrap path: password is valid but MFA was never enrolled. Issue a
       // short-lived, HMAC-bound enrollment state (NOT a session) and direct

@@ -19,18 +19,28 @@ import type {
   AuthenticationResponseJSON,
 } from '@simplewebauthn/types';
 import { db } from '../db';
+import { isProduction, resolveWebAuthnConfig } from '@/lib/config/productionGuards';
 
 const RP_NAME = 'ERP POS';
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Both values used to default to localhost with no production guard, so a
+// deployment without them bound every passkey to 'localhost' and verified every
+// assertion against http://localhost:3000: passkeys silently never worked on the
+// real domain, and origin binding -- what makes WebAuthn phishing-resistant --
+// was configured to a value that is wrong everywhere but a developer laptop.
+function relyingParty(): { rpId: string; origin: string } {
+  const { config, problems } = resolveWebAuthnConfig(process.env);
+  if (isProduction(process.env) && problems.length > 0) throw new Error(problems.join('; '));
+  return config;
+}
+
 function getRpId(): string {
-  // In production, this is the canonical domain (e.g., erp.example.com).
-  // Sandbox uses localhost.
-  return process.env.WEBAUTHN_RP_ID ?? 'localhost';
+  return relyingParty().rpId;
 }
 
 function getOrigin(): string {
-  return process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:3000';
+  return relyingParty().origin;
 }
 
 /**

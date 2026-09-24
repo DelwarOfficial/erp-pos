@@ -13,6 +13,7 @@ import { runScheduledReconciliation } from '@/lib/reconciliation/scheduler';
 import { expireStaleReservations } from '@/lib/inventory/reservationExpiry';
 import { processCommunicationCampaign } from '@/lib/communication/campaignProcessor';
 import { runRetentionJob } from '@/lib/retention/job';
+import { assertProductionSecurityConfig } from '@/lib/config/productionGuards';
 import { initWorkerErrorTracking, captureJobFailure, flushWorkerErrorTracking } from '@/workers/sentry';
 
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10);
@@ -22,6 +23,9 @@ function log(level: 'info' | 'warn' | 'error', msg: string, meta?: unknown) {
 }
 
 export async function startWorkers(): Promise<void> {
+  // The worker decrypts webhook secrets and runs retention and reconciliation;
+  // it must refuse unsafe production configuration exactly as the web process does.
+  assertProductionSecurityConfig();
   // Before any worker exists, so a failure during startup is itself reported.
   const tracking = initWorkerErrorTracking();
   log(tracking ? 'info' : 'warn',
