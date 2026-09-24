@@ -110,10 +110,10 @@ export async function PUT(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'PUT', path: '/api/v1/accounting-policies', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'accounting_policies.update', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'accounting_policies.update', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const existing = await tx.accountingPolicy.findUnique({ where: { companyId: auth.companyId } });
             if (!existing) throw new DomainError('RESOURCE_NOT_FOUND', 'Accounting policies not found — run onboarding first', {}, 404);
 
@@ -145,9 +145,9 @@ export async function PUT(req: NextRequest) {
             });
 
             return { status: 200, body: { updated: true, fields_changed: Object.keys(updateData).length }, resourceType: 'accounting_policy', resourceId: auth.companyId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

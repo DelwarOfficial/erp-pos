@@ -22,10 +22,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/sales/${id}/void`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'sale.void', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'sale.void', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await voidSale(tx, {
               saleId: id,
               companyId: auth.companyId,
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'sale',
               resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

@@ -50,10 +50,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const requestHash = computeRequestHash({ method: 'PATCH', path: `/api/v1/exchange-rates/${id}`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'exchange_rate.update', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'exchange_rate.update', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const existing = await tx.exchangeRate.findFirst({
               where: { id, companyId: auth.companyId },
             });
@@ -83,9 +83,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
               resourceType: 'exchange_rate', resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

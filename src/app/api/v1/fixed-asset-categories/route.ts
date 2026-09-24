@@ -61,10 +61,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/fixed-asset-categories', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'fixed_asset_category.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'fixed_asset_category.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const existing = await tx.fixedAssetCategory.findFirst({
               where: { companyId: auth.companyId, code: body.code },
             });
@@ -108,9 +108,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'fixed_asset_category',
               resourceId: cat.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

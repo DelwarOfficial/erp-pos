@@ -44,10 +44,10 @@ export async function PATCH(
     const requestHash = computeRequestHash({ method: 'PATCH', path: `/api/v1/feature-flags/${key}`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'feature_flag.toggle', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'feature_flag.toggle', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const before = await tx.featureFlag.findUnique({
               where: { companyId_flagKey: { companyId: auth.companyId, flagKey: key as FeatureFlagKey } },
             });
@@ -85,9 +85,9 @@ export async function PATCH(
               resourceType: 'feature_flag',
               resourceId: key,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

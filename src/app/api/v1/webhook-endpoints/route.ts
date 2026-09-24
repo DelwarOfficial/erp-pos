@@ -50,10 +50,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/webhook-endpoints', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'webhook_endpoint.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'webhook_endpoint.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Check URL uniqueness
             const existing = await tx.webhookEndpoint.findFirst({
               where: { companyId: auth.companyId, url: body.url },
@@ -86,9 +86,9 @@ export async function POST(req: NextRequest) {
               body: { id: endpoint.id, url: body.url, status: 'active', secret_shown_once: secret },
               resourceType: 'webhook_endpoint', resourceId: endpoint.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

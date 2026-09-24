@@ -20,10 +20,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/accounting/period-close/${id}/unlock`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'period_close.unlock', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'period_close.unlock', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Unlocking a fully locked period requires platform operations scope.
             // auth.isGlobal is true for platform_operations users.
             await unlockPeriod(auth.companyId, id, auth.userId, auth.isGlobal);
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               body: { fiscal_period_id: id, status: 'open', unlocked_by: auth.userId },
               resourceType: 'fiscal_period', resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

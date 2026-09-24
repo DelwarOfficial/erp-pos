@@ -168,16 +168,16 @@ export async function PUT(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'expense.update',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 1. Fetch the existing expense, RLS-scoped to the caller's company.
             const existing = await tx.expense.findFirst({
               where: { id, companyId: auth.companyId },
@@ -300,9 +300,9 @@ export async function PUT(
               resourceType: 'expense',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

@@ -90,10 +90,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/stock-counts', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'stock_count.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'stock_count.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
               companyId: auth.companyId, branchId: body.branch_id,
               documentType: 'STOCK_COUNT', fiscalYear: new Date().getFullYear(), prefix: 'SC-',
@@ -148,9 +148,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'stock_count', resourceId: sc.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

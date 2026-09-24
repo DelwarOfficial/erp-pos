@@ -64,10 +64,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/sale-returns', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'sale_return.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'sale_return.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postSaleReturn(tx, {
               saleId: body.sale_id,
               companyId: auth.companyId,
@@ -85,9 +85,9 @@ export async function POST(req: NextRequest) {
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'sale_return', resourceId: result.saleReturnId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

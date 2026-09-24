@@ -30,10 +30,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/fixed-assets/${id}/dispose`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'fixed_asset.dispose', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'fixed_asset.dispose', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const r = await postAssetDisposal(tx, {
               companyId: auth.companyId,
               fixedAssetId: id,
@@ -57,9 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'fixed_asset',
               resourceId: r.fixedAssetId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

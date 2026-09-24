@@ -33,10 +33,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/quotations/${id}/convert`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'quotation.convert', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'quotation.convert', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const quotation = await tx.quotation.findFirst({
               where: { id, companyId: auth.companyId },
               include: { items: true },
@@ -84,9 +84,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               body: { sale: saleResult, quotation_id: quotation.id, status: 'converted' },
               resourceType: 'sale', resourceId: saleResult.saleId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     // Best-effort: log conversion outside of idempotency window.

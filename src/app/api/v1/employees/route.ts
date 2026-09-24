@@ -73,10 +73,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/employees', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'employee.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'employee.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const emp = await tx.employee.create({
               data: {
                 companyId: auth.companyId,
@@ -101,9 +101,9 @@ export async function POST(req: NextRequest) {
                 afterValue: JSON.stringify({ name: emp.name, employee_no: emp.employeeNo }) },
             });
             return { status: 201, body: { id: emp.id, name: emp.name }, resourceType: 'employee', resourceId: emp.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

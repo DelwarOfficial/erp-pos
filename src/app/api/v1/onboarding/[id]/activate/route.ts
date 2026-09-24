@@ -38,10 +38,10 @@ export async function POST(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'company.activate', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'company.activate', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const company = await tx.company.findUnique({ where: { id } });
             if (!company) {
               throw new DomainError('RESOURCE_NOT_FOUND', 'Company not found', {}, 404);
@@ -119,9 +119,9 @@ export async function POST(
               resourceType: 'company',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

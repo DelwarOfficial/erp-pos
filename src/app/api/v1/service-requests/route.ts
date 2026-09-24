@@ -82,10 +82,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/service-requests', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'service_request.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'service_request.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await createServiceRequest(tx, {
               companyId: auth.companyId, branchId: body.branch_id,
               repairWarehouseId: body.repair_warehouse_id,
@@ -100,9 +100,9 @@ export async function POST(req: NextRequest) {
               createdBy: auth.userId,
             }, correlationId);
             return { status: 201, body: result, resourceType: 'service_request', resourceId: result.serviceRequestId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

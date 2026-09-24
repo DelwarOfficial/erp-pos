@@ -18,15 +18,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/transfers/${id}/dispatch`, body: {} });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'transfer.dispatch', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'transfer.dispatch', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await dispatchTransfer(tx, { transferId: id, companyId: auth.companyId, dispatchedBy: auth.userId }, correlationId);
             return { status: 200, body: result, resourceType: 'transfer', resourceId: id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) { return errorResponse(e, correlationId); }

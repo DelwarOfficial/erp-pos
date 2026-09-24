@@ -71,10 +71,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/purchases/${id}/receivings`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'purchase.receive', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'purchase.receive', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Load purchase to get warehouse/branch
             const purchase = await tx.purchase.findFirst({
               where: { id, companyId: auth.companyId },
@@ -112,9 +112,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'purchase_receiving',
               resourceId: result.receivingId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

@@ -59,10 +59,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/courier-settlements', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'courier_cod_settlement.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'courier_cod_settlement.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postCourierCodSettlement(tx, {
               companyId: auth.companyId, branchId: body.branch_id,
               courierCode: body.courier_code,
@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'courier_cod_settlement', resourceId: result.settlementId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

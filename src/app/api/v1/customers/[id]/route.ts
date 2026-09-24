@@ -127,16 +127,16 @@ export async function PUT(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'customer.update',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 1. Fetch — RLS-scoped. Reject soft-deleted customers from edits.
             const existing = await tx.customer.findFirst({
               where: { id, companyId: auth.companyId, deletedAt: null },
@@ -263,9 +263,9 @@ export async function PUT(
               resourceType: 'customer',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });
@@ -306,16 +306,16 @@ export async function DELETE(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'customer.archive',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 1. Fetch — RLS-scoped. Already-deleted customers return 404.
             const existing = await tx.customer.findFirst({
               where: { id, companyId: auth.companyId, deletedAt: null },
@@ -439,9 +439,9 @@ export async function DELETE(
               resourceType: 'customer',
               resourceId: archived.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

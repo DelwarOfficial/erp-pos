@@ -57,10 +57,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/units', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'unit.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'unit.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const existing = await tx.unit.findFirst({
               where: { companyId: auth.companyId, code: body.code },
             });
@@ -99,9 +99,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'unit',
               resourceId: unit.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

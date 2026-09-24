@@ -120,10 +120,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/purchases', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'purchase.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'purchase.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate supplier + branch + warehouse belong to this company
             const supplier = await tx.supplier.findFirst({
               where: { id: body.supplier_id, companyId: auth.companyId, deletedAt: null },
@@ -248,9 +248,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'purchase',
               resourceId: purchase.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

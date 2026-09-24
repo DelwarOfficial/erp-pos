@@ -53,9 +53,10 @@ export async function POST(req: NextRequest) {
     const body = DSRSchema.parse(await req.json());
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'dsr.create', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/data-subject-requests', body }), companyId: auth.companyId, userId: auth.userId },
-        async () => withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'dsr.create', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/data-subject-requests', body }), companyId: auth.companyId, userId: auth.userId },
+          async () => {
           const dsr = await tx.dataSubjectRequest.create({
             data: {
               companyId: auth.companyId,
@@ -75,8 +76,9 @@ export async function POST(req: NextRequest) {
             },
           });
           return { status: 201, body: { item: dsr }, resourceType: 'data_subject_request', resourceId: dsr.id };
-        }),
-      ),
+        },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

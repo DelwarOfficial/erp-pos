@@ -29,10 +29,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/service-requests/${id}/parts`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'service_part.consume', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'service_part.consume', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postServicePartConsumption(tx, {
               serviceRequestId: id, companyId: auth.companyId,
               consumedBy: auth.userId,
@@ -42,9 +42,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               })),
             }, correlationId);
             return { status: 200, body: result, resourceType: 'service_request', resourceId: id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

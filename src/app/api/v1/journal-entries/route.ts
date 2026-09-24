@@ -126,10 +126,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/journal-entries', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'journal_entry.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'journal_entry.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postJournalEntry(tx, {
               companyId: auth.companyId,
               entryDate: new Date(body.entry_date),
@@ -153,9 +153,9 @@ export async function POST(req: NextRequest) {
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'journal_entry', resourceId: result.journalEntryId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

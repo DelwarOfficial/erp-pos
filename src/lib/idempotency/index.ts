@@ -68,7 +68,7 @@ export async function withIdempotency<T extends Response>(
   // 1. Try to insert a fresh idempotency_requests row.
   //    If the key already exists, we either replay or 409.
   const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
-  let row;
+  let row: { id: string } | undefined;
   try {
     row = await client.idempotencyRequest.create({
       data: {
@@ -145,12 +145,39 @@ export async function withIdempotency<T extends Response>(
         409,
       );
     }
-    return {
-      status: existing.responseStatus ?? 200,
-      body: existing.responseBody ? JSON.parse(existing.responseBody) : null,
-      isReplay: true,
-    };
+    // Only a success is replayed. A failed attempt used to be replayed too, so a
+    // transient error -- a lock-wait timeout, a dropped connection -- poisoned
+    // the key for its whole 24-hour TTL: the client retried with the same key,
+    // exactly as ADR 0004 requires, and got the cached 500 back every time.
+    // Nothing was committed by a failed attempt, so running it again is safe.
+    if (existing.status !== 'failed') {
+      return {
+        status: existing.responseStatus ?? 200,
+        body: existing.responseBody ? JSON.parse(existing.responseBody) : null,
+        isReplay: true,
+      };
+    }
+
+    // Reclaim atomically: of two concurrent retries only one moves the row from
+    // 'failed' back to 'processing'; the other is told the key is in flight.
+    const reclaimed = await client.idempotencyRequest.updateMany({
+      where: { id: existing.id, status: 'failed' },
+      data: {
+        status: 'processing', responseStatus: null, responseBody: null,
+        completedAt: null, expiresAt,
+      },
+    });
+    if (reclaimed.count !== 1) {
+      throw new DomainError(
+        'CONCURRENT_MODIFICATION',
+        'Request with same idempotency key is in flight — retry shortly',
+        { idempotency_key: params.idempotencyKey },
+        409,
+      );
+    }
+    row = { id: existing.id };
   }
+  if (!row) throw new DomainError('INTERNAL_ERROR', 'Idempotency reservation missing', {}, 500);
 
   // 2. Run the actual work.
   try {

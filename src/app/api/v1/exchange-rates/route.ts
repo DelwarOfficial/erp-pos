@@ -60,10 +60,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/exchange-rates', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'exchange_rate.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'exchange_rate.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Upsert: if a rate exists for the same company+currency+date, update it.
             const rateDate = new Date(body.rate_date);
             const existing = await tx.exchangeRate.findUnique({
@@ -104,9 +104,9 @@ export async function POST(req: NextRequest) {
               body: { id: rate.id, currency_code: body.currency_code, rate_to_base: body.rate_to_base.toString(), rate_date: rateDate },
               resourceType: 'exchange_rate', resourceId: rate.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

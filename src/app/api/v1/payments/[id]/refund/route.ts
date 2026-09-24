@@ -47,10 +47,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ── Phase 1: Validate + record refund intent INSIDE a transaction ──
     // No external calls — just DB validation + audit log that commits atomically.
     const reservation = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'payment.refund', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'payment.refund', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const payment = await tx.payment.findFirst({
               where: { id, companyId: auth.companyId },
             });
@@ -106,9 +106,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               });
 
             return { status: 200, body: { ok: true }, resourceType: 'payment_refund', resourceId: payment.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     // A replayed key means this refund was already carried out. The gateway

@@ -113,10 +113,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/products', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'product.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'product.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate code uniqueness
             const existing = await tx.product.findFirst({
               where: { companyId: auth.companyId, code: body.code, deletedAt: null },
@@ -203,9 +203,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'product',
               resourceId: product.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

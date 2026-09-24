@@ -79,10 +79,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/advances', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'customer_advance.receive', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'customer_advance.receive', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
             const baseAmount = body.amount * body.exchange_rate;
             const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
@@ -158,9 +158,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'payment', resourceId: payment.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

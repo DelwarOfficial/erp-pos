@@ -26,10 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/cashier-shifts/${id}/close`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'cashier_shift.close', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'cashier_shift.close', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await closeCashierShift(tx, {
               shiftId: id,
               companyId: auth.companyId,
@@ -44,9 +44,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'cashier_shift',
               resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

@@ -24,10 +24,10 @@ export async function POST(
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/products/${id}/activate`, body: { id } });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'product.activate', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'product.activate', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const product = await tx.product.findFirst({
               where: { id, companyId: auth.companyId, deletedAt: null },
             });
@@ -69,9 +69,9 @@ export async function POST(
               resourceType: 'product',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

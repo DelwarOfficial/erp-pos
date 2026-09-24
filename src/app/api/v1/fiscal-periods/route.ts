@@ -67,10 +67,10 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'fiscal_period.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'fiscal_period.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const period = await tx.fiscalPeriod.create({
               data: {
                 companyId: auth.companyId,
@@ -86,9 +86,9 @@ export async function POST(req: NextRequest) {
                 afterValue: JSON.stringify({ name: period.periodName, start: period.periodStart, end: period.periodEnd }) },
             });
             return { status: 201, body: { id: period.id, period_name: period.periodName, status: period.status }, resourceType: 'fiscal_period', resourceId: period.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

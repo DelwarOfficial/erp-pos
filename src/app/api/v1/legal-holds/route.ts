@@ -53,9 +53,10 @@ export async function POST(req: NextRequest) {
     const body = HoldSchema.parse(await req.json());
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'legal_hold.declare', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/legal-holds', body }), companyId: auth.companyId, userId: auth.userId },
-        async () => withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'legal_hold.declare', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/legal-holds', body }), companyId: auth.companyId, userId: auth.userId },
+          async () => {
           const hold = await tx.legalHold.create({
             data: {
               companyId: auth.companyId,
@@ -76,8 +77,9 @@ export async function POST(req: NextRequest) {
             },
           });
           return { status: 201, body: { item: hold }, resourceType: 'legal_hold', resourceId: hold.id };
-        }),
-      ),
+        },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

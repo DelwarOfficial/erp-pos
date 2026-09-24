@@ -30,10 +30,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/accounting/revaluate', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'revaluation.run', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'revaluation.run', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const out = await runRevaluation({
               companyId: auth.companyId,
               currencyCode: body.currency_code,
@@ -54,9 +54,9 @@ export async function POST(req: NextRequest) {
               body: out,
               resourceType: 'currency_revaluation', resourceId: out.revaluationId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

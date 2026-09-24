@@ -81,7 +81,9 @@ export async function POST(req: NextRequest) {
     });
 
     const result = await runInTenantContext(auth.ctx, async () => {
-      return withIdempotency(
+      // The reservation is written by the same transaction as the company it
+      // creates (F-41); a crash between them can no longer leave the key stuck.
+      return db.$transaction(async (tx) => withIdempotency(
         {
           idempotencyKey,
           operation: 'onboarding.create',
@@ -90,8 +92,6 @@ export async function POST(req: NextRequest) {
           userId: auth.userId,
         },
         async () => {
-          // Run inside a transaction — all-or-nothing
-          return db.$transaction(async (tx) => {
           // Check company code is unique
           const existing = await tx.company.findUnique({ where: { code: body.company.code } });
           if (existing) {
@@ -242,9 +242,9 @@ export async function POST(req: NextRequest) {
             resourceType: 'company',
             resourceId: company.id,
           };
-          });
         },
-      );
+        tx,
+      ));
     });
 
     return NextResponse.json(result.body, { status: result.status });

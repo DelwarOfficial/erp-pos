@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/inventory/opening-stock', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'opening_stock.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'opening_stock.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate warehouse belongs to this company
             const warehouse = await tx.warehouse.findFirst({
               where: { id: body.warehouse_id, companyId: auth.companyId },
@@ -84,9 +84,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'opening_stock',
               resourceId: body.reference_no,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/reconciliations', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'reconciliation.run', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'reconciliation.run', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // runReconciliation uses the db client directly; run inside tenant
             // context so audit/security logs carry the tenant.
             const out = await runReconciliation(auth.companyId, body.run_type, auth.userId);
@@ -83,9 +83,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'reconciliation_run', resourceId: out.runId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

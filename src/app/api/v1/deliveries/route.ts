@@ -100,10 +100,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/deliveries', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'delivery.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'delivery.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await createDeliveryOrder(tx, {
               companyId: auth.companyId, branchId: body.branch_id, saleId: body.sale_id,
               createdBy: auth.userId,
@@ -115,9 +115,9 @@ export async function POST(req: NextRequest) {
               items: body.items.map(i => ({ saleItemId: i.sale_item_id, quantity: i.quantity })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'delivery_order', resourceId: result.deliveryOrderId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/account-transfers', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'account_transfer.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'account_transfer.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
 
             const jeResult = await postAccountTransfer(tx, {
@@ -140,9 +140,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'account_transfer', resourceId: transfer.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

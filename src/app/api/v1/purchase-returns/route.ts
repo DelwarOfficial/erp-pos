@@ -85,10 +85,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/purchase-returns', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'purchase_return.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'purchase_return.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const out = await postPurchaseReturn(tx, {
               companyId: auth.companyId, branchId: body.branch_id, warehouseId: body.warehouse_id,
               purchaseId: body.purchase_id, supplierId: body.supplier_id,
@@ -108,9 +108,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'purchase_return', resourceId: out.returnId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

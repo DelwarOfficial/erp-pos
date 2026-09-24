@@ -34,10 +34,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/landed-costs', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'landed_cost.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'landed_cost.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postLandedCost(tx, {
               companyId: auth.companyId,
               purchaseId: body.purchase_id,
@@ -54,9 +54,9 @@ export async function POST(req: NextRequest) {
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'landed_cost_document', resourceId: result.landedCostDocumentId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

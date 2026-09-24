@@ -63,16 +63,16 @@ export async function POST(
     //    helper can read company/user. The actual work runs in a serializable
     //    Prisma transaction via withTenant.
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'expense.approve',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 7. Fetch the expense, scoped to the caller's company (RLS-equivalent).
             const expense = await tx.expense.findFirst({
               where: { id, companyId: auth.companyId },
@@ -204,9 +204,9 @@ export async function POST(
               resourceType: 'expense',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

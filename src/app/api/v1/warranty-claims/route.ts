@@ -28,10 +28,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/warranty-claims', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'warranty_claim.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'warranty_claim.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate service request exists
             const sr = await tx.serviceRequest.findFirst({
               where: { id: body.service_request_id, companyId: auth.companyId },
@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
               body: { id: claim.id, status: claim.status, claim_type: claim.claimType },
               resourceType: 'warranty_claim', resourceId: claim.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

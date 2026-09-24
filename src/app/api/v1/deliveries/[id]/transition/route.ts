@@ -27,10 +27,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/deliveries/${id}/transition`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'delivery.transition', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'delivery.transition', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await transitionDeliveryStatus(tx, {
               deliveryOrderId: id, companyId: auth.companyId,
               toStatus: body.to_status, userId: auth.userId,
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               locationText: body.location_text,
             }, correlationId);
             return { status: 200, body: result, resourceType: 'delivery_order', resourceId: id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

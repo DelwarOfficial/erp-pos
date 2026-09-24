@@ -55,10 +55,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/products/${id}/barcodes`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'product.barcode.add', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'product.barcode.add', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const product = await tx.product.findFirst({
               where: { id, companyId: auth.companyId, deletedAt: null },
             });
@@ -154,9 +154,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'product_barcode',
               resourceId: barcode.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

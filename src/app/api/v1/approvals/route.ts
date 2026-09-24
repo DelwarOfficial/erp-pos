@@ -58,10 +58,10 @@ export async function POST(req: NextRequest) {
     const body = CreateSchema.parse(await req.json());
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'approval.create', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/approvals', body }), companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'approval.create', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/approvals', body }), companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const approval = await createApprovalRequest({
               companyId: auth.companyId,
               branchId: body.branch_id,
@@ -74,9 +74,9 @@ export async function POST(req: NextRequest) {
               thresholdName: body.threshold_name,
             });
             return { status: 201, body: { item: approval }, resourceType: 'approval_request', resourceId: approval.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

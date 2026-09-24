@@ -20,10 +20,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/accounting/period-close/${id}`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'period_close.run', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'period_close.run', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const out = await runPeriodCloseWorkflow(auth.companyId, id, auth.userId);
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               body: out,
               resourceType: 'fiscal_period', resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

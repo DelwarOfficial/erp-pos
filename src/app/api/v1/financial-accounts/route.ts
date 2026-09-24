@@ -55,10 +55,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/financial-accounts', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'financial_account.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'financial_account.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate chart_of_account belongs to this company
             const coa = await tx.chartOfAccount.findFirst({
               where: { id: body.chart_of_account_id, companyId: auth.companyId },
@@ -88,9 +88,9 @@ export async function POST(req: NextRequest) {
                 afterValue: JSON.stringify({ name: fa.name, type: fa.accountType, coa_code: coa.code }) },
             });
             return { status: 201, body: { id: fa.id, name: fa.name }, resourceType: 'financial_account', resourceId: fa.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

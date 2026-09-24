@@ -64,10 +64,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/tax-periods', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'tax_period.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'tax_period.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const period = await tx.taxReturnPeriod.create({
               data: {
                 companyId: auth.companyId,
@@ -87,9 +87,9 @@ export async function POST(req: NextRequest) {
               body: { id: period.id, status: 'open', return_type: body.return_type },
               resourceType: 'tax_return_period', resourceId: period.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

@@ -65,10 +65,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/payroll-runs', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'payroll_run.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'payroll_run.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await postPayrollRun(tx, {
               companyId: auth.companyId,
               branchId: body.branch_id,
@@ -85,9 +85,9 @@ export async function POST(req: NextRequest) {
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'payroll_run', resourceId: result.payrollRunId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

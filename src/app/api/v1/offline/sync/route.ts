@@ -36,10 +36,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/offline/sync', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'offline.sync', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'offline.sync', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate device
             const device = await tx.device.findFirst({
               where: { id: body.device_id, companyId: auth.companyId, status: 'active' },
@@ -168,9 +168,9 @@ export async function POST(req: NextRequest) {
               },
               resourceType: 'offline_sync_batch', resourceId: batch.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

@@ -66,10 +66,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/expenses', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'expense.post', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'expense.post', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Call the domain command — controller calls ONE command per §7 rule 2
             const expense = await postExpense(tx, {
               companyId: auth.companyId,
@@ -102,9 +102,9 @@ export async function POST(req: NextRequest) {
               resourceType: 'expense',
               resourceId: expense.expenseId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

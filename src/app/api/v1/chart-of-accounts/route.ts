@@ -55,10 +55,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/chart-of-accounts', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'coa.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'coa.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const existing = await tx.chartOfAccount.findFirst({
               where: { companyId: auth.companyId, code: body.code },
             });
@@ -81,9 +81,9 @@ export async function POST(req: NextRequest) {
                 afterValue: JSON.stringify({ code: account.code, name: account.name }) },
             });
             return { status: 201, body: { id: account.id, code: account.code }, resourceType: 'chart_of_account', resourceId: account.id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

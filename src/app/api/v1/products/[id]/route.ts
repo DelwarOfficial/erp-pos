@@ -179,16 +179,16 @@ export async function PUT(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'product.update',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 1. Fetch — RLS-scoped. Reject soft-deleted products from edits
             //    (a soft-deleted product must be restored first).
             const existing = await tx.product.findFirst({
@@ -298,9 +298,9 @@ export async function PUT(
               resourceType: 'product',
               resourceId: updated.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });
@@ -346,16 +346,16 @@ export async function DELETE(
     });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          {
           idempotencyKey,
           operation: 'product.archive',
           requestHash,
           companyId: auth.companyId,
           userId: auth.userId,
         },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+          async () => {
             // 1. Fetch — RLS-scoped. Already-deleted products return 404
             //    so the operation is idempotent-ish from the client POV.
             const existing = await tx.product.findFirst({
@@ -485,9 +485,9 @@ export async function DELETE(
               resourceType: 'product',
               resourceId: archived.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     return NextResponse.json(result.body, { status: result.status });

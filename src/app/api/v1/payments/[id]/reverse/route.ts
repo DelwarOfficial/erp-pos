@@ -22,10 +22,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/payments/${id}/reverse`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'payment.reverse', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'payment.reverse', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const out = await reversePayment(tx, {
               companyId: auth.companyId, paymentId: id,
               reversedBy: auth.userId, reason: body.reason,
@@ -35,9 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               body: { reversed_payment_id: out.reversedPaymentId, original_payment_id: id, reason: body.reason },
               resourceType: 'payment', resourceId: out.reversedPaymentId,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

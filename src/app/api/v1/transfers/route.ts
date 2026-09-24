@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/transfers', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'transfer.create', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'transfer.create', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const result = await createTransfer(tx, {
               companyId: auth.companyId,
               fromWarehouseId: body.from_warehouse_id,
@@ -75,9 +75,9 @@ export async function POST(req: NextRequest) {
               items: body.items.map(i => ({ productId: i.product_id, qtyRequested: i.qty_requested })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'transfer', resourceId: result.transferId };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

@@ -26,10 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/bank-reconciliations/${id}/manual-match`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'bank_reconciliation.manual_match', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'bank_reconciliation.manual_match', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             await manualMatch(tx, {
               reconciliationId: id,
               companyId: auth.companyId,
@@ -43,9 +43,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resourceType: 'bank_reconciliation',
               resourceId: id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

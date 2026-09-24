@@ -28,10 +28,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const body = ResolveSchema.parse(await req.json());
 
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'approval.resolve', requestHash: computeRequestHash({ method: 'POST', path: `/api/v1/approvals/${id}/resolve`, body }), companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'approval.resolve', requestHash: computeRequestHash({ method: 'POST', path: `/api/v1/approvals/${id}/resolve`, body }), companyId: auth.companyId, userId: auth.userId },
+          async () => {
             const resolved = await resolveApprovalRequest({
               approvalRequestId: id,
               companyId: auth.companyId,
@@ -40,9 +40,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               reason: body.reason,
             });
             return { status: 200, body: { item: resolved }, resourceType: 'approval_request', resourceId: id };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

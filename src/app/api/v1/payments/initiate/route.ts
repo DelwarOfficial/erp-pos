@@ -47,10 +47,10 @@ export async function POST(req: NextRequest) {
     // ── Phase 1: Create pending payment row INSIDE a transaction ──
     // No external calls here — just DB writes that commit atomically.
     const result = await runInTenantContext(auth.ctx, () =>
-      withIdempotency(
-        { idempotencyKey, operation: 'payment.initiate', requestHash, companyId: auth.companyId, userId: auth.userId },
-        async () => {
-          return withTenant(auth.ctx, async (tx) => {
+      withTenant(auth.ctx, async (tx) =>
+        withIdempotency(
+          { idempotencyKey, operation: 'payment.initiate', requestHash, companyId: auth.companyId, userId: auth.userId },
+          async () => {
             // Validate provider exists (cheap registry lookup, no network call)
             registerProviders();
             const provider = providerRegistry.getPayment(body.provider_code);
@@ -91,9 +91,9 @@ export async function POST(req: NextRequest) {
               body: { payment_id: pending.id, status: 'pending_gateway' },
               resourceType: 'payment', resourceId: pending.id,
             };
-          });
-        },
-      ),
+          },
+          tx,
+        )),
     );
 
     // Fetch the pending payment row (created in phase 1) by reference + branch.
