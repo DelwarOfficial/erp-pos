@@ -11,6 +11,7 @@ import { generateWebhookSecret } from '@/lib/integrations/webhook';
 import { encryptString } from '@/lib/crypto';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { assertSafeOutboundUrl } from '@/lib/integrations/outboundUrl';
 
 const WebhookSchema = z.object({
   url: z.string().url().regex(/^https:\/\//, 'URL must start with https://'),
@@ -47,6 +48,10 @@ export async function POST(req: NextRequest) {
     await requirePermission(auth, "company.update");
     const idempotencyKey = requireIdempotencyKey(req);
     const body = WebhookSchema.parse(await req.json());
+    // Resolved and checked before anything is stored: the host and every
+    // address it resolves to must be public. Delivery checks again at connect
+    // time, since DNS can change between now and then.
+    await assertSafeOutboundUrl(body.url);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/webhook-endpoints', body });
 
     const result = await runInTenantContext(auth.ctx, () =>

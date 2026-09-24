@@ -5,6 +5,7 @@ import { systemDb as db } from '@/lib/db';
 import { signWebhook, generateDeliveryId, getTimestampHeader } from '@/lib/integrations/webhook';
 import { decryptString } from '@/lib/crypto';
 import { recordSecurityEvent } from '@/lib/audit';
+import { postToOutboundUrl } from '@/lib/integrations/outboundUrl';
 
 const POLL_INTERVAL_MS = 10_000;
 const HTTP_TIMEOUT_MS = 15_000;
@@ -75,18 +76,18 @@ async function deliverWebhook(event: any, endpoint: any): Promise<void> {
     });
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
-
   try {
-    const response = await fetch(endpoint.url, {
-      method: 'POST',
+    // Not fetch(): fetch follows redirects and resolves DNS separately from the
+    // connect. postToOutboundUrl checks the address inside the socket's own
+    // lookup, never follows a redirect, and caps time and body size.
+    const response = await postToOutboundUrl(endpoint.url, {
       headers: { 'Content-Type': 'application/json',
         'X-ERP-Signature': `sha256=${signature}`, 'X-ERP-Timestamp': timestamp, 'X-ERP-Delivery-ID': deliveryIdToUse },
-      body: event.payload, signal: controller.signal,
+      body: event.payload,
+      timeoutMs: HTTP_TIMEOUT_MS,
+      maxBodyBytes: MAX_RESPONSE_EXCERPT,
     });
-    const responseText = await response.text();
-    const excerpt = responseText.slice(0, MAX_RESPONSE_EXCERPT);
+    const excerpt = response.body;
 
     await db.webhookDelivery.update({
       where: { deliveryId: deliveryIdToUse },
@@ -111,7 +112,7 @@ async function deliverWebhook(event: any, endpoint: any): Promise<void> {
         lastError: errorMsg, nextAttemptAt: computeBackoff(event.attemptCount + 1) } });
     await db.outboxEvent.update({ where: { id: event.id },
       data: { attemptCount: { increment: 1 }, lastError: errorMsg, nextAttemptAt: computeBackoff(event.attemptCount + 1) } });
-  } finally { clearTimeout(timeout); }
+  }
 }
 
 function computeBackoff(attempt: number): Date {
