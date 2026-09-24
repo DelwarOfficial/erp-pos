@@ -3,9 +3,18 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Type errors block the build. This was `ignoreBuildErrors: true`, so the
+  // production build compiled regardless of what tsc said -- and with the lint
+  // ruleset also disabled, every "Code Quality" line on the go-live checklist
+  // rested on gates that could not fail.
+  //
+  // Next 16 no longer runs ESLint during the build and removed the `eslint`
+  // config key, so linting is a separate gate: `bun run lint`, which must be
+  // wired into CI alongside this.
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
+
   reactStrictMode: false,
   // Per §16 monitoring — source maps uploaded to Sentry on build
   productionBrowserSourceMaps: process.env.SENTRY_AUTH_TOKEN ? true : false,
