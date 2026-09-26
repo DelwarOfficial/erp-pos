@@ -7,11 +7,9 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
-import { postStockCount } from '@/domain/commands/m2/PostStockCount';
-import { nextDocumentNumber } from '@/lib/numbering';
+import { createStockCount } from '@/domain/commands/m2/CreateStockCount';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
-import { randomUUID } from 'node:crypto';
 
 const CountItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -94,59 +92,24 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'stock_count.create', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
-            const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
-              companyId: auth.companyId, branchId: body.branch_id,
-              documentType: 'STOCK_COUNT', fiscalYear: new Date().getFullYear(), prefix: 'SC-',
-            });
-
-            const sc = await tx.stockCount.create({
-              data: {
-                companyId: auth.companyId, branchId: body.branch_id, warehouseId: body.warehouse_id,
-                referenceNo, scopeType: body.scope_type,
-                categoryId: body.category_id ?? null, brandId: body.brand_id ?? null,
-                status: body.post ? 'reviewed' : 'draft',
-                blindCount: body.blind_count, movementFreezePolicy: body.movement_freeze_policy,
-                notes: body.notes ?? null, createdBy: auth.userId,
-              },
-            });
-
-            for (const item of body.items) {
-              await tx.stockCountItem.create({
-                data: {
-                  companyId: auth.companyId, stockCountId: sc.id,
-                  productId: item.product_id, batchId: item.batch_id ?? null,
-                  expectedQuantity: item.expected_quantity,
-                  countedQuantity: item.counted_quantity ?? null,
-                  varianceQuantity: item.counted_quantity !== undefined
-                    ? item.counted_quantity - item.expected_quantity : null,
-                  reasonCodeId: item.reason_code_id ?? null,
-                  countNote: item.count_note ?? null,
-                },
-              });
-            }
-
-            let posted: { status: string; adjustmentsPosted: number } | null = null;
-            if (body.post && body.items.length > 0) {
-              posted = await postStockCount(tx, {
-                companyId: auth.companyId, stockCountId: sc.id, postedBy: auth.userId,
-              }, correlationId);
-            }
-
-            await tx.auditLog.create({
-              data: { companyId: auth.companyId, userId: auth.userId, correlationId,
-                action: 'stock_count.create', entityType: 'stock_count', entityId: sc.id,
-                afterValue: JSON.stringify({ reference_no: referenceNo, posted: !!posted, items: body.items.length }) },
-            });
-
+            const created = await createStockCount(tx, {
+              companyId: auth.companyId, branchId: body.branch_id, warehouseId: body.warehouse_id,
+              scopeType: body.scope_type, categoryId: body.category_id, brandId: body.brand_id,
+              blindCount: body.blind_count, movementFreezePolicy: body.movement_freeze_policy,
+              notes: body.notes, createdBy: auth.userId, post: body.post,
+              items: body.items.map(item => ({
+                productId: item.product_id, batchId: item.batch_id,
+                expectedQuantity: item.expected_quantity, countedQuantity: item.counted_quantity,
+                reasonCodeId: item.reason_code_id, countNote: item.count_note,
+              })),
+            }, correlationId);
             return {
               status: 201,
               body: {
-                id: sc.id, reference_no: referenceNo,
-                status: posted ? posted.status : sc.status,
-                items_count: body.items.length,
-                adjustments_posted: posted?.adjustmentsPosted ?? 0,
+                id: created.id, reference_no: created.referenceNo, status: created.status,
+                items_count: created.itemsCount, adjustments_posted: created.adjustmentsPosted,
               },
-              resourceType: 'stock_count', resourceId: sc.id,
+              resourceType: 'stock_count', resourceId: created.id,
             };
           },
           tx,

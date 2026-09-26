@@ -124,6 +124,10 @@ export function applyTenantIsolation(prisma: PrismaClient) {
           // Direct branch assignments cannot move a row to an inaccessible branch.
           const writes = op === 'upsert' ? [mutableArgs.create, mutableArgs.update]
             : Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
+          // A parent verified for one row of this operation is verified for all
+          // of them: a createMany of 5,000 lines under one stock count checked
+          // that same count 5,000 times, one round trip each.
+          const verifiedParents = new Set<string>();
           for (const data of writes) {
             if (branchField && data?.branchId != null) {
               const branchId = typeof data.branchId === 'string' ? data.branchId : data.branchId.set;
@@ -143,12 +147,14 @@ export function applyTenantIsolation(prisma: PrismaClient) {
                 const ids = [...(scalarId ? [scalarId] : []), ...connects.map((value: { id?: string }) => value.id)];
                 for (const id of new Set(ids)) {
                   if (typeof id !== 'string') throw new DomainError('FORBIDDEN_SCOPE', 'Explicit parent ID required', {}, 403);
+                  if (verifiedParents.has(`${relation.type}:${id}`)) continue;
                   const delegate = relation.type[0].toLowerCase() + relation.type.slice(1);
                   const parent = await (client as any)[delegate].findFirst({
                     where: { id, AND: [scopeFor(relation.type, ctx.companyId), branchScopeFor(relation.type, ctx.branchIds)] },
                     select: { id: true },
                   });
                   if (!parent) throw new DomainError('FORBIDDEN_SCOPE', 'Parent is outside authorized tenant/branch scope', {}, 403);
+                  verifiedParents.add(`${relation.type}:${id}`);
                 }
               }
             }
