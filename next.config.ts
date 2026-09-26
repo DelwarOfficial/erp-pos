@@ -16,7 +16,9 @@ const nextConfig: NextConfig = {
   },
 
   reactStrictMode: false,
-  // Per §16 monitoring — source maps uploaded to Sentry on build
+  // Browser source maps are generated only to be uploaded to Sentry, and are
+  // deleted from the build output afterwards (see `sourcemaps` below). They
+  // must never be served: a public .map reconstructs the whole client source.
   productionBrowserSourceMaps: process.env.SENTRY_AUTH_TOKEN ? true : false,
   // Headers for PWA + security (per §15 + §13)
   async headers() {
@@ -60,6 +62,15 @@ export default withSentryConfig(nextConfig, {
   silent: true,
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
+  // Explicit, not left to the default. @sentry/nextjs turns deletion on by
+  // itself only when it also turns source maps on; because
+  // productionBrowserSourceMaps is set above, it did neither, deletion
+  // defaulted to false, and every .map was published under /_next/static.
+  // scripts/remove-public-sourcemaps.mjs backs this up after the build, for a
+  // build where the upload failed and nothing was deleted.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
   // autoInstrumentServerFunctions was set here. It is a webpack-only option,
   // deprecated in @sentry/nextjs 10 and not supported with Turbopack -- which
   // this project builds with -- so it did nothing. Server errors are captured
