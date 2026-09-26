@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { ErrorState, LoadingState } from '@/components/shared/StateList';
 
 interface Category { id: string; name: string; code: string }
 interface Brand { id: string; name: string }
@@ -25,6 +26,8 @@ export default function NewProductPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '', code: '', category_id: '', brand_id: '', unit_id: '',
     product_type: 'standard', is_serialized: false, track_batches: false,
@@ -33,17 +36,24 @@ export default function NewProductPage() {
     warranty_period_months: 0,
   });
 
-  useEffect(() => {
-    Promise.all([
-      apiFetch('/api/v1/categories').then(r => r.json()),
-      apiFetch('/api/v1/brands').then(r => r.json()),
-      apiFetch('/api/v1/units').then(r => r.json()),
-    ]).then(([c, b, u]) => {
+  useEffect(() => { loadOptions(); }, []);
+
+  async function loadOptions() {
+    setOptionsLoading(true); setOptionsError(null);
+    try {
+      const responses = await Promise.all([
+        apiFetch('/api/v1/categories'), apiFetch('/api/v1/brands'), apiFetch('/api/v1/units'),
+      ]);
+      if (responses.some(response => !response.ok)) throw new Error('Product options could not be loaded. Check your access and try again.');
+      const [c, b, u] = await Promise.all(responses.map(response => response.json()));
+      if (![c, b, u].every(data => Array.isArray(data.items))) throw new Error('Product options could not be read. Try again.');
       setCategories(c.items ?? []);
       setBrands(b.items ?? []);
       setUnits(u.items ?? []);
-    }).catch(console.error);
-  }, []);
+    } catch (error) {
+      setOptionsError(error instanceof Error ? error.message : 'Product options could not be loaded.');
+    } finally { setOptionsLoading(false); }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,6 +105,8 @@ export default function NewProductPage() {
             <CardDescription>All fields marked with * are required.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {optionsLoading && <LoadingState label="Loading product options…" />}
+            {optionsError && <ErrorState message={optionsError} onRetry={loadOptions} />}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="name">Name *</Label>
@@ -105,36 +117,36 @@ export default function NewProductPage() {
                 <Input id="code" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="min-h-[40px]" />
               </div>
               <div className="space-y-1.5">
-                <Label>Category *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-1">Category *</Label>
                 <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
-                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-1" className="min-h-[40px]"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Brand</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-2">Brand</Label>
                 <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>
-                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="No brand" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-2" className="min-h-[40px]"><SelectValue placeholder="No brand" /></SelectTrigger>
                   <SelectContent>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Unit *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-3">Unit *</Label>
                 <Select value={form.unit_id} onValueChange={v => setForm({ ...form, unit_id: v })}>
-                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-3" className="min-h-[40px]"><SelectValue placeholder="Select unit" /></SelectTrigger>
                   <SelectContent>
                     {units.map(u => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code}){u.allow_fractional ? ' — fractional' : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Type *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-4">Type *</Label>
                 <Select value={form.product_type} onValueChange={v => setForm({ ...form, product_type: v })}>
-                  <SelectTrigger className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-4" className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="standard">Standard</SelectItem>
                     <SelectItem value="combo">Combo</SelectItem>

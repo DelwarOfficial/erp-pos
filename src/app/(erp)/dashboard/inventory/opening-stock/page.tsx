@@ -13,14 +13,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
+import { ErrorState, LoadingState } from '@/components/shared/StateList';
 
-interface Warehouse { id: string; name: string; code: string }
 interface Product { id: string; name: string; code: string; isSerialized: boolean }
 
 export default function OpeningStockPage() {
   const router = useRouter();
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
   const [referenceNo, setReferenceNo] = useState(`OS-${Date.now()}`);
@@ -29,12 +30,20 @@ export default function OpeningStockPage() {
     { productId: '', quantity: '', unitCost: '', serials: '' },
   ]);
 
-  useEffect(() => {
-    // Fetch warehouses (via branches) + products
-    apiFetch('/api/v1/products?limit=200').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
-    // Warehouses: we need an endpoint. For now, use the products endpoint's category info.
-    // TODO: add /api/v1/warehouses endpoint
-  }, []);
+  useEffect(() => { loadProducts(); }, []);
+
+  async function loadProducts() {
+    setProductsLoading(true); setProductsError(null);
+    try {
+      const response = await apiFetch('/api/v1/products?limit=200');
+      if (!response.ok) throw new Error('Products could not be loaded. Check your access and try again.');
+      const data = await response.json();
+      if (!Array.isArray(data.items)) throw new Error('The product list could not be read. Try again.');
+      setProducts(data.items);
+    } catch (error) {
+      setProductsError(error instanceof Error ? error.message : 'Products could not be loaded.');
+    } finally { setProductsLoading(false); }
+  }
 
   function addItem() {
     setItems([...items, { productId: '', quantity: '', unitCost: '', serials: '' }]);
@@ -85,8 +94,7 @@ export default function OpeningStockPage() {
       <div>
         <h1 className="text-2xl font-bold">Post Opening Stock</h1>
         <p className="text-muted-foreground">
-          Initialize a warehouse with opening balances. Each line creates an immutable stock_movement with movementType='opening_stock'.
-          The moving-average cost is set from unit_cost.
+          Set starting quantities and costs for a warehouse. Posting creates permanent stock records.
         </p>
       </div>
 
@@ -97,18 +105,21 @@ export default function OpeningStockPage() {
             <CardDescription>Can only be posted for a warehouse with no prior stock movements.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+            {productsLoading && <LoadingState label="Loading products…" />}
+            {productsError && <ErrorState message={productsError} onRetry={loadProducts} />}
+            {!productsLoading && !productsError && products.length === 0 && <p role="status" className="text-sm text-muted-foreground">No products are available for selection.</p>}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <Label>Warehouse *</Label>
-                <Input placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
+                <Label htmlFor="field-app-erp-dashboard-inventory-opening-stock-page-1">Warehouse *</Label>
+                <Input id="field-app-erp-dashboard-inventory-opening-stock-page-1" placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
               </div>
               <div>
-                <Label>Reference No *</Label>
-                <Input value={referenceNo} onChange={e => setReferenceNo(e.target.value)} required />
+                <Label htmlFor="field-app-erp-dashboard-inventory-opening-stock-page-2">Reference No *</Label>
+                <Input id="field-app-erp-dashboard-inventory-opening-stock-page-2" value={referenceNo} onChange={e => setReferenceNo(e.target.value)} required />
               </div>
               <div>
-                <Label>Business Date *</Label>
-                <Input type="date" value={businessDate} onChange={e => setBusinessDate(e.target.value)} required />
+                <Label htmlFor="field-app-erp-dashboard-inventory-opening-stock-page-3">Business Date *</Label>
+                <Input id="field-app-erp-dashboard-inventory-opening-stock-page-3" type="date" value={businessDate} onChange={e => setBusinessDate(e.target.value)} required />
               </div>
             </div>
 
@@ -119,30 +130,30 @@ export default function OpeningStockPage() {
               </div>
               <div className="space-y-2">
                 {items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-4">
-                      <Label className="text-xs">Product</Label>
+                  <div key={idx} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end rounded-md border p-3">
+                    <div className="col-span-2 lg:col-span-4 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-inventory-opening-stock-page-4-${idx}`} className="text-xs">Product</Label>
                       <Select value={item.productId} onValueChange={v => updateItem(idx, 'productId', v)}>
-                        <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
+                        <SelectTrigger id={`field-app-erp-dashboard-inventory-opening-stock-page-4-${idx}`}><SelectValue placeholder="Select product" /></SelectTrigger>
                         <SelectContent>
                           {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-2">
-                      <Label className="text-xs">Quantity</Label>
-                      <Input type="number" step="0.0001" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} required />
+                    <div className="lg:col-span-2 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-inventory-opening-stock-page-5-${idx}`} className="text-xs">Quantity</Label>
+                      <Input id={`field-app-erp-dashboard-inventory-opening-stock-page-5-${idx}`} type="number" step="0.0001" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} required />
                     </div>
-                    <div className="col-span-2">
-                      <Label className="text-xs">Unit Cost (BDT)</Label>
-                      <Input type="number" step="0.000001" value={item.unitCost} onChange={e => updateItem(idx, 'unitCost', e.target.value)} required />
+                    <div className="lg:col-span-2 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-inventory-opening-stock-page-6-${idx}`} className="text-xs">Unit Cost (BDT)</Label>
+                      <Input id={`field-app-erp-dashboard-inventory-opening-stock-page-6-${idx}`} type="number" step="0.000001" value={item.unitCost} onChange={e => updateItem(idx, 'unitCost', e.target.value)} required />
                     </div>
-                    <div className="col-span-3">
-                      <Label className="text-xs">Serials (comma-separated, optional)</Label>
-                      <Input value={item.serials} onChange={e => updateItem(idx, 'serials', e.target.value)} placeholder="IMEI1, IMEI2" />
+                    <div className="col-span-2 lg:col-span-3 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-inventory-opening-stock-page-7-${idx}`} className="text-xs">Serials (comma-separated, optional)</Label>
+                      <Input id={`field-app-erp-dashboard-inventory-opening-stock-page-7-${idx}`} value={item.serials} onChange={e => updateItem(idx, 'serials', e.target.value)} placeholder="IMEI1, IMEI2" />
                     </div>
                     <div className="col-span-1">
-                      <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(idx)}>
+                      <Button type="button" size="icon" variant="ghost" aria-label={`Remove line ${idx + 1}`} onClick={() => removeItem(idx)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -151,7 +162,7 @@ export default function OpeningStockPage() {
               </div>
             </div>
           </CardContent>
-          <CardFooter className="flex justify-between">
+          <CardFooter className="flex flex-wrap gap-3 justify-between">
             <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/inventory')}>Cancel</Button>
             <Button type="submit" disabled={loading || !warehouseId}>
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}

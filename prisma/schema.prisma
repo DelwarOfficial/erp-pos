@@ -654,7 +654,7 @@ model SecurityEvent {
   user    User?    @relation(fields: [userId], references: [id])
   device  Device?  @relation(fields: [deviceId], references: [id])
 
-  @@index([companyId])
+  @@index([companyId, occurredAt], map: "security_events_company_occurred_at_idx")
   @@index([userId])
   @@index([deviceId])
   @@index([eventType])
@@ -888,7 +888,7 @@ model AuditLog {
   user    User?    @relation(fields: [userId], references: [id])
   device  Device?  @relation(fields: [deviceId], references: [id])
 
-  @@index([companyId])
+  @@index([companyId, occurredAt], map: "audit_logs_company_occurred_at_idx")
   @@index([userId])
   @@index([deviceId])
   @@index([correlationId])
@@ -1223,7 +1223,7 @@ model Product {
   stockBudgetLeases StockBudgetLease[] @relation("StockBudgetProduct")
 
   @@unique([companyId, code])
-  @@index([companyId])
+  @@index([companyId, isActive, deletedAt], map: "products_company_active_deleted_idx")
   @@index([categoryId])
   @@index([brandId])
   @@index([unitId])
@@ -2303,7 +2303,7 @@ model Customer {
   withholdingTransactions WithholdingTransaction[] @relation("WithholdingCustomer")
   dataSubjectRequests DataSubjectRequest[] @relation("DSRCustomer")
 
-  @@index([companyId])
+  @@index([companyId, isActive, updatedAt], map: "customers_company_active_updated_idx")
   @@index([customerGroupId])
   @@index([phone])
   @@index([email])
@@ -2853,7 +2853,7 @@ model Sale {
 
   @@unique([companyId, referenceNo])
   @@unique([companyId, clientTxnId])
-  @@index([companyId])
+  @@index([companyId, businessDate], map: "sales_company_business_date_idx")
   @@index([branchId])
   @@index([warehouseId])
   @@index([customerId])
@@ -3126,7 +3126,8 @@ model Payment {
 
   @@unique([companyId, referenceNo])
   @@unique([companyId, clientTxnId])
-  @@index([companyId])
+  @@index([companyId, businessDate], map: "payments_company_business_date_idx")
+  @@index([paymentMethod, methodReference], map: "payments_method_reference_idx")
   @@index([branchId])
   @@index([customerId])
   @@index([supplierId])
@@ -3386,7 +3387,7 @@ model JournalEntry {
 
   @@unique([companyId, entryNo])
   @@unique([companyId, eventId, postingKind])
-  @@index([companyId])
+  @@index([companyId, status, entryDate], map: "journal_entries_company_status_date_idx")
   @@index([entryDate])
   @@index([postingDate])
   @@index([sourceType, sourceId])
@@ -3431,6 +3432,7 @@ model JournalLine {
   @@index([customerId])
   @@index([supplierId])
   @@index([productId])
+  @@index([journalEntryId, chartOfAccountId, debitBase, creditBase], map: "journal_lines_entry_account_amounts_idx")
   @@map("journal_lines")
 }
 
@@ -4934,7 +4936,7 @@ model LegalHold {
   company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   declarer  User    @relation("LegalHoldDeclaredBy", fields: [declaredBy], references: [id])
 
-  @@index([companyId])
+  @@index([companyId, releasedAt], map: "legal_holds_company_released_idx")
   @@index([entityType, entityId])
   @@index([releasedAt])
   @@map("legal_holds")

@@ -112,20 +112,20 @@ export default function CashierPage() {
         <CardContent>
           <form onSubmit={handleOpen} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Branch ID</Label>
-              <Input placeholder="UUID" value={openForm.branchId} onChange={e => setOpenForm({ ...openForm, branchId: e.target.value })} required className="min-h-[40px]" />
+              <Label htmlFor="field-app-erp-dashboard-cashier-page-1" className="text-xs">Branch ID</Label>
+              <Input id="field-app-erp-dashboard-cashier-page-1" placeholder="UUID" value={openForm.branchId} onChange={e => setOpenForm({ ...openForm, branchId: e.target.value })} required className="min-h-[40px]" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Warehouse ID</Label>
-              <Input placeholder="UUID" value={openForm.warehouseId} onChange={e => setOpenForm({ ...openForm, warehouseId: e.target.value })} required className="min-h-[40px]" />
+              <Label htmlFor="field-app-erp-dashboard-cashier-page-2" className="text-xs">Warehouse ID</Label>
+              <Input id="field-app-erp-dashboard-cashier-page-2" placeholder="UUID" value={openForm.warehouseId} onChange={e => setOpenForm({ ...openForm, warehouseId: e.target.value })} required className="min-h-[40px]" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Cash Account ID</Label>
-              <Input placeholder="UUID" value={openForm.cashAccountId} onChange={e => setOpenForm({ ...openForm, cashAccountId: e.target.value })} required className="min-h-[40px]" />
+              <Label htmlFor="field-app-erp-dashboard-cashier-page-3" className="text-xs">Cash Account ID</Label>
+              <Input id="field-app-erp-dashboard-cashier-page-3" placeholder="UUID" value={openForm.cashAccountId} onChange={e => setOpenForm({ ...openForm, cashAccountId: e.target.value })} required className="min-h-[40px]" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Opening Float (BDT)</Label>
-              <Input type="number" step="0.01" value={openForm.openingFloat} onChange={e => setOpenForm({ ...openForm, openingFloat: e.target.value })} required className="min-h-[40px]" />
+              <Label htmlFor="field-app-erp-dashboard-cashier-page-4" className="text-xs">Opening Float (BDT)</Label>
+              <Input id="field-app-erp-dashboard-cashier-page-4" type="number" step="0.01" value={openForm.openingFloat} onChange={e => setOpenForm({ ...openForm, openingFloat: e.target.value })} required className="min-h-[40px]" />
             </div>
             <div className="sm:col-span-2 lg:col-span-4">
               <Button type="submit" disabled={opening} className="min-h-[44px]">

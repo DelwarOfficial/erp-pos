@@ -217,8 +217,8 @@ export default function ExpensesPage() {
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Branch ID</Label>
-                  <Input
+                  <Label htmlFor="field-app-erp-dashboard-expenses-page-1" className="text-xs">Branch ID</Label>
+                  <Input id="field-app-erp-dashboard-expenses-page-1"
                     placeholder="UUID"
                     value={createForm.branch_id}
                     onChange={e => setCreateForm({ ...createForm, branch_id: e.target.value })}
@@ -227,8 +227,8 @@ export default function ExpensesPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Financial Account ID</Label>
-                  <Input
+                  <Label htmlFor="field-app-erp-dashboard-expenses-page-2" className="text-xs">Financial Account ID</Label>
+                  <Input id="field-app-erp-dashboard-expenses-page-2"
                     placeholder="UUID"
                     value={createForm.financial_account_id}
                     onChange={e => setCreateForm({ ...createForm, financial_account_id: e.target.value })}
@@ -237,8 +237,8 @@ export default function ExpensesPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Expense Date</Label>
-                  <Input
+                  <Label htmlFor="field-app-erp-dashboard-expenses-page-3" className="text-xs">Expense Date</Label>
+                  <Input id="field-app-erp-dashboard-expenses-page-3"
                     type="date"
                     value={createForm.expense_date}
                     onChange={e => setCreateForm({ ...createForm, expense_date: e.target.value })}
@@ -247,8 +247,8 @@ export default function ExpensesPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Payee Name (optional)</Label>
-                  <Input
+                  <Label htmlFor="field-app-erp-dashboard-expenses-page-4" className="text-xs">Payee Name (optional)</Label>
+                  <Input id="field-app-erp-dashboard-expenses-page-4"
                     placeholder="Payee"
                     value={createForm.payee_name}
                     onChange={e => setCreateForm({ ...createForm, payee_name: e.target.value })}
@@ -257,8 +257,8 @@ export default function ExpensesPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Description</Label>
-                <Textarea
+                <Label htmlFor="field-app-erp-dashboard-expenses-page-5" className="text-xs">Description</Label>
+                <Textarea id="field-app-erp-dashboard-expenses-page-5"
                   placeholder="Expense description"
                   value={createForm.description}
                   onChange={e => setCreateForm({ ...createForm, description: e.target.value })}

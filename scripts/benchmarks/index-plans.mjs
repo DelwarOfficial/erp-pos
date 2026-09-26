@@ -141,7 +141,11 @@ try {
   const db = new PrismaClient({ datasources: { db: { url: target.toString() } }, log: [] });
   try {
     const started = Date.now();
-    for (const statement of SEED) await db.$executeRawUnsafe(statement);
+    // One connection for the whole seed: FOREIGN_KEY_CHECKS is per session, and
+    // the pool is free to run each statement on a different connection.
+    await db.$transaction(async tx => {
+      for (const statement of SEED) await tx.$executeRawUnsafe(statement);
+    }, { timeout: 1_500_000, maxWait: 60_000 });
     console.log(`Seeded in ${((Date.now() - started) / 1000).toFixed(1)}s:`, ROWS);
 
     const before = await measure(db);

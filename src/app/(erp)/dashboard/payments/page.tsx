@@ -266,36 +266,36 @@ export default function PaymentsPage() {
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Payment Type</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-1" className="text-xs">Payment Type</Label>
                 <Select
                   value={createForm.payment_type}
                   onValueChange={v => setCreateForm({ ...createForm, payment_type: v })}
                 >
-                  <SelectTrigger className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-1" className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PAYMENT_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Direction</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-2" className="text-xs">Direction</Label>
                 <Select
                   value={createForm.direction}
                   onValueChange={v => setCreateForm({ ...createForm, direction: v })}
                 >
-                  <SelectTrigger className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-2" className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {DIRECTIONS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Branch</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-3" className="text-xs">Branch</Label>
                 <Select
                   value={createForm.branch_id}
                   onValueChange={v => setCreateForm({ ...createForm, branch_id: v })}
                 >
-                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select branch" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-3" className="min-h-[40px]"><SelectValue placeholder="Select branch" /></SelectTrigger>
                   <SelectContent>
                     {branches.length === 0 ? (
                       <SelectItem value="_none" disabled>No branches available</SelectItem>
@@ -306,12 +306,12 @@ export default function PaymentsPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Financial Account</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-4" className="text-xs">Financial Account</Label>
                 <Select
                   value={createForm.financial_account_id}
                   onValueChange={v => setCreateForm({ ...createForm, financial_account_id: v })}
                 >
-                  <SelectTrigger className="min-h-[40px]"><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-4" className="min-h-[40px]"><SelectValue placeholder="Select account" /></SelectTrigger>
                   <SelectContent>
                     {financialAccounts.length === 0 ? (
                       <SelectItem value="_none" disabled>No accounts available</SelectItem>
@@ -324,20 +324,20 @@ export default function PaymentsPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Payment Method</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-5" className="text-xs">Payment Method</Label>
                 <Select
                   value={createForm.payment_method}
                   onValueChange={v => setCreateForm({ ...createForm, payment_method: v })}
                 >
-                  <SelectTrigger className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-5" className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Amount (BDT) *</Label>
-                <Input
+                <Label htmlFor="field-app-erp-dashboard-payments-page-6" className="text-xs">Amount (BDT) *</Label>
+                <Input id="field-app-erp-dashboard-payments-page-6"
                   type="number"
                   step="0.01"
                   min="0.01"
@@ -349,8 +349,8 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs">Method Reference (optional)</Label>
-                <Input
+                <Label htmlFor="field-app-erp-dashboard-payments-page-7" className="text-xs">Method Reference (optional)</Label>
+                <Input id="field-app-erp-dashboard-payments-page-7"
                   placeholder="Txn ID, cheque no., gateway ref..."
                   value={createForm.method_reference}
                   onChange={e => setCreateForm({ ...createForm, method_reference: e.target.value })}
@@ -359,8 +359,8 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs">Notes (optional)</Label>
-                <Input
+                <Label htmlFor="field-app-erp-dashboard-payments-page-8" className="text-xs">Notes (optional)</Label>
+                <Input id="field-app-erp-dashboard-payments-page-8"
                   placeholder="Notes"
                   value={createForm.notes}
                   onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}

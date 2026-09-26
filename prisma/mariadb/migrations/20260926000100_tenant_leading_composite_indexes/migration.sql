@@ -38,8 +38,13 @@ CREATE INDEX `payments_method_reference_idx` ON `payments` (`payment_method`, `m
 CREATE INDEX `journal_entries_company_status_date_idx` ON `journal_entries` (`company_id`, `status`, `entry_date`);
 DROP INDEX `journal_entries_company_id_idx` ON `journal_entries`;
 
-CREATE INDEX `journal_lines_company_account_idx` ON `journal_lines` (`company_id`, `chart_of_account_id`);
-DROP INDEX `journal_lines_company_id_idx` ON `journal_lines`;
+-- The plan drives from journal_entries and then reads each entry's lines. A
+-- covering index lets it take the account and amounts straight from the index
+-- instead of fetching every line row by primary key. (A company-leading
+-- (company_id, chart_of_account_id) index was tried first and the optimizer
+-- never used it, so it is not added.)
+CREATE INDEX `journal_lines_entry_account_amounts_idx`
+  ON `journal_lines` (`journal_entry_id`, `chart_of_account_id`, `debit_base`, `credit_base`);
 
 -- Audit and security events: listed newest first per company, and purged per
 -- company by age in the retention job.

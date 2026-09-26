@@ -239,9 +239,9 @@ export default function BankReconciliationPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Financial Account</Label>
+                  <Label htmlFor="field-app-erp-dashboard-bank-reconciliation-page-1">Financial Account</Label>
                   <Select value={faId} onValueChange={setFaId}>
-                    <SelectTrigger><SelectValue placeholder="Select financial account" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-bank-reconciliation-page-1"><SelectValue placeholder="Select financial account" /></SelectTrigger>
                     <SelectContent>
                       {financialAccounts.map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.account_type})</SelectItem>)}
                     </SelectContent>

@@ -193,28 +193,28 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
           <CardDescription>Stock changes only when a receiving is posted against this PO.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <Label>Supplier *</Label>
+              <Label htmlFor="field-app-erp-dashboard-purchases-page-1">Supplier *</Label>
               <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                <SelectTrigger id="field-app-erp-dashboard-purchases-page-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
                 <SelectContent>
                   {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Warehouse ID *</Label>
-              <Input placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
+              <Label htmlFor="field-app-erp-dashboard-purchases-page-2">Warehouse ID *</Label>
+              <Input id="field-app-erp-dashboard-purchases-page-2" placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
             </div>
             <div>
-              <Label>Order Date *</Label>
-              <Input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} required />
+              <Label htmlFor="field-app-erp-dashboard-purchases-page-3">Order Date *</Label>
+              <Input id="field-app-erp-dashboard-purchases-page-3" type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} required />
             </div>
             <div>
-              <Label>Currency</Label>
+              <Label htmlFor="field-app-erp-dashboard-purchases-page-4">Currency</Label>
               <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="field-app-erp-dashboard-purchases-page-4"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="BDT">BDT (Taka)</SelectItem>
                   <SelectItem value="USD">USD</SelectItem>
@@ -224,8 +224,8 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
             </div>
             {currency !== 'BDT' && (
               <div>
-                <Label>Exchange Rate to BDT *</Label>
-                <Input type="number" step="0.000001" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} required />
+                <Label htmlFor="field-app-erp-dashboard-purchases-page-5">Exchange Rate to BDT *</Label>
+                <Input id="field-app-erp-dashboard-purchases-page-5" type="number" step="0.000001" value={exchangeRate} onChange={e => setExchangeRate(e.target.value)} required />
               </div>
             )}
           </div>
@@ -239,23 +239,23 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
             </div>
             <div className="space-y-2">
               {items.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-6">
-                    <Label className="text-xs">Product</Label>
+                <div key={idx} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end rounded-md border p-3">
+                  <div className="col-span-2 lg:col-span-6 min-w-0">
+                    <Label htmlFor={`field-app-erp-dashboard-purchases-page-6-${idx}`} className="text-xs">Product</Label>
                     <Select value={item.productId} onValueChange={v => setItems(items.map((it, i) => i === idx ? { ...it, productId: v } : it))}>
-                      <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
+                      <SelectTrigger id={`field-app-erp-dashboard-purchases-page-6-${idx}`}><SelectValue placeholder="Select product" /></SelectTrigger>
                       <SelectContent>
                         {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Qty Ordered</Label>
-                    <Input type="number" step="0.0001" value={item.qty} onChange={e => setItems(items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))} required />
+                  <div className="lg:col-span-3 min-w-0">
+                    <Label htmlFor={`field-app-erp-dashboard-purchases-page-7-${idx}`} className="text-xs">Qty Ordered</Label>
+                    <Input id={`field-app-erp-dashboard-purchases-page-7-${idx}`} type="number" step="0.0001" value={item.qty} onChange={e => setItems(items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))} required />
                   </div>
-                  <div className="col-span-3">
-                    <Label className="text-xs">Unit Cost ({currency})</Label>
-                    <Input type="number" step="0.000001" value={item.unitCost} onChange={e => setItems(items.map((it, i) => i === idx ? { ...it, unitCost: e.target.value } : it))} required />
+                  <div className="lg:col-span-3 min-w-0">
+                    <Label htmlFor={`field-app-erp-dashboard-purchases-page-8-${idx}`} className="text-xs">Unit Cost ({currency})</Label>
+                    <Input id={`field-app-erp-dashboard-purchases-page-8-${idx}`} type="number" step="0.000001" value={item.unitCost} onChange={e => setItems(items.map((it, i) => i === idx ? { ...it, unitCost: e.target.value } : it))} required />
                   </div>
                 </div>
               ))}

@@ -110,7 +110,7 @@ export default function JournalPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen className="h-6 w-6" /> Journal Entries</h1>
         <Button onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-2" /> New Entry</Button>
       </div>
@@ -120,39 +120,39 @@ export default function JournalPage() {
           <form onSubmit={handleSubmit}>
             <CardHeader><CardTitle className="text-base">New Journal Entry</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Description *</Label>
-                  <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} required />
+                  <Label htmlFor="field-app-erp-dashboard-accounting-journal-page-1">Description *</Label>
+                  <Input id="field-app-erp-dashboard-accounting-journal-page-1" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} required />
                 </div>
                 <div>
-                  <Label>Entry Date *</Label>
-                  <Input type="date" value={form.entry_date} onChange={e => setForm({ ...form, entry_date: e.target.value })} required />
+                  <Label htmlFor="field-app-erp-dashboard-accounting-journal-page-2">Entry Date *</Label>
+                  <Input id="field-app-erp-dashboard-accounting-journal-page-2" type="date" value={form.entry_date} onChange={e => setForm({ ...form, entry_date: e.target.value })} required />
                 </div>
               </div>
               <div className="border-t pt-3 space-y-2">
                 {form.lines.map((line, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-5">
-                      <Label className="text-xs">Account</Label>
+                  <div key={idx} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end rounded-md border p-3">
+                    <div className="col-span-2 lg:col-span-5 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-accounting-journal-page-3-${idx}`} className="text-xs">Account</Label>
                       <Select value={line.chart_of_account_id} onValueChange={v => updateLine(idx, 'chart_of_account_id', v)}>
-                        <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                        <SelectTrigger id={`field-app-erp-dashboard-accounting-journal-page-3-${idx}`}><SelectValue placeholder="Select account" /></SelectTrigger>
                         <SelectContent>
                           {coa.map(a => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="col-span-2">
-                      <Label className="text-xs">Debit</Label>
-                      <Input type="number" step="0.01" value={line.debit} onChange={e => updateLine(idx, 'debit', e.target.value)} />
+                    <div className="lg:col-span-2 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-accounting-journal-page-4-${idx}`} className="text-xs">Debit</Label>
+                      <Input id={`field-app-erp-dashboard-accounting-journal-page-4-${idx}`} type="number" step="0.01" value={line.debit} onChange={e => updateLine(idx, 'debit', e.target.value)} />
                     </div>
-                    <div className="col-span-2">
-                      <Label className="text-xs">Credit</Label>
-                      <Input type="number" step="0.01" value={line.credit} onChange={e => updateLine(idx, 'credit', e.target.value)} />
+                    <div className="lg:col-span-2 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-accounting-journal-page-5-${idx}`} className="text-xs">Credit</Label>
+                      <Input id={`field-app-erp-dashboard-accounting-journal-page-5-${idx}`} type="number" step="0.01" value={line.credit} onChange={e => updateLine(idx, 'credit', e.target.value)} />
                     </div>
-                    <div className="col-span-3">
-                      <Label className="text-xs">Memo</Label>
-                      <Input value={line.memo} onChange={e => updateLine(idx, 'memo', e.target.value)} />
+                    <div className="col-span-2 lg:col-span-3 min-w-0">
+                      <Label htmlFor={`field-app-erp-dashboard-accounting-journal-page-6-${idx}`} className="text-xs">Memo</Label>
+                      <Input id={`field-app-erp-dashboard-accounting-journal-page-6-${idx}`} value={line.memo} onChange={e => updateLine(idx, 'memo', e.target.value)} />
                     </div>
                   </div>
                 ))}

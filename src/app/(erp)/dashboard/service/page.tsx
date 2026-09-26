@@ -101,24 +101,24 @@ export default function ServicePage() {
           <form onSubmit={handleSubmit}>
             <CardHeader><CardTitle className="text-base">New Service Request</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
-                  <Label>Branch ID *</Label>
-                  <Input value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-1">Branch ID *</Label>
+                  <Input id="field-app-erp-dashboard-service-page-1" value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required />
                 </div>
                 <div>
-                  <Label>Customer ID</Label>
-                  <Input value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-2">Customer ID</Label>
+                  <Input id="field-app-erp-dashboard-service-page-2" value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Serial ID (IMEI)</Label>
-                  <Input value={form.serial_id} onChange={e => setForm({ ...form, serial_id: e.target.value })} />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-3">Serial ID (IMEI)</Label>
+                  <Input id="field-app-erp-dashboard-service-page-3" value={form.serial_id} onChange={e => setForm({ ...form, serial_id: e.target.value })} />
                 </div>
               </div>
               <div>
-                <Label>Service Type *</Label>
+                <Label htmlFor="field-app-erp-dashboard-service-page-4">Service Type *</Label>
                 <Select value={form.service_type} onValueChange={v => setForm({ ...form, service_type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-service-page-4"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="warranty">Warranty</SelectItem>
                     <SelectItem value="paid_repair">Paid Repair</SelectItem>
@@ -128,21 +128,21 @@ export default function ServicePage() {
                 </Select>
               </div>
               <div>
-                <Label>Issue Description *</Label>
-                <Textarea value={form.issue_description} onChange={e => setForm({ ...form, issue_description: e.target.value })} required />
+                <Label htmlFor="field-app-erp-dashboard-service-page-5">Issue Description *</Label>
+                <Textarea id="field-app-erp-dashboard-service-page-5" value={form.issue_description} onChange={e => setForm({ ...form, issue_description: e.target.value })} required />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
-                  <Label>Intake Condition</Label>
-                  <Input value={form.intake_condition} onChange={e => setForm({ ...form, intake_condition: e.target.value })} placeholder="e.g. Screen cracked" />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-6">Intake Condition</Label>
+                  <Input id="field-app-erp-dashboard-service-page-6" value={form.intake_condition} onChange={e => setForm({ ...form, intake_condition: e.target.value })} placeholder="e.g. Screen cracked" />
                 </div>
                 <div>
-                  <Label>Accessories</Label>
-                  <Input value={form.accessories_received} onChange={e => setForm({ ...form, accessories_received: e.target.value })} placeholder="e.g. Charger, box" />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-7">Accessories</Label>
+                  <Input id="field-app-erp-dashboard-service-page-7" value={form.accessories_received} onChange={e => setForm({ ...form, accessories_received: e.target.value })} placeholder="e.g. Charger, box" />
                 </div>
                 <div>
-                  <Label>Estimate (BDT)</Label>
-                  <Input type="number" value={form.estimated_amount} onChange={e => setForm({ ...form, estimated_amount: e.target.value })} />
+                  <Label htmlFor="field-app-erp-dashboard-service-page-8">Estimate (BDT)</Label>
+                  <Input id="field-app-erp-dashboard-service-page-8" type="number" value={form.estimated_amount} onChange={e => setForm({ ...form, estimated_amount: e.target.value })} />
                 </div>
               </div>
             </CardContent>

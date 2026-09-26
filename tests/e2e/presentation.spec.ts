@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-// Presentation fixtures only. No database, credentials or business mutations.
+// Presentation fixtures only. No database, credentials or real business mutations.
 const user = {
   id: 'presentation-user', name: 'Workspace operator', email: 'operator@example.invalid',
   company_id: 'presentation-company', company_name: 'Dhaka Electronics — ঢাকা ইলেকট্রনিক্স', company_code: 'DHAKA',
@@ -20,6 +20,68 @@ async function fixtures(page: Page, overrides: Partial<typeof user> = {}) {
 
 async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+}
+
+test('unknown page provides a readable recovery link', async ({ page }) => {
+  await fixtures(page);
+  await page.setViewportSize({ width: 320, height: 812 });
+  const response = await page.goto('/missing-presentation-page');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Go to dashboard' })).toHaveAttribute('href', '/dashboard');
+  await fits(page);
+});
+
+test('webhook failure stays distinct from empty data and one-time secret remains complete', async ({ page }) => {
+  await fixtures(page, { is_global: true });
+  const secret = 'presentation-only-signing-secret-with-a-complete-tail';
+  let loaded = false; let posts = 0;
+  await page.route('**/api/v1/webhook-endpoints', route => {
+    if (route.request().method() === 'POST') {
+      posts++; return route.fulfill({ json: { secret_shown_once: secret } });
+    }
+    return route.fulfill(loaded ? { json: { items: [] } } : { status: 403, json: { error: { message: 'Denied' } } });
+  });
+  await page.setViewportSize({ width: 320, height: 812 });
+  await page.goto('/dashboard/integrations');
+  await expect(page.getByRole('alert')).toContainText('Webhook endpoints could not be loaded');
+  await expect(page.getByText('No webhook endpoints yet.')).toHaveCount(0);
+  loaded = true; await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('No webhook endpoints yet.')).toBeVisible();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByLabel('HTTPS URL').fill('https://example.invalid/events');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const field = page.getByLabel('Signing secret', { exact: true });
+  await expect(field).toHaveValue(secret); await expect(field).toHaveAttribute('type', 'password');
+  await page.getByRole('button', { name: 'Show secret', exact: true }).click();
+  await expect(field).toHaveAttribute('type', 'text');
+  await expect(field).toHaveValue(secret);
+  await fits(page);
+  await page.getByRole('button', { name: 'I have saved it' }).click();
+  await expect(field).toHaveCount(0); expect(posts).toBe(1);
+  const accessibility = await new AxeBuilder({ page }).include('main').analyze();
+  expect(accessibility.violations).toEqual([]);
+});
+
+for (const [route, button] of [
+  ['accounting/journal', 'New Entry'], ['assets', 'Acquire Asset'], ['payments', 'New Payment'],
+  ['expenses', 'New Expense'], ['purchases', 'New Purchase'], ['service', 'New Intake'],
+  ['inventory/opening-stock', ''], ['products/new', ''],
+]) {
+  test(`expanded form remains usable and named: ${route}`, async ({ page }) => {
+    await fixtures(page, { is_global: true });
+    await page.setViewportSize({ width: 320, height: 812 });
+    await page.goto(`/dashboard/${route}`);
+    if (button) await page.getByRole('button', { name: button, exact: true }).click();
+    await fits(page);
+    const region = await page.getByRole('dialog').count() ? '[role="dialog"]' : 'main';
+    const accessibility = await new AxeBuilder({ page }).include(region).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(v => ({ rule: v.id, elements: v.nodes.map(n => n.target) }))).toEqual([]);
+    for (const field of await page.locator(`${region} input:not([type="hidden"]), ${region} textarea, ${region} [role="combobox"]`).all()) {
+      const bounds = await field.boundingBox();
+      if (bounds) expect(bounds.width).toBeGreaterThanOrEqual(70);
+    }
+  });
 }
 
 test('restricted navigation, exact active route, branch context and keyboard skip link', async ({ page }) => {
@@ -183,6 +245,9 @@ for (const feature of ['accounting', 'assets', 'audit', 'bank-reconciliation', '
         await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
         await fits(page);
       }
+      await page.setViewportSize({ width: 375, height: 812 });
+      const accessibility = await new AxeBuilder({ page }).include('main').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+      expect(accessibility.violations.map(v => ({ rule: v.id, elements: v.nodes.map(n => n.target) }))).toEqual([]);
     }
     expect(errors).toEqual([]);
   });

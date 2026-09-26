@@ -289,9 +289,9 @@ export default function FixedAssetsPage() {
                   <Input id="useful_life_months" type="number" min="1" step="1" value={usefulLifeMonths} onChange={e => setUsefulLifeMonths(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Depreciation Method</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-1">Depreciation Method</Label>
                   <Select value={method} onValueChange={setMethod}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="straight_line">Straight Line</SelectItem>
                       <SelectItem value="declining_balance">Declining Balance</SelectItem>
@@ -309,45 +309,45 @@ export default function FixedAssetsPage() {
 
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>Asset GL Account (Dr)</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-2">Asset GL Account (Dr)</Label>
                   <Select value={assetAccountId} onValueChange={setAssetAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select asset account" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-2"><SelectValue placeholder="Select asset account" /></SelectTrigger>
                     <SelectContent>
                       {coaAccounts.map(c => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Accumulated Dep. Account (Cr)</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-3">Accumulated Dep. Account (Cr)</Label>
                   <Select value={accumDepAccountId} onValueChange={setAccumDepAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select accum dep account" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-3"><SelectValue placeholder="Select accum dep account" /></SelectTrigger>
                     <SelectContent>
                       {coaAccounts.map(c => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Depreciation Expense Account</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-4">Depreciation Expense Account</Label>
                   <Select value={depExpenseAccountId} onValueChange={setDepExpenseAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select dep expense account" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-4"><SelectValue placeholder="Select dep expense account" /></SelectTrigger>
                     <SelectContent>
                       {coaAccounts.map(c => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Gain/Loss on Disposal Account (optional)</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-5">Gain/Loss on Disposal Account (optional)</Label>
                   <Select value={gainLossAccountId} onValueChange={setGainLossAccountId}>
-                    <SelectTrigger><SelectValue placeholder="(optional)" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-5"><SelectValue placeholder="(optional)" /></SelectTrigger>
                     <SelectContent>
                       {coaAccounts.map(c => <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Payment Account (Cr Cash/Bank)</Label>
+                  <Label htmlFor="field-app-erp-dashboard-assets-page-6">Payment Account (Cr Cash/Bank)</Label>
                   <Select value={financialAccountId} onValueChange={setFinancialAccountId}>
-                    <SelectTrigger><SelectValue placeholder="Select financial account" /></SelectTrigger>
+                    <SelectTrigger id="field-app-erp-dashboard-assets-page-6"><SelectValue placeholder="Select financial account" /></SelectTrigger>
                     <SelectContent>
                       {financialAccounts.map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.account_type})</SelectItem>)}
                     </SelectContent>
