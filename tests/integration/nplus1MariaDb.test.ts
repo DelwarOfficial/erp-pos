@@ -8,9 +8,11 @@ import {
   checkStockValueLedger,
 } from '../../src/lib/reconciliation/checks';
 
-const mariaDbDescribe = process.env.NPLUS1_MARIADB_TEST === '1' ? describe : describe.skip;
-
-mariaDbDescribe('N+1 regression on disposable MariaDB 11.8', () => {
+// This suite was gated on NPLUS1_MARIADB_TEST=1, which the suite runner never
+// passes through (scripts/verify-access-tests.mjs forwards a fixed allowlist),
+// so its five tests were skipped on every run. The disposable MariaDB it needs
+// is always present, and tests/setup/disposableDatabase.ts refuses any other.
+describe('N+1 regression on disposable MariaDB 11.8', () => {
   const queries: string[] = [];
   const db = new PrismaClient({ log: [{ emit: 'event', level: 'query' }] });
   const companyId = randomUUID();
