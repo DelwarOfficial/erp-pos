@@ -287,19 +287,26 @@ export const checkGrniReconciliation: ReconciliationCheck = async (tx, companyId
 // TRIAL_BALANCE_ZERO — total debits must equal total credits across all posted entries
 export const checkTrialBalanceZero: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
+  // Posted AND reversed entries: both are part of the ledger. parseFloat was
+  // used here too, so the check could fail on float noise alone.
   const result = await tx.journalLine.aggregate({
-    where: { companyId, journalEntry: { status: 'posted' } },
+    where: { companyId, journalEntry: { status: { in: ['posted', 'reversed'] } } },
     _sum: { debitBase: true, creditBase: true },
   });
-  const totalDebit = parseFloat(result._sum.debitBase?.toString() ?? '0');
-  const totalCredit = parseFloat(result._sum.creditBase?.toString() ?? '0');
-  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+  const debitSum = new Prisma.Decimal(result._sum.debitBase ?? 0);
+  const creditSum = new Prisma.Decimal(result._sum.creditBase ?? 0);
+  const totalDebit = debitSum.toNumber();
+  const totalCredit = creditSum.toNumber();
+  // Exact: the ledger either balances or it does not. A 0.01 tolerance let a
+  // sub-paisa imbalance -- which the balance constraint says cannot exist --
+  // pass unreported.
+  if (!debitSum.eq(creditSum)) {
     findings.push({
       check_code: 'TRIAL_BALANCE_ZERO',
       severity: 'critical',
       expected_value: totalDebit,
       actual_value: totalCredit,
-      variance: totalCredit - totalDebit,
+      variance: creditSum.minus(debitSum).toNumber(),
       details: { issue: 'Trial balance does not zero (total debits != total credits)' },
     });
   }

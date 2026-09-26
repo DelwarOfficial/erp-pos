@@ -2,7 +2,101 @@
 // Report definitions per §11.5 catalogue.
 // Each report is a function that queries the DB and returns structured data.
 
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { computeTrialBalance, LEDGER_STATUSES } from '@/lib/accounting/trialBalance';
+
+// The ledger reports below (trial balance, P&L, balance sheet, customer and
+// supplier ledgers) shared four defects, the same ones fixed in the trial
+// balance API (see src/lib/accounting/trialBalance.ts):
+//
+//   - `take: 10000`: once a company passed 10,000 journal lines -- a few weeks of
+//     POS trading -- every figure was computed from a silently truncated ledger
+//     and still looked plausible;
+//   - status 'posted' only: a reversed original was dropped while its reversal
+//     was counted, so a voided sale showed as negative revenue;
+//   - parseFloat summation of DECIMAL(65,30) amounts;
+//   - party ledgers started their running balance at zero on the `from` date,
+//     ignoring everything before it.
+//
+// Account totals are now aggregated in the database, in Decimal, over the whole
+// ledger; party ledgers open with the balance brought forward.
+const Dec = Prisma.Decimal;
+
+async function accountTotals(companyId: string, entryDate: Prisma.DateTimeFilter) {
+  const grouped = await db.journalLine.groupBy({
+    by: ['chartOfAccountId'],
+    where: { companyId, journalEntry: { companyId, status: { in: [...LEDGER_STATUSES] }, entryDate } },
+    _sum: { debitBase: true, creditBase: true },
+  });
+  const accounts = grouped.length === 0 ? [] : await db.chartOfAccount.findMany({
+    where: { companyId, id: { in: grouped.map(row => row.chartOfAccountId) } },
+    select: { id: true, code: true, name: true, accountClass: true, normalBalance: true },
+  });
+  const byId = new Map(accounts.map(account => [account.id, account]));
+  return grouped.flatMap(row => {
+    const account = byId.get(row.chartOfAccountId);
+    if (!account) return [];
+    return [{
+      ...account,
+      debit: new Dec(row._sum.debitBase ?? 0),
+      credit: new Dec(row._sum.creditBase ?? 0),
+    }];
+  });
+}
+
+async function partyLedger(
+  companyId: string,
+  party: { customerId: string } | { supplierId: string },
+  from: Date,
+  to: Date,
+) {
+  const ledger = { companyId, status: { in: [...LEDGER_STATUSES] as string[] } };
+  // Balance brought forward: everything before the window.
+  const opening = await db.journalLine.aggregate({
+    where: { companyId, ...party, journalEntry: { ...ledger, entryDate: { lt: from } } },
+    _sum: { debitBase: true, creditBase: true },
+  });
+  const openingBalance = new Dec(opening._sum.debitBase ?? 0).minus(opening._sum.creditBase ?? 0);
+
+  const lines = await db.journalLine.findMany({
+    where: { companyId, ...party, journalEntry: { ...ledger, entryDate: { gte: from, lte: to } } },
+    select: {
+      debitBase: true, creditBase: true,
+      journalEntry: { select: { entryNo: true, entryDate: true, description: true } },
+    },
+    orderBy: [{ journalEntry: { entryDate: 'asc' } }, { journalEntry: { entryNo: 'asc' } }, { lineNo: 'asc' }],
+  });
+
+  let running = openingBalance;
+  let totalDebit = new Dec(0);
+  let totalCredit = new Dec(0);
+  const rows: Record<string, unknown>[] = [{
+    date: from, entry_no: null, description: 'Balance brought forward',
+    debit: '0.00', credit: '0.00', balance: openingBalance.toFixed(2),
+  }];
+  for (const line of lines) {
+    const debit = new Dec(line.debitBase);
+    const credit = new Dec(line.creditBase);
+    totalDebit = totalDebit.plus(debit);
+    totalCredit = totalCredit.plus(credit);
+    running = running.plus(debit).minus(credit);
+    rows.push({
+      date: line.journalEntry.entryDate, entry_no: line.journalEntry.entryNo,
+      description: line.journalEntry.description,
+      debit: debit.toFixed(2), credit: credit.toFixed(2), balance: running.toFixed(2),
+    });
+  }
+  return {
+    rows,
+    summary: {
+      opening_balance: openingBalance.toFixed(2),
+      total_debit: totalDebit.toFixed(2),
+      total_credit: totalCredit.toFixed(2),
+      closing_balance: running.toFixed(2),
+    },
+  };
+}
 
 export interface ReportResult {
   code: string;
@@ -30,29 +124,19 @@ export interface ReportFilters {
   limit?: number;
 }
 
-// ── Trial Balance (already has an API — this is the report definition) ──
+// ── Trial Balance: the same computation as the trial-balance API ──
 export async function reportTrialBalance(companyId: string, asOf?: Date): Promise<ReportResult> {
-  const lines = await db.journalLine.findMany({
-    where: { companyId, journalEntry: { status: 'posted', entryDate: { lte: asOf ?? new Date() } } },
-    include: { chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true, normalBalance: true } } },
-    take: 10000,
-  });
-  const accountMap = new Map<string, { code: string; name: string; accountClass: string; normalBalance: string; debit: number; credit: number }>();
-  for (const line of lines) {
-    const coa = line.chartOfAccount;
-    if (!accountMap.has(coa.id)) accountMap.set(coa.id, { code: coa.code, name: coa.name, accountClass: coa.accountClass, normalBalance: coa.normalBalance, debit: 0, credit: 0 });
-    const acct = accountMap.get(coa.id)!;
-    acct.debit += parseFloat(line.debitBase.toString());
-    acct.credit += parseFloat(line.creditBase.toString());
-  }
-  const rows = Array.from(accountMap.values()).map(a => ({
-    code: a.code, name: a.name, account_class: a.accountClass,
-    debit: a.debit.toFixed(2), credit: a.credit.toFixed(2),
-    balance: (a.normalBalance === 'D' ? a.debit - a.credit : a.credit - a.debit).toFixed(2),
-  })).sort((a, b) => (a.code as string).localeCompare(b.code as string));
-  return { code: 'trial_balance', title: 'Trial Balance', filters: { as_of: asOf ?? new Date() },
+  const at = asOf ?? new Date();
+  const report = await computeTrialBalance(db, companyId, at);
+  const rows = report.accounts.map(account => ({
+    code: account.code, name: account.name, account_class: account.account_class,
+    debit: account.total_debit, credit: account.total_credit,
+    // Signed on the account's normal side, as this report always showed it.
+    balance: (account.balance_type === (account.normal_balance === 'D' ? 'Debit' : 'Credit') ? '' : '-') + account.balance,
+  }));
+  return { code: 'trial_balance', title: 'Trial Balance', filters: { as_of: at },
     columns: ['code', 'name', 'account_class', 'debit', 'credit', 'balance'], rows,
-    summary: { total_accounts: rows.length } };
+    summary: { ...report.summary } };
 }
 
 // ── Inventory Valuation ──
@@ -192,58 +276,60 @@ export async function reportDashboardSummary(companyId: string): Promise<ReportR
 export async function reportProfitAndLoss(companyId: string, filters: ReportFilters = {}): Promise<ReportResult> {
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
-  const lines = await db.journalLine.findMany({
-    where: { companyId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
-    include: { chartOfAccount: { select: { accountClass: true, code: true, name: true } } },
-    take: 10000,
-  });
-  const byAcct = new Map<string, { accountClass: string; code: string; name: string; debit: number; credit: number }>();
-  for (const l of lines) {
-    const cls = l.chartOfAccount.accountClass;
-    if (cls !== 'revenue' && cls !== 'expense') continue;
-    if (!byAcct.has(l.chartOfAccountId)) byAcct.set(l.chartOfAccountId, { accountClass: cls, code: l.chartOfAccount.code, name: l.chartOfAccount.name, debit: 0, credit: 0 });
-    const a = byAcct.get(l.chartOfAccountId)!;
-    a.debit += parseFloat(l.debitBase.toString());
-    a.credit += parseFloat(l.creditBase.toString());
-  }
-  const rows = Array.from(byAcct.values()).map(a => ({
-    account_class: a.accountClass, code: a.code, name: a.name,
-    debit: a.debit.toFixed(2), credit: a.credit.toFixed(2),
-    balance: (a.accountClass === 'revenue' ? a.credit - a.debit : a.debit - a.credit).toFixed(2),
-  })).sort((a, b) => (a.code as string).localeCompare(b.code as string));
-  const revenue = Array.from(byAcct.values()).filter(a => a.accountClass === 'revenue').reduce((s, a) => s + (a.credit - a.debit), 0);
-  const expense = Array.from(byAcct.values()).filter(a => a.accountClass === 'expense').reduce((s, a) => s + (a.debit - a.credit), 0);
+  const totals = (await accountTotals(companyId, { gte: from, lte: to }))
+    .filter(account => account.accountClass === 'revenue' || account.accountClass === 'expense');
+
+  let revenue = new Dec(0);
+  let expense = new Dec(0);
+  const rows = totals.map(account => {
+    const balance = account.accountClass === 'revenue'
+      ? account.credit.minus(account.debit)
+      : account.debit.minus(account.credit);
+    if (account.accountClass === 'revenue') revenue = revenue.plus(balance);
+    else expense = expense.plus(balance);
+    return {
+      account_class: account.accountClass, code: account.code, name: account.name,
+      debit: account.debit.toFixed(2), credit: account.credit.toFixed(2), balance: balance.toFixed(2),
+    };
+  }).sort((x, y) => x.code.localeCompare(y.code));
+
   return { code: 'profit_and_loss', title: 'Profit & Loss', filters: { from, to },
     columns: ['account_class', 'code', 'name', 'debit', 'credit', 'balance'], rows,
-    summary: { total_revenue: revenue.toFixed(2), total_expense: expense.toFixed(2), net_profit: (revenue - expense).toFixed(2) } };
+    summary: { total_revenue: revenue.toFixed(2), total_expense: expense.toFixed(2), net_profit: revenue.minus(expense).toFixed(2) } };
 }
 
 // 3. balance_sheet — Assets, Liabilities, Equity as of a date.
+//
+// Revenue and expense accounts are not closed into equity until year end, so
+// without them a balance sheet cannot balance. Their net is shown as current
+// earnings within equity, and the report states whether A = L + E exactly.
 export async function reportBalanceSheet(companyId: string, filters: ReportFilters = {}): Promise<ReportResult> {
   const asOf = filters.asOf ?? new Date();
-  const lines = await db.journalLine.findMany({
-    where: { companyId, journalEntry: { status: 'posted', entryDate: { lte: asOf } } },
-    include: { chartOfAccount: { select: { accountClass: true, code: true, name: true, normalBalance: true } } },
-    take: 10000,
-  });
-  const byAcct = new Map<string, { accountClass: string; code: string; name: string; normalBalance: string; debit: number; credit: number }>();
-  for (const l of lines) {
-    const cls = l.chartOfAccount.accountClass;
-    if (cls !== 'asset' && cls !== 'liability' && cls !== 'equity') continue;
-    if (!byAcct.has(l.chartOfAccountId)) byAcct.set(l.chartOfAccountId, { accountClass: cls, code: l.chartOfAccount.code, name: l.chartOfAccount.name, normalBalance: l.chartOfAccount.normalBalance, debit: 0, credit: 0 });
-    const a = byAcct.get(l.chartOfAccountId)!;
-    a.debit += parseFloat(l.debitBase.toString());
-    a.credit += parseFloat(l.creditBase.toString());
+  const all = await accountTotals(companyId, { lte: asOf });
+
+  const totals = { asset: new Dec(0), liability: new Dec(0), equity: new Dec(0) };
+  let currentEarnings = new Dec(0);
+  const rows: Record<string, unknown>[] = [];
+  for (const account of all) {
+    if (account.accountClass === 'revenue') { currentEarnings = currentEarnings.plus(account.credit.minus(account.debit)); continue; }
+    if (account.accountClass === 'expense') { currentEarnings = currentEarnings.minus(account.debit.minus(account.credit)); continue; }
+    if (account.accountClass !== 'asset' && account.accountClass !== 'liability' && account.accountClass !== 'equity') continue;
+    const balance = account.normalBalance === 'D' ? account.debit.minus(account.credit) : account.credit.minus(account.debit);
+    totals[account.accountClass] = totals[account.accountClass].plus(balance);
+    rows.push({ account_class: account.accountClass, code: account.code, name: account.name, balance: balance.toFixed(2) });
   }
-  const totals = { asset: 0, liability: 0, equity: 0 };
-  const rows = Array.from(byAcct.values()).map(a => {
-    const bal = a.normalBalance === 'D' ? a.debit - a.credit : a.credit - a.debit;
-    totals[a.accountClass as 'asset' | 'liability' | 'equity'] += bal;
-    return { account_class: a.accountClass, code: a.code, name: a.name, balance: bal.toFixed(2) };
-  }).sort((a, b) => (a.code as string).localeCompare(b.code as string));
+  rows.sort((x, y) => (x.code as string).localeCompare(y.code as string));
+  rows.push({ account_class: 'equity', code: null, name: 'Current period earnings (unclosed)', balance: currentEarnings.toFixed(2) });
+
+  const equity = totals.equity.plus(currentEarnings);
+  const difference = totals.asset.minus(totals.liability.plus(equity));
   return { code: 'balance_sheet', title: 'Balance Sheet', filters: { as_of: asOf },
     columns: ['account_class', 'code', 'name', 'balance'], rows,
-    summary: { total_assets: totals.asset.toFixed(2), total_liabilities: totals.liability.toFixed(2), total_equity: totals.equity.toFixed(2) } };
+    summary: {
+      total_assets: totals.asset.toFixed(2), total_liabilities: totals.liability.toFixed(2),
+      total_equity: equity.toFixed(2), current_period_earnings: currentEarnings.toFixed(2),
+      difference: difference.toFixed(2), is_balanced: difference.isZero(),
+    } };
 }
 
 // 4. cash_flow — Cash in/out bucketed into operating / investing / financing
@@ -371,54 +457,26 @@ export async function reportMonthlyPurchases(companyId: string, filters: ReportF
     summary: { total_purchases: rows.reduce((s, r) => s + (r.purchase_count as number), 0), total_amount: rows.reduce((s, r) => s + parseFloat(r.total as string), 0).toFixed(2) } };
 }
 
-// 9. customer_ledger — all posted journal lines for a customer, running balance.
+// 9. customer_ledger — every ledger line for a customer, from the balance brought forward.
 export async function reportCustomerLedger(companyId: string, filters: ReportFilters = {}): Promise<ReportResult> {
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
-  if (!filters.customerId) return { code: 'customer_ledger', title: 'Customer Ledger', filters: { customer_id: null, from, to }, columns: ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'], rows: [], summary: { total_debit: '0.00', total_credit: '0.00', closing_balance: '0.00' } };
-  const lines = await db.journalLine.findMany({
-    where: { companyId, customerId: filters.customerId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
-    include: { journalEntry: { select: { entryNo: true, entryDate: true, description: true } } },
-    orderBy: { journalEntry: { entryDate: 'asc' } },
-    take: 10000,
-  });
-  let running = 0;
-  const rows = lines.map(l => {
-    const debit = parseFloat(l.debitBase.toString());
-    const credit = parseFloat(l.creditBase.toString());
-    running += debit - credit;
-    return { date: l.journalEntry.entryDate, entry_no: l.journalEntry.entryNo, description: l.journalEntry.description, debit: debit.toFixed(2), credit: credit.toFixed(2), balance: running.toFixed(2) };
-  });
-  const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debitBase.toString()), 0);
-  const totalCredit = lines.reduce((s, l) => s + parseFloat(l.creditBase.toString()), 0);
+  const columns = ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'];
+  if (!filters.customerId) return { code: 'customer_ledger', title: 'Customer Ledger', filters: { customer_id: null, from, to }, columns, rows: [], summary: { opening_balance: '0.00', total_debit: '0.00', total_credit: '0.00', closing_balance: '0.00' } };
+  const ledger = await partyLedger(companyId, { customerId: filters.customerId }, from, to);
   return { code: 'customer_ledger', title: 'Customer Ledger', filters: { customer_id: filters.customerId, from, to },
-    columns: ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'], rows,
-    summary: { total_debit: totalDebit.toFixed(2), total_credit: totalCredit.toFixed(2), closing_balance: running.toFixed(2) } };
+    columns, rows: ledger.rows, summary: ledger.summary };
 }
 
-// 10. supplier_ledger — all posted journal lines for a supplier, running balance.
+// 10. supplier_ledger — every ledger line for a supplier, from the balance brought forward.
 export async function reportSupplierLedger(companyId: string, filters: ReportFilters = {}): Promise<ReportResult> {
   const from = filters.fromDate ?? new Date(0);
   const to = filters.toDate ?? new Date();
-  if (!filters.supplierId) return { code: 'supplier_ledger', title: 'Supplier Ledger', filters: { supplier_id: null, from, to }, columns: ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'], rows: [], summary: { total_debit: '0.00', total_credit: '0.00', closing_balance: '0.00' } };
-  const lines = await db.journalLine.findMany({
-    where: { companyId, supplierId: filters.supplierId, journalEntry: { status: 'posted', entryDate: { gte: from, lte: to } } },
-    include: { journalEntry: { select: { entryNo: true, entryDate: true, description: true } } },
-    orderBy: { journalEntry: { entryDate: 'asc' } },
-    take: 10000,
-  });
-  let running = 0;
-  const rows = lines.map(l => {
-    const debit = parseFloat(l.debitBase.toString());
-    const credit = parseFloat(l.creditBase.toString());
-    running += debit - credit;
-    return { date: l.journalEntry.entryDate, entry_no: l.journalEntry.entryNo, description: l.journalEntry.description, debit: debit.toFixed(2), credit: credit.toFixed(2), balance: running.toFixed(2) };
-  });
-  const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debitBase.toString()), 0);
-  const totalCredit = lines.reduce((s, l) => s + parseFloat(l.creditBase.toString()), 0);
+  const columns = ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'];
+  if (!filters.supplierId) return { code: 'supplier_ledger', title: 'Supplier Ledger', filters: { supplier_id: null, from, to }, columns, rows: [], summary: { opening_balance: '0.00', total_debit: '0.00', total_credit: '0.00', closing_balance: '0.00' } };
+  const ledger = await partyLedger(companyId, { supplierId: filters.supplierId }, from, to);
   return { code: 'supplier_ledger', title: 'Supplier Ledger', filters: { supplier_id: filters.supplierId, from, to },
-    columns: ['date', 'entry_no', 'description', 'debit', 'credit', 'balance'], rows,
-    summary: { total_debit: totalDebit.toFixed(2), total_credit: totalCredit.toFixed(2), closing_balance: running.toFixed(2) } };
+    columns, rows: ledger.rows, summary: ledger.summary };
 }
 
 // 11. expense_report — expenses grouped by category.
