@@ -278,6 +278,7 @@ export default function ExpensesPage() {
                     <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 border rounded p-2">
                       <Input
                         placeholder="Category ID (UUID)"
+                        aria-label={`Category ID for line ${idx + 1}`}
                         value={item.expense_category_id}
                         onChange={e => updateItem(idx, { expense_category_id: e.target.value })}
                         required
@@ -287,6 +288,7 @@ export default function ExpensesPage() {
                         type="number"
                         step="0.01"
                         placeholder="Amount"
+                        aria-label={`Amount for line ${idx + 1}`}
                         value={item.amount || ''}
                         onChange={e => updateItem(idx, { amount: Number(e.target.value) })}
                         required
@@ -296,6 +298,7 @@ export default function ExpensesPage() {
                         type="number"
                         step="0.01"
                         placeholder="Tax"
+                        aria-label={`Tax for line ${idx + 1}`}
                         value={item.tax_amount || ''}
                         onChange={e => updateItem(idx, { tax_amount: Number(e.target.value) })}
                         className="sm:col-span-3 min-h-[40px]"

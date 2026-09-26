@@ -32,6 +32,63 @@ test('unknown page provides a readable recovery link', async ({ page }) => {
   await fits(page);
 });
 
+test('touch navigation actions provide 44-pixel targets without overflow', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 320, height: 812 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  try {
+    const page = await context.newPage(); await fixtures(page, { is_global: true });
+    await page.goto('/dashboard');
+    for (const name of ['Open navigation menu', 'Choose appearance', 'Sign out']) {
+      const button = page.getByRole('button', { name, exact: true });
+      await expect(button).toBeVisible();
+      const bounds = await button.boundingBox();
+      expect(bounds?.width).toBeGreaterThanOrEqual(44); expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    }
+    await fits(page);
+    await page.getByRole('button', { name: 'Open navigation menu' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await fits(page);
+  } finally { await context.close(); }
+});
+
+test('catalogue creation keeps named fields and does not offer unsupported edits', async ({ page }) => {
+  await fixtures(page, { is_global: true });
+  let posts = 0;
+  await page.route('**/api/v1/categories', route => {
+    if (route.request().method() === 'POST') {
+      posts++; expect(route.request().postDataJSON()).toEqual({ name: 'Accessories', code: 'ACC' });
+      return route.fulfill({ json: { id: 'created-category' } });
+    }
+    return route.fulfill({ json: { items: [{ id: 'existing', name: 'Phones', code: 'PHONE' }] } });
+  });
+  await page.goto('/dashboard/catalogue');
+  const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Add Category', exact: true }) });
+  await form.getByLabel('Name', { exact: true }).fill('Accessories');
+  await form.getByLabel('Code', { exact: true }).fill('ACC');
+  await form.getByRole('button', { name: 'Add Category', exact: true }).click();
+  await expect(form.getByLabel('Name', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: /^(Edit|Delete)$/ })).toHaveCount(0);
+  await expect(page.getByText('Editing and deletion are not available here.')).toHaveCount(4);
+  expect(posts).toBe(1);
+});
+
+test('retrying product options preserves form values without submitting stock', async ({ page }) => {
+  await fixtures(page, { is_global: true });
+  let recovered = false; let posts = 0;
+  await page.route('**/api/v1/products?*', route => route.fulfill(recovered
+    ? { json: { items: [] } } : { status: 503, json: {} }));
+  await page.route('**/api/v1/inventory/opening-stock', route => {
+    posts++; return route.fulfill({ status: 503, json: {} });
+  });
+  await page.goto('/dashboard/inventory/opening-stock');
+  await page.getByLabel('Warehouse *', { exact: true }).fill('presentation-warehouse');
+  await page.getByLabel('Quantity', { exact: true }).fill('2');
+  await page.getByLabel('Unit Cost (BDT)', { exact: true }).fill('125.50');
+  recovered = true; await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('No products are available for selection.')).toBeVisible();
+  await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('2');
+  expect(posts).toBe(0);
+});
+
 test('webhook failure stays distinct from empty data and one-time secret remains complete', async ({ page }) => {
   await fixtures(page, { is_global: true });
   const secret = 'presentation-only-signing-secret-with-a-complete-tail';
@@ -44,7 +101,7 @@ test('webhook failure stays distinct from empty data and one-time secret remains
   });
   await page.setViewportSize({ width: 320, height: 812 });
   await page.goto('/dashboard/integrations');
-  await expect(page.getByRole('alert')).toContainText('Webhook endpoints could not be loaded');
+  await expect(page.locator('main').getByRole('alert')).toContainText('Webhook endpoints could not be loaded');
   await expect(page.getByText('No webhook endpoints yet.')).toHaveCount(0);
   loaded = true; await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByText('No webhook endpoints yet.')).toBeVisible();
@@ -77,7 +134,7 @@ for (const [route, button] of [
     const region = await page.getByRole('dialog').count() ? '[role="dialog"]' : 'main';
     const accessibility = await new AxeBuilder({ page }).include(region).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     expect(accessibility.violations.map(v => ({ rule: v.id, elements: v.nodes.map(n => n.target) }))).toEqual([]);
-    for (const field of await page.locator(`${region} input:not([type="hidden"]), ${region} textarea, ${region} [role="combobox"]`).all()) {
+    for (const field of await page.locator(`${region} input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([aria-hidden="true"]), ${region} textarea, ${region} [role="combobox"]`).all()) {
       const bounds = await field.boundingBox();
       if (bounds) expect(bounds.width).toBeGreaterThanOrEqual(70);
     }

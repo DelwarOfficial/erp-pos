@@ -28,7 +28,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
         <p className="text-xs text-muted-foreground max-w-md break-words">{message}</p>
       </div>
       {onRetry && (
-        <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
       )}
     </div>
   );

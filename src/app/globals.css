@@ -154,6 +154,8 @@
 /* Preserve readable controls on touch devices without inflating desktop density. */
 @media (pointer: coarse) {
   [data-slot="button"], [data-slot="input"], [data-slot="select-trigger"] { min-height: 44px; }
+  [data-slot="button"] { min-width: 44px; }
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) { min-height: 44px; font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

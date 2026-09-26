@@ -3,15 +3,15 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { ErrorState, LoadingState } from '@/components/shared/StateList';
 
 export interface FieldSpec {
   name: string;
@@ -38,22 +38,24 @@ interface Props {
 }
 
 export function InlineCrudList({ endpoint, label, fields, renderItem, idempotencyPrefix }: Props) {
+  const formId = useId();
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, unknown>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<Record<string, unknown>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await apiFetch(endpoint);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load');
-      setItems(data.items ?? []);
+      if (!Array.isArray(data.items)) throw new Error('The list response could not be read. Try again.');
+      setItems(data.items);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      setLoadError(e instanceof Error ? e.message : 'The list could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -83,41 +85,23 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
     }
   }
 
-  function startEdit(item: ListItem) {
-    const form: Record<string, unknown> = {};
-    for (const f of fields) {
-      form[f.name] = item[f.name];
-    }
-    setEditForm(form);
-    setEditingId(item.id);
-  }
-
-  function handleSaveEdit() {
-    toast.info('Inline edit requires a PATCH endpoint — coming in a future iteration. Use delete + recreate for now.');
-    setEditingId(null);
-  }
-
-  function handleDelete() {
-    toast.info('Delete requires a PATCH/DELETE endpoint — coming in a future iteration.');
-  }
-
   function renderField(field: FieldSpec, value: unknown, onChange: (v: unknown) => void) {
+    const id = `${formId}-${field.name}`;
     switch (field.type) {
       case 'boolean':
         return (
-          <div className="flex items-center gap-2">
             <Switch
-              id={`field-${field.name}`}
+              id={id}
               checked={Boolean(value)}
               onCheckedChange={onChange}
             />
-            <Label htmlFor={`field-${field.name}`} className="text-xs">{field.label}</Label>
-          </div>
         );
       case 'select':
         return (
           <select
-            className="border rounded px-2 py-1 text-sm w-full"
+            id={id}
+            required={field.required}
+            className="border border-input bg-background rounded-md px-3 py-2 text-sm w-full min-w-0"
             value={String(value ?? '')}
             onChange={e => onChange(e.target.value)}
           >
@@ -128,6 +112,7 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
       case 'number':
         return (
           <Input
+            id={id}
             type="number"
             step={field.step}
             min={field.min}
@@ -140,6 +125,7 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
       default:
         return (
           <Input
+            id={id}
             type="text"
             placeholder={field.placeholder}
             value={String(value ?? '')}
@@ -153,52 +139,28 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
   return (
     <div className="space-y-3">
       {loading ? (
-        <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-4 text-sm text-muted-foreground">No {label.toLowerCase()}s yet.</div>
+        <LoadingState label={`Loading ${label.toLowerCase()} records...`} />
+      ) : loadError ? <ErrorState message={loadError} onRetry={load} /> : items.length === 0 ? (
+        <div className="text-center py-4 text-sm text-muted-foreground">No {label.toLowerCase()} records yet.</div>
       ) : (
         <div className="space-y-1 max-h-64 overflow-y-auto">
           {items.map(item => (
-            <div key={item.id} className="flex items-center justify-between p-2 border rounded text-sm">
-              {editingId === item.id ? (
-                <div className="flex-1 grid grid-cols-2 gap-2">
-                  {fields.map(f => (
-                    <div key={f.name}>
-                      <Label className="text-xs">{f.label}</Label>
-                      {renderField(f, editForm[f.name], v => setEditForm({ ...editForm, [f.name]: v }))}
-                    </div>
-                  ))}
-                  <div className="col-span-2 flex gap-2">
-                    <Button size="sm" onClick={handleSaveEdit}><Check className="h-3 w-3" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}><X className="h-3 w-3" /></Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex-1">{renderItem(item)}</div>
-                  <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => startEdit(item)} title="Edit">
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={handleDelete} title="Delete">
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </>
-              )}
+            <div key={item.id} className="min-w-0 break-words p-2 border rounded text-sm">
+              {renderItem(item)}
             </div>
           ))}
         </div>
       )}
+      <p className="text-xs text-muted-foreground">Editing and deletion are not available here.</p>
 
       <form onSubmit={handleCreate} className="border-t pt-3 space-y-2">
         <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
           <Plus className="h-3 w-3" /> New {label}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {fields.map(f => (
-            <div key={f.name}>
-              <Label className="text-xs">{f.label}</Label>
+            <div key={f.name} className="min-w-0 space-y-1">
+              <Label htmlFor={`${formId}-${f.name}`} className="text-xs">{f.label}</Label>
               {renderField(f, createForm[f.name], v => setCreateForm({ ...createForm, [f.name]: v }))}
             </div>
           ))}
