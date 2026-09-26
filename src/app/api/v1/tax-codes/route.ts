@@ -10,6 +10,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const TaxCodeCreateSchema = z.object({
   code: z.string().min(1).max(40),
@@ -23,17 +24,21 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
-    const taxCodes = await runInTenantContext(auth.ctx, async () => {
+    const taxCodesPage = await runInTenantContext(auth.ctx, async () => {
       return db.taxCode.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
         include: {
           components: { include: { taxComponent: true } },
         },
-        orderBy: { code: 'asc' },
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
       });
     });
+    const { items: taxCodes, has_more, next_cursor } = listPageResult(taxCodesPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: taxCodes.map(tc => ({
         id: tc.id,
         code: tc.code,

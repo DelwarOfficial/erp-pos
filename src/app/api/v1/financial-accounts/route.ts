@@ -9,6 +9,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const FaSchema = z.object({
   chart_of_account_id: z.string().uuid(),
@@ -23,18 +24,22 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "payment.read");
-    const accounts = await runInTenantContext(auth.ctx, async () => {
+    const accountsPage = await runInTenantContext(auth.ctx, async () => {
       return db.financialAccount.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
-        orderBy: { name: 'asc' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
         include: {
           chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },
           branch: { select: { id: true, name: true, code: true } },
         },
       });
     });
+    const { items: accounts, has_more, next_cursor } = listPageResult(accountsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: accounts.map(a => ({
         id: a.id, name: a.name, account_type: a.accountType,
         currency_code: a.currencyCode, is_active: a.isActive,

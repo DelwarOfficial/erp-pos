@@ -6,6 +6,9 @@ import { DomainError } from '@/lib/errors/codes';
 import { generateCsv } from '@/lib/import-export/csv';
 
 // GET /api/v1/import-jobs/[id]/errors — download row-level errors as CSV
+
+const ERROR_PAGE = 1_000;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let auth;
   try {
@@ -28,24 +31,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Import job not found' } }, { status: 404 });
   }
 
-  const errors = await runInTenantContext(auth.ctx, async () => {
-    return db.importJobError.findMany({
-      where: { importJobId: id },
-      orderBy: { rowNumber: 'asc' },
-    });
-  });
-
-  // Generate CSV with error details
+  // Streamed in keyset pages. This read every error of the job in one query
+  // and built the whole CSV in memory; an import has no row limit, so neither
+  // did this. The file is byte-for-byte what it was, a page at a time.
   const headers = ['row_number', 'column_name', 'error_code', 'error_message', 'raw_row'];
-  const rows = errors.map(e => [
-    String(e.rowNumber),
-    e.columnName ?? '',
-    e.errorCode ?? '',
-    e.errorMessage,
-    e.rawRow ?? '',
-  ]);
-
-  const csv = generateCsv([headers, ...rows]);
+  const ctx = auth.ctx;
+  let cursor: string | undefined;
+  const encoder = new TextEncoder();
+  const csv = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(generateCsv([headers])));
+    },
+    async pull(controller) {
+      const errors = await runInTenantContext(ctx, async () => db.importJobError.findMany({
+        where: { importJobId: id },
+        orderBy: [{ rowNumber: 'asc' }, { id: 'asc' }],
+        take: ERROR_PAGE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }));
+      if (errors.length > 0) {
+        const rows = errors.map(e => [
+          String(e.rowNumber),
+          e.columnName ?? '',
+          e.errorCode ?? '',
+          e.errorMessage,
+          e.rawRow ?? '',
+        ]);
+        controller.enqueue(encoder.encode(`\n${generateCsv(rows)}`));
+        cursor = errors[errors.length - 1].id;
+      }
+      if (errors.length < ERROR_PAGE) controller.close();
+    },
+  });
 
   return new NextResponse(csv, {
     headers: {

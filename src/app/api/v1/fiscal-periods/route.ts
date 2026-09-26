@@ -9,6 +9,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const FiscalPeriodSchema = z.object({
   period_name: z.string().min(1).max(50),
@@ -20,14 +21,18 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "journal.read");
-    const periods = await runInTenantContext(auth.ctx, async () => {
+    const periodsPage = await runInTenantContext(auth.ctx, async () => {
       return db.fiscalPeriod.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
-        orderBy: { periodStart: 'desc' },
+        orderBy: [{ periodStart: 'desc' }, { id: 'asc' }],
       });
     });
+    const { items: periods, has_more, next_cursor } = listPageResult(periodsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: periods.map(p => ({
         id: p.id, period_name: p.periodName,
         period_start: p.periodStart, period_end: p.periodEnd,

@@ -11,6 +11,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { validateUnitConversion } from '@/domain/invariants/productActivation';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const UnitCreateSchema = z.object({
   name: z.string().min(1).max(80),
@@ -24,15 +25,19 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
-    const units = await runInTenantContext(auth.ctx, async () => {
+    const unitsPage = await runInTenantContext(auth.ctx, async () => {
       return db.unit.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
         include: { baseUnit: { select: { id: true, name: true, code: true } } },
-        orderBy: { name: 'asc' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
       });
     });
+    const { items: units, has_more, next_cursor } = listPageResult(unitsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: units.map(u => ({
         id: u.id,
         name: u.name,

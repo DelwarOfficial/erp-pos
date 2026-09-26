@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
@@ -15,6 +16,8 @@ import { DomainError } from '@/lib/errors/codes';
 //
 // The report also breaks down FP/FN rates per decision threshold and per reason code,
 // so admins can see which rules are over- or under-triggering.
+const ASSESSMENT_PAGE = 1_000;
+
 export async function GET(req: NextRequest) {
   let auth;
   try {
@@ -39,7 +42,19 @@ export async function GET(req: NextRequest) {
   const fromDate = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const toDate = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : new Date();
 
-  // Fetch all assessments with outcomes in the date range (explicit context).
+  // Categorize each assessment
+  let truePositives = 0, trueNegatives = 0, falsePositives = 0, falseNegatives = 0;
+  let pendingReview = 0; // assessments with no outcome recorded yet
+  const reasonCodeStats = new Map<string, { count: number; fp: number; fn: number; tp: number; tn: number }>();
+  // Decimal: outcome amounts are money.
+  const loss = { falseNegatives: new Prisma.Decimal(0), truePositives: new Prisma.Decimal(0) };
+  let totalAssessments = 0;
+
+  // Every assessment in the range, walked in keyset pages. This loaded the
+  // whole range with its outcomes in one query; one assessment per checked
+  // transaction made that unbounded. The totals are the same.
+  let cursor: string | undefined;
+  for (;;) {
   const assessments = await runInTenantContext(auth.ctx, async () => {
     return db.riskAssessment.findMany({
       where: {
@@ -47,14 +62,12 @@ export async function GET(req: NextRequest) {
         assessedAt: { gte: fromDate, lte: toDate },
       },
       include: { outcomes: true },
+      orderBy: { id: 'asc' },
+      take: ASSESSMENT_PAGE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
   });
-
-  // Categorize each assessment
-  let truePositives = 0, trueNegatives = 0, falsePositives = 0, falseNegatives = 0;
-  let pendingReview = 0; // assessments with no outcome recorded yet
-  const reasonCodeStats = new Map<string, { count: number; fp: number; fn: number; tp: number; tn: number }>();
-  const lossAmount = { falseNegatives: 0, truePositives: 0 };
+  totalAssessments += assessments.length;
 
   for (const a of assessments) {
     const decision = a.decision;
@@ -86,9 +99,9 @@ export async function GET(req: NextRequest) {
     else if (category === 'FN') falseNegatives++;
 
     // Track loss amounts
-    const loss = parseFloat(String(latestOutcome.outcomeAmount ?? '0'));
-    if (category === 'FN') lossAmount.falseNegatives += loss;
-    if (category === 'TP') lossAmount.truePositives += loss;
+    const amount = new Prisma.Decimal(latestOutcome.outcomeAmount ?? 0);
+    if (category === 'FN') loss.falseNegatives = loss.falseNegatives.plus(amount);
+    if (category === 'TP') loss.truePositives = loss.truePositives.plus(amount);
 
     // Per-reason-code stats
     for (const reason of reasons) {
@@ -101,6 +114,11 @@ export async function GET(req: NextRequest) {
       else if (category === 'TN') s.tn++;
     }
   }
+
+  if (assessments.length < ASSESSMENT_PAGE) break;
+  cursor = assessments[assessments.length - 1].id;
+  }
+  const lossAmount = { falseNegatives: Number(loss.falseNegatives.toFixed(2)), truePositives: Number(loss.truePositives.toFixed(2)) };
 
   const totalCategorized = truePositives + trueNegatives + falsePositives + falseNegatives;
   const precision = truePositives + falsePositives > 0 ? truePositives / (truePositives + falsePositives) : null;
@@ -129,7 +147,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     period: { from: fromDate.toISOString(), to: toDate.toISOString() },
     summary: {
-      totalAssessments: assessments.length,
+      totalAssessments,
       withOutcomes: totalCategorized,
       pendingReview,
       truePositives,

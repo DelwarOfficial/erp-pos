@@ -9,6 +9,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const CoaSchema = z.object({
   code: z.string().min(1).max(30),
@@ -25,15 +26,19 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "journal.read");
-    const accounts = await runInTenantContext(auth.ctx, async () => {
+    const accountsPage = await runInTenantContext(auth.ctx, async () => {
       return db.chartOfAccount.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
-        orderBy: { code: 'asc' },
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
         include: { parent: { select: { id: true, code: true, name: true } } },
       });
     });
+    const { items: accounts, has_more, next_cursor } = listPageResult(accountsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: accounts.map(a => ({
         id: a.id, code: a.code, name: a.name,
         account_class: a.accountClass, account_subtype: a.accountSubtype,

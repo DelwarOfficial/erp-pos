@@ -10,6 +10,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const BrandCreateSchema = z.object({ name: z.string().min(1).max(120) });
 
@@ -17,14 +18,18 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
-    const brands = await runInTenantContext(auth.ctx, async () => {
+    const brandsPage = await runInTenantContext(auth.ctx, async () => {
       return db.brand.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId, deletedAt: null },
-        orderBy: { name: 'asc' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
       });
     });
+    const { items: brands, has_more, next_cursor } = listPageResult(brandsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: brands.map(b => ({ id: b.id, name: b.name, is_active: b.isActive })),
     });
   } catch (e) {

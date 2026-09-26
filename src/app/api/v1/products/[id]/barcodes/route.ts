@@ -17,6 +17,7 @@ import {
 } from '@/domain/invariants/barcode';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const BarcodeCreateSchema = z.object({
   code: z.string().min(1).max(100).optional(), // omitted when symbology=QR (server generates)
@@ -30,15 +31,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
     const { id } = await params;
-    const barcodes = await runInTenantContext(auth.ctx, async () => {
+    const barcodesPage = await runInTenantContext(auth.ctx, async () => {
       return db.productBarcode.findMany({
+        ...listPageArgs(page),
         where: { productId: id, companyId: auth.companyId },
-        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
       });
     });
-    return NextResponse.json({ items: barcodes });
+    const { items: barcodes, has_more, next_cursor } = listPageResult(barcodesPage, page);
+    return NextResponse.json({ items: barcodes, has_more, next_cursor });
   } catch (e) {
     return errorResponse(e, correlationId);
   }

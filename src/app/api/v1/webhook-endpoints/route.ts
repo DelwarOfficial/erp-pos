@@ -12,6 +12,7 @@ import { encryptString } from '@/lib/crypto';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { assertSafeOutboundUrl } from '@/lib/integrations/outboundUrl';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const WebhookSchema = z.object({
   url: z.string().url().regex(/^https:\/\//, 'URL must start with https://'),
@@ -22,15 +23,19 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "company.read");
-    const endpoints = await runInTenantContext(auth.ctx, async () => {
+    const endpointsPage = await runInTenantContext(auth.ctx, async () => {
       return db.webhookEndpoint.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         include: { _count: { select: { deliveries: true } } },
       });
     });
+    const { items: endpoints, has_more, next_cursor } = listPageResult(endpointsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: endpoints.map(e => ({
         id: e.id, url: e.url, status: e.status,
         subscribed_events: JSON.parse(e.subscribedEvents),

@@ -10,6 +10,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const TaxComponentCreateSchema = z.object({
   component_code: z.string().min(1).max(30),
@@ -25,14 +26,18 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
-    const components = await runInTenantContext(auth.ctx, async () => {
+    const componentsPage = await runInTenantContext(auth.ctx, async () => {
       return db.taxComponent.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId },
-        orderBy: [{ componentType: 'asc' }, { calculationOrder: 'asc' }],
+        orderBy: [{ componentType: 'asc' }, { calculationOrder: 'asc' }, { id: 'asc' }],
       });
     });
+    const { items: components, has_more, next_cursor } = listPageResult(componentsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: components.map(c => ({
         id: c.id,
         component_code: c.componentCode,

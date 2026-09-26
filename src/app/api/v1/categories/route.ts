@@ -10,6 +10,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const CategoryCreateSchema = z.object({
   name: z.string().min(1).max(120),
@@ -21,15 +22,19 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "product.read");
-    const categories = await runInTenantContext(auth.ctx, async () => {
+    const categoriesPage = await runInTenantContext(auth.ctx, async () => {
       return db.category.findMany({
+        ...listPageArgs(page),
         where: { companyId: auth.companyId, deletedAt: null },
         include: { parent: { select: { id: true, name: true, code: true } } },
-        orderBy: [{ name: 'asc' }],
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
       });
     });
+    const { items: categories, has_more, next_cursor } = listPageResult(categoriesPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: categories.map(c => ({
         id: c.id,
         name: c.name,

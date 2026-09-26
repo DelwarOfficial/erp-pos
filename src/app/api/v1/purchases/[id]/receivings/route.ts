@@ -10,6 +10,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { receivePurchase } from '@/domain/commands/m2/ReceivePurchase';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const ReceivingItemSchema = z.object({
   purchase_item_id: z.string().uuid(),
@@ -31,18 +32,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
+    const page = readListPage(req.nextUrl);
     await requirePermission(auth, "purchase.read");
     const { id } = await params;
-    const receivings = await runInTenantContext(auth.ctx, async () => {
+    const receivingsPage = await runInTenantContext(auth.ctx, async () => {
       return db.purchaseReceiving.findMany({
+        ...listPageArgs(page),
         where: { purchaseId: id, companyId: auth.companyId },
-        orderBy: { receivedAt: 'desc' },
+        orderBy: [{ receivedAt: 'desc' }, { id: 'asc' }],
         include: {
           _count: { select: { items: true } },
         },
       });
     });
+    const { items: receivings, has_more, next_cursor } = listPageResult(receivingsPage, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: receivings.map(r => ({
         id: r.id,
         reference_no: r.referenceNo,
