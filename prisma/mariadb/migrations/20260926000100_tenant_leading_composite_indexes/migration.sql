@@ -38,13 +38,12 @@ CREATE INDEX `payments_method_reference_idx` ON `payments` (`payment_method`, `m
 CREATE INDEX `journal_entries_company_status_date_idx` ON `journal_entries` (`company_id`, `status`, `entry_date`);
 DROP INDEX `journal_entries_company_id_idx` ON `journal_entries`;
 
--- The plan drives from journal_entries and then reads each entry's lines. A
--- covering index lets it take the account and amounts straight from the index
--- instead of fetching every line row by primary key. (A company-leading
--- (company_id, chart_of_account_id) index was tried first and the optimizer
--- never used it, so it is not added.)
-CREATE INDEX `journal_lines_entry_account_amounts_idx`
-  ON `journal_lines` (`journal_entry_id`, `chart_of_account_id`, `debit_base`, `credit_base`);
+-- No journal_lines index is added. Two were tried against a volume-loaded
+-- database -- (company_id, chart_of_account_id), and a covering
+-- (journal_entry_id, chart_of_account_id, debit_base, credit_base) -- and the
+-- optimizer used neither, so each would only have cost writes. An account-total
+-- query must read every line up to its date whatever the indexes; keeping it
+-- fast as the ledger grows needs stored period-end balances, not an index.
 
 -- Audit and security events: listed newest first per company, and purged per
 -- company by age in the retention job.

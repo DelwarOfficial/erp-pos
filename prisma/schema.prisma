@@ -3432,7 +3432,6 @@ model JournalLine {
   @@index([customerId])
   @@index([supplierId])
   @@index([productId])
-  @@index([journalEntryId, chartOfAccountId, debitBase, creditBase], map: "journal_lines_entry_account_amounts_idx")
   @@map("journal_lines")
 }
 
