@@ -281,8 +281,9 @@ export default function POSPage() {
         searchInputRef.current?.focus();
         return;
       }
-      // Enter triggers checkout only if not actively typing in inputs (other than the search box).
-      if (e.key === 'Enter' && !isTypingField && cart.length > 0 && !posting) {
+      // Let focused controls and open overlays handle their own Enter action.
+      const isInteractive = target?.closest('button, a, [role="button"], [role="combobox"], [role="menuitem"], [role="option"], [role="dialog"], [role="listbox"], [role="menu"]');
+      if (e.key === 'Enter' && !e.defaultPrevented && !e.repeat && !e.isComposing && !isTypingField && !isInteractive && cart.length > 0 && !posting) {
         e.preventDefault();
         void handleCheckout();
       }

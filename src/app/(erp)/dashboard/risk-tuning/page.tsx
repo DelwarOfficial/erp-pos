@@ -562,9 +562,9 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                     <TableCell colSpan={7} className="p-4">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                         <div>
-                          <Label className="text-xs">Outcome Type</Label>
+                          <Label htmlFor={`outcome-type-${a.id}`} className="text-xs">Outcome Type</Label>
                           <Select value={outcomeType} onValueChange={setOutcomeType}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger id={`outcome-type-${a.id}`}><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="completed">Completed</SelectItem>
                               <SelectItem value="no_issue">No Issue</SelectItem>
@@ -576,8 +576,9 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                           </Select>
                         </div>
                         <div>
-                          <Label className="text-xs">Loss Amount (৳)</Label>
+                          <Label htmlFor={`outcome-amount-${a.id}`} className="text-xs">Loss Amount (৳)</Label>
                           <Input
+                            id={`outcome-amount-${a.id}`}
                             type="number"
                             step="0.01"
                             placeholder="0.00"
@@ -586,8 +587,9 @@ function AssessmentsTable({ assessments, onOutcomeRecorded }: { assessments: Ris
                           />
                         </div>
                         <div className="md:col-span-2">
-                          <Label className="text-xs">Notes</Label>
+                          <Label htmlFor={`outcome-notes-${a.id}`} className="text-xs">Notes</Label>
                           <Textarea
+                            id={`outcome-notes-${a.id}`}
                             placeholder="Optional notes about this outcome…"
                             value={outcomeNotes}
                             onChange={(e) => setOutcomeNotes(e.target.value)}

@@ -79,7 +79,7 @@ export default function SecurityPage() {
         </CardHeader>
         <CardContent className="flex gap-3">
           <Select value={severity} onValueChange={setSeverity}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Severity" /></SelectTrigger>
+            <SelectTrigger aria-label="Filter by severity" className="w-44"><SelectValue placeholder="Severity" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All severities</SelectItem>
               <SelectItem value="critical">Critical</SelectItem>

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const probes = vi.hoisted(() => ({ count: vi.fn(), connect: vi.fn(), ping: vi.fn(), disconnect: vi.fn(), head: vi.fn() }));
+const probes = vi.hoisted(() => ({ count: vi.fn(), connect: vi.fn(), ping: vi.fn(), disconnect: vi.fn(), head: vi.fn(), get: vi.fn() }));
 vi.mock('@prisma/client', () => ({ PrismaClient: class { currency = { count: probes.count }; } }));
 vi.mock('@/lib/db/tenantClient', () => ({ applyTenantIsolation: (client: unknown) => client }));
 vi.mock('ioredis', () => ({ default: class {
-  connect = probes.connect; ping = probes.ping; disconnect = probes.disconnect;
+  connect = probes.connect; ping = probes.ping; disconnect = probes.disconnect; get = probes.get;
   on() { return this; }
 } }));
 vi.mock('@/lib/storage', () => ({ getStorage: () => ({ headObject: probes.head }) }));
@@ -15,7 +15,7 @@ describe('safe runtime health probes', () => {
     vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:1');
     vi.stubEnv('S3_BUCKET', ''); vi.stubEnv('DISABLE_S3_HEALTH', 'true');
     probes.count.mockResolvedValue(1); probes.connect.mockResolvedValue(undefined);
-    probes.ping.mockResolvedValue('PONG'); probes.head.mockResolvedValue({ exists: false });
+    probes.ping.mockResolvedValue('PONG'); probes.get.mockResolvedValue(null); probes.head.mockResolvedValue({ exists: false });
   });
   afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
@@ -62,5 +62,44 @@ describe('safe runtime health probes', () => {
     const pending = getRuntimeHealth();
     await vi.advanceTimersByTimeAsync(2001);
     expect(await pending).toMatchObject({ status: 'unavailable', checks: { database: 'fail' } });
+  });
+
+  // F-70: the worker was reported 'skipped' unconditionally, so a dead worker
+  // left /api/v1/health at 200.
+  describe('worker liveness where the worker is required', () => {
+    beforeEach(() => { vi.stubEnv('NODE_ENV', 'production'); });
+
+    it('is healthy while the heartbeat is fresh', async () => {
+      probes.get.mockResolvedValue(String(Date.now() - 5_000));
+      const { getRuntimeHealth } = await import('@/lib/health/runtime');
+      expect(await getRuntimeHealth()).toMatchObject({ status: 'ok', checks: { worker: 'ok' } });
+    });
+
+    it('degrades when the worker has stopped beating', async () => {
+      probes.get.mockResolvedValue(null); // key expired: worker stopped
+      const { getRuntimeHealth } = await import('@/lib/health/runtime');
+      expect(await getRuntimeHealth()).toMatchObject({ status: 'degraded', checks: { database: 'ok', redis: 'ok', worker: 'fail' } });
+    });
+
+    it('degrades on a stale heartbeat', async () => {
+      probes.get.mockResolvedValue(String(Date.now() - 61_000));
+      const { getRuntimeHealth } = await import('@/lib/health/runtime');
+      expect(await getRuntimeHealth()).toMatchObject({ status: 'degraded', checks: { worker: 'fail' } });
+    });
+
+    it('does not claim a healthy worker when the heartbeat cannot be read', async () => {
+      probes.get.mockRejectedValue(new Error('sensitive-redis-diagnostic'));
+      const { getRuntimeHealth } = await import('@/lib/health/runtime');
+      const result = await getRuntimeHealth();
+      expect(result).toMatchObject({ status: 'degraded', checks: { worker: 'unknown' } });
+      expect(JSON.stringify(result)).not.toContain('sensitive-redis-diagnostic');
+    });
+
+    it('turns the public probe to 503', async () => {
+      const { GET } = await import('@/app/api/v1/health/route');
+      const response = await GET();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ status: 'degraded', service: 'erp-pos' });
+    });
   });
 });

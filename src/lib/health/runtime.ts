@@ -3,7 +3,8 @@ import { applyTenantIsolation } from '@/lib/db/tenantClient';
 import IORedis from 'ioredis';
 import { getStorage } from '@/lib/storage';
 import packageInfo from '../../../package.json';
-import { healthResponseSchema, overallHealth, type HealthResponse } from './contract';
+import { healthResponseSchema, overallHealth, type CheckState, type HealthResponse } from './contract';
+import { readWorkerHealth, workerHealthRequired } from './workerHeartbeat';
 
 // Dedicated quiet probe connection. Preserve tenant guards; Currency is shared
 // reference data. The normal client logs raw Prisma exceptions on failure.
@@ -19,7 +20,7 @@ async function bounded<T>(work: Promise<T>): Promise<T> {
 }
 async function checkRuntime(): Promise<HealthResponse> {
   const started = Date.now();
-  const checks: HealthResponse['checks'] = { database: 'unknown', redis: 'unknown', storage: 'skipped', worker: 'skipped' };
+  const checks: HealthResponse['checks'] = { database: 'unknown', redis: 'unknown', storage: 'skipped', worker: workerHealthRequired() ? 'unknown' : 'skipped' };
   const details: HealthResponse['details'] = {};
   await Promise.all([
     (async () => {
@@ -34,9 +35,22 @@ async function checkRuntime(): Promise<HealthResponse> {
         commandTimeout: 1500, maxRetriesPerRequest: 0, retryStrategy: () => null, enableOfflineQueue: false });
       // No raw connection/error logging from this dedicated probe connection.
       redis.on('error', () => undefined);
-      try { await bounded(redis.connect()); checks.redis = await bounded(redis.ping()) === 'PONG' ? 'ok' : 'fail'; }
-      catch { checks.redis = 'fail'; }
-      finally { redis.disconnect(); details.redis = { response_ms: Date.now() - start }; }
+      let redisState: CheckState = 'fail';
+      // The worker's heartbeat lives in the same Redis. Unreadable stays 'unknown'.
+      let workerState: CheckState = workerHealthRequired() ? 'unknown' : 'skipped';
+      try {
+        await bounded(redis.connect());
+        redisState = await bounded(redis.ping()) === 'PONG' ? 'ok' : 'fail';
+        if (redisState === 'ok' && workerState === 'unknown') {
+          try { workerState = await bounded(readWorkerHealth(redis)); } catch { /* stays unknown: degraded */ }
+        }
+      }
+      catch { redisState = 'fail'; }
+      finally {
+        redis.disconnect(); details.redis = { response_ms: Date.now() - start };
+        checks.redis = redisState;
+        checks.worker = workerState;
+      }
     })(),
     (async () => {
       if (process.env.DISABLE_S3_HEALTH === 'true' || !process.env.S3_BUCKET) return;

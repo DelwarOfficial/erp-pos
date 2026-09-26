@@ -346,7 +346,9 @@ test('POS populated cart keeps quantity actions visible on phones', async ({ pag
   await page.getByRole('group', { name: 'Product search results' }).getByRole('button').click();
   await page.getByRole('button', { name: 'Increase quantity' }).click();
   await expect(page.getByRole('button', { name: 'Decrease quantity' })).toBeVisible();
-  await fits(page);
-  await page.getByRole('button', { name: 'Remove item' }).click();
+  // Enter on a focused action must activate that action, not global checkout.
+  await page.getByRole('button', { name: 'Remove item' }).focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByText('Scan or search a product to start.', { exact: true })).toBeVisible();
+  await fits(page);
 });

@@ -15,6 +15,7 @@ import { processCommunicationCampaign } from '@/lib/communication/campaignProces
 import { runRetentionJob } from '@/lib/retention/job';
 import { assertProductionSecurityConfig } from '@/lib/config/productionGuards';
 import { initWorkerErrorTracking, captureJobFailure, flushWorkerErrorTracking } from '@/workers/sentry';
+import { clearWorkerHeartbeat, writeWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '@/lib/health/workerHeartbeat';
 
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10);
 
@@ -93,6 +94,21 @@ export async function startWorkers(): Promise<void> {
 
   log('info', 'All workers started');
 
+  // ── Heartbeat for /api/v1/health (src/lib/health/workerHeartbeat.ts) ──
+  // Beats only while every worker is running; a crashed, hung or stopped
+  // process stops beating and the key expires, which degrades health.
+  const workers = [outboxWorker, communicationWorker, reconciliationWorker, reservationWorker, retentionWorker];
+  const beat = async () => {
+    try {
+      const alive = await writeWorkerHeartbeat(getRedisConnection(), workers.every(w => w.isRunning()));
+      if (!alive) log('warn', 'Heartbeat withheld: not every worker is running');
+    } catch (e) {
+      log('warn', 'Heartbeat write failed', { error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  await beat();
+  const heartbeat = setInterval(beat, WORKER_HEARTBEAT_INTERVAL_MS);
+
   // ── Schedule daily reconciliation + risk alert evaluation ──
   // BullMQ repeatable job — runs every day at 9am Asia/Dhaka (3am UTC).
   // No external cron service needed.
@@ -121,6 +137,8 @@ export async function startWorkers(): Promise<void> {
   // Graceful shutdown
   const shutdown = async () => {
     log('info', 'Shutting down workers...');
+    clearInterval(heartbeat);
+    await clearWorkerHeartbeat(getRedisConnection()).catch(() => undefined);
     await Promise.allSettled([
       outboxWorker.close(),
       communicationWorker.close(),
