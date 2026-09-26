@@ -11,6 +11,15 @@ import { Prisma } from '@prisma/client';
 import { nextDocumentNumber } from '@/lib/numbering';
 import { postStockCount } from './PostStockCount';
 
+/**
+ * The route's transaction timeout. A 5,000-line count is now some twenty
+ * statements, but they insert about 8,300 rows (lines and movements), and on
+ * the disposable MariaDB (default 128 MB buffer pool) inserts alone run 1-3 ms
+ * a row: 13-25 s, too close to the default 30 s. The count holds its locks for
+ * that long either way; the timeout only decides whether it can finish.
+ */
+export const STOCK_COUNT_TRANSACTION_TIMEOUT_MS = 120_000;
+
 /** Rows per multi-row INSERT: large enough to amortise, small enough to bound a statement. */
 export const STOCK_COUNT_INSERT_BATCH = 1_000;
 

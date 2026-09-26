@@ -3,8 +3,9 @@
 //
 // Each command was checked for a duplicate sequence with its own query and
 // recorded with its own insert, inside the transaction that also posts every
-// sale. This runs 500 real offline cash sales through syncOfflineBatch on the
-// disposable MariaDB, then replays the batch to check duplicate detection.
+// sale. This runs 200 real offline cash sales through syncOfflineBatch on the
+// disposable MariaDB, replays the batch to check duplicate detection, and rolls
+// everything back.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
@@ -52,32 +53,41 @@ beforeAll(async () => {
 
 afterAll(() => db.$disconnect());
 
+// Rolled back at the end: sales carry immutable payment allocations and stock
+// movements, so a committed batch could never be removed, and every run would
+// grow the disposable database and slow the next.
+const ROLLBACK = new Error('ROLLBACK_OFFLINE_SYNC_PROBE');
+
 describe('offline sync at the batch limit', () => {
-  it('applies every sale inside the route transaction\'s timeout', async () => {
-    const started = Date.now();
-    const result = await withTenant(ctx(), tx => syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands }, randomUUID()));
-    const elapsedMs = Date.now() - started;
-    console.log(`F-71 offline sync: ${COMMANDS} cash sales applied in ${elapsedMs} ms`);
+  it('applies every sale inside the route timeout, then deduplicates a replay and reports a conflict', async () => {
+    try {
+      await withTenant(ctx(), async tx => {
+        const started = Date.now();
+        const result = await syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands }, randomUUID());
+        const elapsedMs = Date.now() - started;
+        console.log(`F-71 offline sync: ${COMMANDS} cash sales applied in ${elapsedMs} ms`);
+        expect(result.body).toMatchObject({ synced_count: COMMANDS, applied_count: COMMANDS, conflict_count: 0, status: 'completed' });
+        // The route's own transaction has the default 30-second timeout.
+        expect(elapsedMs).toBeLessThan(30_000);
+        expect(await tx.sale.count({ where: { companyId: COMPANY } })).toBe(COMMANDS);
+        const stock = await tx.warehouseStock.findFirstOrThrow({ where: { companyId: COMPANY, warehouseId, productId } });
+        expect(stock.qtyOnHand.toFixed(0)).toBe(String(10_000 - COMMANDS));
 
-    expect(result.body).toMatchObject({ synced_count: COMMANDS, applied_count: COMMANDS, conflict_count: 0, status: 'completed' });
-    expect(elapsedMs).toBeLessThan(30_000);
-    expect(await db.sale.count({ where: { companyId: COMPANY } })).toBe(COMMANDS);
-    const stock = await db.warehouseStock.findFirstOrThrow({ where: { companyId: COMPANY, warehouseId, productId } });
-    expect(stock.qtyOnHand.toFixed(0)).toBe(String(10_000 - COMMANDS));
-  }, 120_000);
+        // The same batch again: every command a duplicate, nothing posted twice.
+        const replay = await syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands }, randomUUID());
+        expect(replay.body).toMatchObject({ synced_count: 0, applied_count: 0, conflict_count: 0 });
+        expect(replay.body.results.every((r: { status: string }) => r.status === 'duplicate')).toBe(true);
 
-  it('treats a replayed batch as duplicates and posts nothing twice', async () => {
-    const result = await withTenant(ctx(), tx => syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands }, randomUUID()));
-    expect(result.body).toMatchObject({ synced_count: 0, applied_count: 0, conflict_count: 0 });
-    expect(result.body.results.every((r: { status: string }) => r.status === 'duplicate')).toBe(true);
-    expect(await db.sale.count({ where: { companyId: COMPANY } })).toBe(COMMANDS);
-  }, 120_000);
-
-  it('flags a changed payload under a used sequence number as a conflict', async () => {
-    const payload = { ...commands[0].payload, business_date: new Date(Date.now() + 1000).toISOString() };
-    const changed = { ...commands[0], payload, payload_hash: hash(payload) };
-    const result = await withTenant(ctx(), tx => syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands: [changed] }, randomUUID()));
-    expect(result.body).toMatchObject({ conflict_count: 1, applied_count: 0, status: 'partial' });
-    expect(await db.sale.count({ where: { companyId: COMPANY } })).toBe(COMMANDS);
-  }, 60_000);
+        // A used sequence number with a different payload: a conflict, reported.
+        const payload = { ...commands[0].payload, business_date: new Date(Date.now() + 1000).toISOString() };
+        const changed = { ...commands[0], payload, payload_hash: hash(payload) };
+        const conflict = await syncOfflineBatch(tx, { companyId: COMPANY, userId, deviceId, commands: [changed] }, randomUUID());
+        expect(conflict.body).toMatchObject({ conflict_count: 1, applied_count: 0, status: 'partial' });
+        expect(await tx.sale.count({ where: { companyId: COMPANY } })).toBe(COMMANDS);
+        throw ROLLBACK;
+      }, { timeout: 120_000 });
+    } catch (error) {
+      if (error !== ROLLBACK) throw error;
+    }
+  }, 180_000);
 });

@@ -45,7 +45,8 @@ export type UnitOfWork<T> = (tx: TransactionClient) => Promise<T>;
 export async function withTenant<T>(
   ctx: TenantContext,
   work: UnitOfWork<T>,
-  options?: { isolationLevel?: 'Serializable' | 'ReadCommitted' },
+  // timeout: only for a unit of work measured to need longer, and say why there.
+  options?: { isolationLevel?: 'Serializable' | 'ReadCommitted'; timeout?: number },
 ): Promise<T> {
   return tenantStorage.run(ctx, async (): Promise<T> => {
     // SQLite only supports Serializable; ReadCommitted is ignored.
@@ -61,7 +62,7 @@ export async function withTenant<T>(
       return tenantStorage.run({ ...ctx, transactionClient: tx }, async () => await work(tx));
     }, {
       isolationLevel: 'Serializable',
-      timeout: 30_000,
+      timeout: options?.timeout ?? 30_000,
     }) as T;
     return result;
   });

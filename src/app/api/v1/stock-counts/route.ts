@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
-import { createStockCount } from '@/domain/commands/m2/CreateStockCount';
+import { createStockCount, STOCK_COUNT_TRANSACTION_TIMEOUT_MS } from '@/domain/commands/m2/CreateStockCount';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
             };
           },
           tx,
-        )),
+        ), { timeout: STOCK_COUNT_TRANSACTION_TIMEOUT_MS }),
     );
     return NextResponse.json(result.body, { status: result.status });
   } catch (e) {

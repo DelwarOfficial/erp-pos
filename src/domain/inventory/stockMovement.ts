@@ -61,10 +61,22 @@ export interface StockMovementResult {
   movingAverageCostAfter: string;
 }
 
-export async function postStockMovement(
-  tx: Prisma.TransactionClient,
-  params: PostStockMovementParams,
-): Promise<StockMovementResult> {
+/** The stock row a movement is planned against. */
+export interface StockRowState {
+  id: string;
+  qtyOnHand: Prisma.Decimal;
+  qtyDamaged: Prisma.Decimal;
+  qtyInTransitOut: Prisma.Decimal;
+  movingAverageCost: Prisma.Decimal;
+  version: number;
+}
+
+/**
+ * The arithmetic and checks of one movement against one stock row, without
+ * touching the database: the movement row to insert and the stock row's next
+ * values. postStockMovement applies one; postStockCount applies many in bulk.
+ */
+export function planStockMovement(stock: StockRowState, params: PostStockMovementParams) {
   const qtyDelta = typeof params.qtyDelta === 'string' ? parseFloat(params.qtyDelta) : params.qtyDelta;
   const unitCost = typeof params.unitCost === 'string' ? parseFloat(params.unitCost) : params.unitCost;
 
@@ -76,32 +88,6 @@ export async function postStockMovement(
   }
 
   const stockBucket: StockBucket = params.stockBucket ?? 'on_hand';
-
-  let stock = await tx.warehouseStock.findUnique({
-    where: {
-      companyId_warehouseId_productId: {
-        companyId: params.companyId,
-        warehouseId: params.warehouseId,
-        productId: params.productId,
-      },
-    },
-  });
-
-  if (!stock) {
-    stock = await tx.warehouseStock.create({
-      data: {
-        companyId: params.companyId,
-        warehouseId: params.warehouseId,
-        productId: params.productId,
-        qtyOnHand: 0,
-        qtyReserved: 0,
-        qtyInTransitOut: 0,
-        qtyDamaged: 0,
-        movingAverageCost: 0,
-        version: 0,
-      },
-    });
-  }
 
   const qtyOnHandBefore = parseFloat(stock.qtyOnHand.toString());
   const macBefore = parseFloat(stock.movingAverageCost.toString());
@@ -153,8 +139,7 @@ export async function postStockMovement(
     movementUnitCost: isOutbound ? stock.movingAverageCost.toString() : String(params.unitCost),
   }) : null;
 
-  const movement = await tx.stockMovement.create({
-    data: {
+  const movementData = {
       companyId: params.companyId,
       eventId: params.eventId,
       eventLineNo: params.eventLineNo,
@@ -173,28 +158,68 @@ export async function postStockMovement(
       postedAt: new Date(),
       createdBy: params.createdBy,
       metadata: JSON.stringify(params.metadata ?? {}),
-    },
-  });
-
-  const updated = await tx.warehouseStock.updateMany({
-    where: { id: stock.id, companyId: params.companyId, version: stock.version },
-    data: {
+  };
+  const stockData = {
       qtyOnHand: projection?.quantity ?? newQtyOnHand,
       qtyDamaged: newQtyDamaged,
       qtyInTransitOut: newQtyInTransit,
       movingAverageCost: projection?.averageCost ?? macAfter,
-      version: { increment: 1 },
-      updatedAt: new Date(),
+  };
+  return {
+    movementData, stockData,
+    qtyOnHandBefore: qtyOnHandBefore.toString(),
+    qtyOnHandAfter: String(projection?.quantity ?? newQtyOnHand),
+    movingAverageCostBefore: macBefore.toString(),
+    movingAverageCostAfter: String(projection?.averageCost ?? macAfter),
+  };
+}
+
+export async function postStockMovement(
+  tx: Prisma.TransactionClient,
+  params: PostStockMovementParams,
+): Promise<StockMovementResult> {
+  let stock = await tx.warehouseStock.findUnique({
+    where: {
+      companyId_warehouseId_productId: {
+        companyId: params.companyId,
+        warehouseId: params.warehouseId,
+        productId: params.productId,
+      },
     },
+  });
+
+  if (!stock) {
+    stock = await tx.warehouseStock.create({
+      data: {
+        companyId: params.companyId,
+        warehouseId: params.warehouseId,
+        productId: params.productId,
+        qtyOnHand: 0,
+        qtyReserved: 0,
+        qtyInTransitOut: 0,
+        qtyDamaged: 0,
+        movingAverageCost: 0,
+        version: 0,
+      },
+    });
+  }
+
+  const plan = planStockMovement(stock, params);
+
+  const movement = await tx.stockMovement.create({ data: plan.movementData });
+
+  const updated = await tx.warehouseStock.updateMany({
+    where: { id: stock.id, companyId: params.companyId, version: stock.version },
+    data: { ...plan.stockData, version: { increment: 1 }, updatedAt: new Date() },
   });
   if (updated.count !== 1) throw new DomainError('CONCURRENT_MODIFICATION', 'Stock changed during posting; retry the transaction', {}, 409);
 
   return {
     movementId: movement.id,
-    qtyOnHandBefore: qtyOnHandBefore.toString(),
-    qtyOnHandAfter: projection?.quantity ?? newQtyOnHand.toString(),
-    movingAverageCostBefore: macBefore.toString(),
-    movingAverageCostAfter: projection?.averageCost ?? macAfter.toString(),
+    qtyOnHandBefore: plan.qtyOnHandBefore,
+    qtyOnHandAfter: plan.qtyOnHandAfter,
+    movingAverageCostBefore: plan.movingAverageCostBefore,
+    movingAverageCostAfter: plan.movingAverageCostAfter,
   };
 }
 

@@ -1,16 +1,17 @@
 // F-71 regression: a 5,000-line stock count, created and posted in the route's
-// own transaction (withTenant: Serializable, 30-second timeout).
+// own transaction (withTenant: Serializable, with the route's timeout).
 //
-// Lines were inserted one round trip at a time and posting then read each
-// line's stock row separately again, all inside that transaction, holding its
-// locks throughout. This runs the same unit of work end to end on the
-// disposable MariaDB and checks it finishes inside the timeout and posts
-// exactly.
+// Every line was its own round trip, and posting ran postStockMovement per
+// line: some 10,000 sequential statements inside a 30-second transaction,
+// which a 5,000-line count overran. Lines and movements are now written in
+// bulk, and the route's transaction has a measured timeout of its own. This
+// runs the same unit of work end to end on the disposable MariaDB and checks
+// it finishes inside that timeout and posts exactly.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { withTenant } from '@/lib/db/transaction';
-import { createStockCount } from '@/domain/commands/m2/CreateStockCount';
+import { createStockCount, STOCK_COUNT_TRANSACTION_TIMEOUT_MS } from '@/domain/commands/m2/CreateStockCount';
 import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const db = new PrismaClient();
@@ -20,6 +21,18 @@ let branchId: string;
 let warehouseId: string;
 let userId: string;
 let productIds: string[];
+
+// Each test's writes are rolled back: movements are immutable by trigger, so a
+// committed 5,000-line count could never be removed, and every run would grow
+// the disposable database and slow the next.
+const ROLLBACK = new Error('ROLLBACK_STOCK_COUNT_PROBE');
+async function probe(context: never, work: (tx: Prisma.TransactionClient) => Promise<void>) {
+  try {
+    await withTenant(context, async tx => { await work(tx); throw ROLLBACK; }, { timeout: STOCK_COUNT_TRANSACTION_TIMEOUT_MS });
+  } catch (error) {
+    if (error !== ROLLBACK) throw error;
+  }
+}
 
 const ctx = (branchIds?: string[]) => ({
   companyId: COMPANY, branchIds: branchIds ?? [], allBranches: !branchIds, isGlobal: false,
@@ -46,53 +59,63 @@ beforeAll(async () => {
   productIds = Array.from({ length: LINES }, (_, i) => `${prefix}${i + 1}`);
 }, 120_000);
 
-afterAll(() => db.$disconnect());
+afterAll(async () => {
+  // The seed is plain rows; nothing committed references it.
+  await db.stockCount.deleteMany({ where: { companyId: COMPANY } });
+  await db.warehouseStock.deleteMany({ where: { companyId: COMPANY } });
+  await db.product.deleteMany({ where: { companyId: COMPANY } });
+  await db.$disconnect();
+}, 120_000);
 
 describe('stock count at 5,000 lines', () => {
   it('creates and posts inside the route transaction\'s timeout, exactly', async () => {
     // Lines alternate: counted 10.3333 (gain 0.3333), counted 9 (loss 1), counted 10 (no variance).
     const counted = (i: number) => ['10.3333', '9', '10'][i % 3];
-    const started = Date.now();
-    const result = await withTenant(ctx(), tx => createStockCount(tx, {
-      companyId: COMPANY, branchId, warehouseId, scopeType: 'all', blindCount: true, movementFreezePolicy: 'warn',
-      createdBy: userId, post: true,
-      items: productIds.map((productId, i) => ({ productId, expectedQuantity: '10', countedQuantity: counted(i) })),
-    }, randomUUID()));
-    const elapsedMs = Date.now() - started;
-    console.log(`F-71 stock count: ${LINES} lines created and posted in ${elapsedMs} ms`);
+    await probe(ctx(), async tx => {
+      const started = Date.now();
+      const result = await createStockCount(tx, {
+        companyId: COMPANY, branchId, warehouseId, scopeType: 'all', blindCount: true, movementFreezePolicy: 'warn',
+        createdBy: userId, post: true,
+        items: productIds.map((productId, i) => ({ productId, expectedQuantity: '10', countedQuantity: counted(i) })),
+      }, randomUUID());
+      const elapsedMs = Date.now() - started;
+      console.log(`F-71 stock count: ${LINES} lines created and posted in ${elapsedMs} ms`);
 
-    const gains = Math.ceil(LINES / 3);                 // i % 3 === 0
-    const losses = Math.ceil((LINES - 1) / 3);          // i % 3 === 1
-    expect(result).toMatchObject({ status: 'posted', itemsCount: LINES, adjustmentsPosted: gains + losses });
-    expect(elapsedMs).toBeLessThan(30_000);
+      const gains = Math.ceil(LINES / 3);                 // i % 3 === 0
+      const losses = Math.ceil((LINES - 1) / 3);          // i % 3 === 1
+      expect(result).toMatchObject({ status: 'posted', itemsCount: LINES, adjustmentsPosted: gains + losses });
+      expect(elapsedMs).toBeLessThan(STOCK_COUNT_TRANSACTION_TIMEOUT_MS);
 
-    const lines = await db.stockCountItem.aggregate({ where: { companyId: COMPANY, stockCountId: result.id }, _count: { _all: true }, _sum: { varianceQuantity: true } });
-    expect(lines._count._all).toBe(LINES);
-    // Decimal, exactly: 1,667 × 0.3333 − 1,667 × 1.
-    expect(lines._sum.varianceQuantity!.toFixed(4)).toBe('-1111.3889');
+      const lines = await tx.stockCountItem.aggregate({ where: { companyId: COMPANY, stockCountId: result.id }, _count: { _all: true }, _sum: { varianceQuantity: true } });
+      expect(lines._count._all).toBe(LINES);
+      // Decimal, exactly: 1,667 × 0.3333 − 1,667 × 1.
+      expect(lines._sum.varianceQuantity!.toFixed(4)).toBe('-1111.3889');
 
-    const [stock] = await db.$queryRaw<Array<{ qty: string }>>`
-      SELECT CAST(SUM(qty_on_hand) AS CHAR) AS qty FROM warehouse_stocks WHERE company_id = ${COMPANY} AND warehouse_id = ${warehouseId}`;
-    expect(Number(stock.qty).toFixed(4)).toBe((LINES * 10 - 1111.3889).toFixed(4));
-    const movements = await db.stockMovement.count({ where: { companyId: COMPANY, referenceId: result.id } });
-    expect(movements).toBe(gains + losses);
-  }, 120_000);
+      const stock = await tx.warehouseStock.aggregate({ where: { companyId: COMPANY, warehouseId }, _sum: { qtyOnHand: true } });
+      expect(stock._sum.qtyOnHand!.toFixed(4)).toBe(new Prisma.Decimal(LINES * 10).minus('1111.3889').toFixed(4));
+      const movements = await tx.stockMovement.aggregate({ where: { companyId: COMPANY, referenceId: result.id }, _count: { _all: true }, _sum: { qtyDelta: true } });
+      expect(movements._count._all).toBe(gains + losses);
+      expect(movements._sum.qtyDelta!.toFixed(4)).toBe('-1111.3889');
+    });
+  }, 180_000);
 
   it('stays inside the timeout for a user limited to the branch', async () => {
     // For a branch-limited user the tenant extension checks each inserted line's
     // parent count against the user's branches; it did so once per line.
-    const started = Date.now();
-    const result = await withTenant(ctx([branchId]), tx => createStockCount(tx, {
-      companyId: COMPANY, branchId, warehouseId, scopeType: 'all', blindCount: true, movementFreezePolicy: 'warn',
-      createdBy: userId, post: false,
-      items: productIds.map(productId => ({ productId, expectedQuantity: '10', countedQuantity: '10' })),
-    }, randomUUID()));
-    const elapsedMs = Date.now() - started;
-    console.log(`F-71 stock count, branch-limited: ${LINES} lines created in ${elapsedMs} ms`);
-    expect(result).toMatchObject({ status: 'draft', itemsCount: LINES });
-    expect(await db.stockCountItem.count({ where: { stockCountId: result.id } })).toBe(LINES);
-    expect(elapsedMs).toBeLessThan(30_000);
-  }, 120_000);
+    await probe(ctx([branchId]), async tx => {
+      const started = Date.now();
+      const result = await createStockCount(tx, {
+        companyId: COMPANY, branchId, warehouseId, scopeType: 'all', blindCount: true, movementFreezePolicy: 'warn',
+        createdBy: userId, post: false,
+        items: productIds.map(productId => ({ productId, expectedQuantity: '10', countedQuantity: '10' })),
+      }, randomUUID());
+      const elapsedMs = Date.now() - started;
+      console.log(`F-71 stock count, branch-limited: ${LINES} lines created in ${elapsedMs} ms`);
+      expect(result).toMatchObject({ status: 'draft', itemsCount: LINES });
+      expect(await tx.stockCountItem.count({ where: { stockCountId: result.id } })).toBe(LINES);
+      expect(elapsedMs).toBeLessThan(STOCK_COUNT_TRANSACTION_TIMEOUT_MS);
+    });
+  }, 180_000);
 
   it('still refuses a user outside the count\'s branch, before inserting anything', async () => {
     // The per-operation cache must record only parents that passed the check.
