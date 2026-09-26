@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
   deviceFindFirst: vi.fn(),
   batchCreate: vi.fn(),
   batchUpdate: vi.fn(),
-  commandFindFirst: vi.fn(),
+  commandFindMany: vi.fn(),
+  batchAggregate: vi.fn(),
   commandCreate: vi.fn(),
   auditCreate: vi.fn(),
   postSale: vi.fn(),
@@ -81,14 +82,15 @@ describe('offline sync applies the commands it accepts', () => {
     });
     mocks.tenant.mockImplementation(async (_ctx: unknown, work: (tx: unknown) => Promise<unknown>) => work({
       device: { findFirst: mocks.deviceFindFirst },
-      offlineSyncBatch: { create: mocks.batchCreate, update: mocks.batchUpdate },
-      offlineCommand: { findFirst: mocks.commandFindFirst, create: mocks.commandCreate },
+      offlineSyncBatch: { create: mocks.batchCreate, update: mocks.batchUpdate, aggregate: mocks.batchAggregate },
+      offlineCommand: { findMany: mocks.commandFindMany, create: mocks.commandCreate },
       auditLog: { create: mocks.auditCreate },
     }));
     mocks.deviceFindFirst.mockResolvedValue({ id: DEVICE_ID, companyId: 'company-a', status: 'active' });
     mocks.batchCreate.mockResolvedValue({ id: 'batch-1' });
     mocks.batchUpdate.mockResolvedValue({});
-    mocks.commandFindFirst.mockResolvedValue(null);
+    mocks.commandFindMany.mockResolvedValue([]);
+    mocks.batchAggregate.mockResolvedValue({ _max: { batchNumber: null } });
     mocks.commandCreate.mockResolvedValue({});
     mocks.auditCreate.mockResolvedValue({});
     mocks.postSale.mockResolvedValue({ saleId: 'sale-1', referenceNo: 'INV-000001' });
@@ -172,5 +174,21 @@ describe('offline sync applies the commands it accepts', () => {
       idempotency_key: 'c'.repeat(16),
     }]));
     expect(mocks.permission).toHaveBeenCalledWith(AUTH, 'sale.post');
+  });
+
+  // F-71: 500 real cash sales overran the 30-second transaction and rolled
+  // back; the limit is now what fits with room to spare.
+  it('rejects a batch over the limit before touching the database', async () => {
+    const payload = { note: 'x' };
+    const command = (i: number) => ({ command_type: 'held_sale_draft', sequence_number: i + 1, payload, payload_hash: hashOf(payload), idempotency_key: `c${i}`.padEnd(16, 'c') });
+    const response = await syncRoute(request(Array.from({ length: 201 }, (_, i) => command(i))));
+    expect(response.status).toBe(400);
+    expect(mocks.tenant).not.toHaveBeenCalled();
+  });
+
+  it('numbers batches per device instead of writing a timestamp into an INT', async () => {
+    mocks.batchAggregate.mockResolvedValue({ _max: { batchNumber: 41 } });
+    await syncRoute(request([{ command_type: 'held_sale_draft', sequence_number: 1, payload: {}, payload_hash: hashOf({}), idempotency_key: 'c'.repeat(16) }]));
+    expect(mocks.batchCreate.mock.calls[0][0].data.batchNumber).toBe(42);
   });
 });
