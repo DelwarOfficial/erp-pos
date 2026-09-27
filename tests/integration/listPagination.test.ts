@@ -46,7 +46,12 @@ beforeAll(async () => {
   await db.taxComponent.create({ data: { companyId: B, componentCode: 'OTHER', name: 'Other', componentType: 'vat', effectiveFrom: new Date('2026-01-01') } });
 }, 120_000);
 
-afterAll(() => db.$disconnect());
+afterAll(async () => {
+  // Nothing references the seeded components; leaving them grows the
+  // disposable database by 2,500 rows a run.
+  await db.taxComponent.deleteMany({ where: { companyId: { in: [A, B] } } });
+  await db.$disconnect();
+});
 
 describe('cursor-paged list endpoints', () => {
   it('bounds a request with no parameters, and says more remain', async () => {

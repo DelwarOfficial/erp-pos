@@ -168,7 +168,16 @@ beforeAll(async () => {
   }
 }, 300_000);
 
-afterAll(() => db.$disconnect());
+afterAll(async () => {
+  // The reports read through the global client, so the bulk rows are committed;
+  // remove them, or every run grows the disposable database by ~20,000 rows and
+  // slows the rest of the suite. Nothing immutable references them. The handful
+  // of AR, COD and target rows carry immutable allocations and stay.
+  await db.$executeRawUnsafe('DELETE FROM warehouse_stocks WHERE company_id IN (?, ?)', A, B);
+  await db.$executeRawUnsafe('DELETE FROM products WHERE company_id IN (?, ?)', A, B);
+  await db.$executeRawUnsafe('DELETE FROM sales WHERE id LIKE ? OR id LIKE ?', `sa-${tag}-%`, `sb-${tag}-%`);
+  await db.$disconnect();
+}, 120_000);
 
 describe('sales summary across the old 10,000-row cap', () => {
   it.each([
