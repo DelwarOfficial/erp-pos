@@ -59,10 +59,12 @@ describe('MariaDB 11.8 migration compatibility', () => {
     expect(invariants).toContain('UNIQUE INDEX `uq_document_sequences_scope`');
     expect(invariants).toContain('UNIQUE INDEX `uq_categories_parent_scope_name`');
     expect(invariants).toContain('UNIQUE INDEX `uq_product_prices_scope`');
-    expect(schema).toContain('@@unique([companyId, branchScope, documentType, fiscalYear])');
-    expect(schema).toContain('@@unique([companyId, parentScope, name])');
+    // The schema names each unique as the migration created it, so Prisma does
+    // not propose renaming the index.
+    expect(schema).toContain('@@unique([companyId, branchScope, documentType, fiscalYear], map: "uq_document_sequences_scope")');
+    expect(schema).toContain('@@unique([companyId, parentScope, name], map: "uq_categories_parent_scope_name")');
     expect(schema).toContain(
-      '@@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom])',
+      '@@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom], map: "uq_product_prices_scope")',
     );
   });
 

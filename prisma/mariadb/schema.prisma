@@ -242,6 +242,9 @@ model Company {
   fixedAssetDepreciations FixedAssetDepreciation[]
   bankReconciliations     BankReconciliation[]
   bankReconciliationLines BankReconciliationLine[]
+  cashierDevicePins     CashierDevicePin[]
+  documentExchangeRates DocumentExchangeRate[]
+  riskThresholdChanges  RiskThresholdChange[]
 
   @@index([status])
   @@map("companies")
@@ -499,6 +502,7 @@ model User {
   userNotifications   UserNotification[]  @relation("UserNotificationUser")
   legalHoldsDeclared  LegalHold[]         @relation("LegalHoldDeclaredBy")
   printJobsRequested  PrintJob[]          @relation("PrintJobRequestedBy")
+  cashierDevicePins CashierDevicePin[]
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -601,6 +605,7 @@ model Device {
   auditLogs         AuditLog[]
   // Gap model backward relations
   stockBudgetLeases StockBudgetLease[] @relation("StockBudgetDevice")
+  cashierDevicePins CashierDevicePin[]
 
   @@unique([companyId, branchId, label])
   @@index([companyId])
@@ -675,8 +680,13 @@ model CashierDevicePin {
   updatedAt DateTime @default(now()) @map("updated_at")
   revokedAt DateTime? @map("revoked_at")
 
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  device  Device  @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
   @@unique([userId, deviceId])
   @@index([companyId])
+  @@index([deviceId])
   @@map("cashier_device_pins")
 }
 
@@ -760,7 +770,7 @@ model DocumentSequence {
   branch  Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // DB-enforced by uq_document_sequences_scope in the critical invariants migration.
-  @@unique([companyId, branchScope, documentType, fiscalYear])
+  @@unique([companyId, branchScope, documentType, fiscalYear], map: "uq_document_sequences_scope")
   @@index([companyId, documentType, fiscalYear])
   @@map("document_sequences")
 }
@@ -865,6 +875,7 @@ model DocumentExchangeRate {
   rateToBase   Decimal @map("rate_to_base")
   rateDate     DateTime @map("rate_date")
 
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   currency Currency @relation(fields: [currencyCode], references: [code])
 
   @@index([companyId])
@@ -1113,7 +1124,7 @@ model Category {
   // guarded by migration-managed CHECK (parent_scope = IFNULL(parent_id, '')).
   // Writers MUST set parentScope = parentId ?? ''.
   // DB-enforced by uq_categories_parent_scope_name in the critical invariants migration.
-  @@unique([companyId, parentScope, name])
+  @@unique([companyId, parentScope, name], map: "uq_categories_parent_scope_name")
   @@index([companyId])
   @@index([parentId])
   @@index([isActive])
@@ -1423,7 +1434,7 @@ model ProductPrice {
 
   // DB-enforced by uq_product_prices_scope in the critical invariants migration.
   // MariaDB nullable-scope uniqueness via normalized scope columns (see fields above).
-  @@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom])
+  @@unique([companyId, productId, branchScope, customerGroupScope, currencyCode, validFrom], map: "uq_product_prices_scope")
   @@index([companyId])
   @@index([productId])
   @@index([branchId])
@@ -3948,8 +3959,8 @@ model LeadActivity {
   companyId    String   @map("company_id")
   leadId       String   @map("lead_id")
   activityType String   @map("activity_type")
-  summary      String
-  details      String?
+  summary      String @db.Text
+  details      String? @db.Text
   scheduledAt  DateTime? @map("scheduled_at")
   completedAt  DateTime? @map("completed_at")
   createdBy    String   @map("created_by")
@@ -4242,7 +4253,7 @@ model OfflineCommand {
   deviceId        String   @map("device_id")
   commandType     String   @map("command_type") // cash_sale/held_sale_draft/shift_open/shift_close/customer_create/receipt_reprint
   sequenceNumber  Int      @map("sequence_number")
-  payload         String   @default("{}") // JSONB — signed command data
+  payload         String @db.Text   @default("{}") // JSONB — signed command data
   payloadHash     String   @map("payload_hash")
   idempotencyKey  String   @map("idempotency_key")
   status          String   @default("pending") // pending/synced/applied/conflict/cancelled
@@ -4933,7 +4944,7 @@ model DataSubjectRequest {
   customerId      String?  @map("customer_id")
   supplierId      String?  @map("supplier_id")
   status          String   @default("open") // open/in_progress/completed/rejected
-  details         String?
+  details         String? @db.Text
   resolvedBy      String?  @map("resolved_by")
   resolvedAt      DateTime? @map("resolved_at")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -5004,6 +5015,8 @@ model RiskThresholdChange {
   reason      String?
   changedBy   String   @map("changed_by") // user ID or "system"
   changedAt   DateTime @default(now()) @map("changed_at")
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([companyId])
   @@index([thresholdKey])

@@ -1914,16 +1914,59 @@
      "unique": false,
      "columns": "company_id"
     },
+    "cashier_device_pins_device_id_idx": {
+     "unique": false,
+     "columns": "device_id"
+    },
     "cashier_device_pins_user_id_device_id_key": {
      "unique": true,
      "columns": "user_id,device_id"
+    },
+    "fk_tenant_cashier_device_pins_device": {
+     "unique": false,
+     "columns": "company_id,device_id"
+    },
+    "fk_tenant_cashier_device_pins_user": {
+     "unique": false,
+     "columns": "company_id,user_id"
     },
     "PRIMARY": {
      "unique": true,
      "columns": "id"
     }
    },
-   "foreignKeys": {},
+   "foreignKeys": {
+    "cashier_device_pins_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "cashier_device_pins_device_id_fkey": {
+     "columns": "device_id",
+     "references": "devices(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "cashier_device_pins_user_id_fkey": {
+     "columns": "user_id",
+     "references": "users(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_cashier_device_pins_device": {
+     "columns": "company_id,device_id",
+     "references": "devices(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_cashier_device_pins_user": {
+     "columns": "company_id,user_id",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    }
+   },
    "checks": {}
   },
   "cashier_shifts": {
@@ -6360,6 +6403,12 @@
     }
    },
    "foreignKeys": {
+    "document_exchange_rates_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
     "document_exchange_rates_currency_code_fkey": {
      "columns": "currency_code",
      "references": "currencies(code)",
@@ -19070,7 +19119,14 @@
      "columns": "threshold_key"
     }
    },
-   "foreignKeys": {},
+   "foreignKeys": {
+    "risk_threshold_changes_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    }
+   },
    "checks": {}
   },
   "roles": {
