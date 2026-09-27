@@ -11,6 +11,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { syncOfflineBatch } from '@/domain/offline/syncOfflineBatch';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { OFFLINE_SYNC_MAX_COMMANDS } from '@/lib/offline/syncLimits';
 
 const OfflineCommandSchema = z.object({
   command_type: z.enum(['cash_sale', 'held_sale_draft', 'shift_open', 'shift_close', 'customer_create', 'receipt_reprint']),
@@ -19,8 +20,6 @@ const OfflineCommandSchema = z.object({
   payload_hash: z.string().length(64),
   idempotency_key: z.string().min(8).max(160),
 });
-
-export const OFFLINE_SYNC_MAX_COMMANDS = 200;
 
 const SyncSchema = z.object({
   device_id: z.string().uuid(),

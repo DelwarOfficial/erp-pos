@@ -177,7 +177,7 @@ export default function RiskTuningPage() {
         </Button>
       </div>
 
-      {loadError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{loadError}</p>}
+      {loadError && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-foreground">{loadError}</p>}
       <Tabs defaultValue="report" className="min-w-0">
         <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="report"><Activity className="h-4 w-4 mr-2" />FP/FN Report</TabsTrigger>

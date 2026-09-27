@@ -11,7 +11,7 @@ import { PrismaClient } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { withTenant } from '@/lib/db/transaction';
 import { syncOfflineBatch, type OfflineSyncCommand } from '@/domain/offline/syncOfflineBatch';
-import { OFFLINE_SYNC_MAX_COMMANDS } from '@/app/api/v1/offline/sync/route';
+import { OFFLINE_SYNC_MAX_COMMANDS } from '@/lib/offline/syncLimits';
 import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const db = new PrismaClient();
