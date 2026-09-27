@@ -1,49 +1,58 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Next.js, TypeScript and build output
 .next/
 out/
 build/
+dist/
+*.tsbuildinfo
+/next-env.d.ts
+.vercel/
 
-# Database
-db/*.db
-db/*.db-journal
-
-# Logs
-dev.log
-server.log
-*.log
-
-# Environment
+# Local environments; keep sanitized templates versioned
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+!.env.*.example
 
-# OS files
-.DS_Store
-Thumbs.db
+# Local databases; schemas and migration SQL stay versioned
+/db/*.db*
+/db/*.sqlite*
+/prisma/*.db*
+/prisma/*.sqlite*
+/*.db*
+/*.sqlite*
 
-# IDE
-.vscode/
-.idea/
-
-# Temporary
-tool-results/
-agent-ctx/
-.zscripts/
-*.deb
-.local/
-
-# Test results
+# Logs and test output
+*.log
+coverage/
+.nyc_output/
 test-results/
 playwright-report/
-.env
-.env.staging
-.env.sqlite-backup
-.env.uat
+playwright/.cache/
+blob-report/
 
-# Captured HTTP artifacts — may contain live session tokens (audit F-02)
+# Scratch space and machine-specific analysis caches
+/.local/
+/.codex-tmp/
+/tool-results/
+/agent-ctx/
+/.zscripts/
+/graphify-out/cache/
+/graphify-out/.graphify_*
+*.deb
+
+# Captured HTTP artifacts can contain session tokens
 cookies.txt
 headers.txt
 *.cookies.txt
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
