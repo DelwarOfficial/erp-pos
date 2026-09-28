@@ -35,7 +35,7 @@ async function reserveMariaDbRange(
   tx: Prisma.TransactionClient,
   params: DocumentNumberParams,
   count: number,
-): Promise<{ sequenceId: string; rangeStart: bigint; rangeEnd: bigint }> {
+): Promise<{ sequenceId: string; rangeStart: bigint; rangeEnd: bigint; branchCode: string | null }> {
   if (!Number.isSafeInteger(count) || count < 1) throw new Error('INVALID_SEQUENCE_COUNT');
   const padding = params.padding ?? 6;
   const branchId = params.branchId ?? null;
@@ -64,7 +64,7 @@ async function reserveMariaDbRange(
       documentType: params.documentType,
       fiscalYear: params.fiscalYear,
     },
-    select: { id: true, nextNumber: true },
+    select: { id: true, nextNumber: true, branch: { select: { code: true } } },
   });
   if (!sequence) throw new Error('SEQUENCE_ALLOCATION_FAILED');
 
@@ -72,7 +72,21 @@ async function reserveMariaDbRange(
     sequenceId: sequence.id,
     rangeStart: sequence.nextNumber - BigInt(count),
     rangeEnd: sequence.nextNumber - BigInt(1),
+    branchCode: sequence.branch?.code ?? null,
   };
+}
+
+/**
+ * A branch-scoped sequence counts per branch, but reference numbers are unique
+ * per company (sales, payments, returns...: UNIQUE(company_id, reference_no)).
+ * With the bare prefix, every branch issued INV-000001 first, so the second
+ * branch's first sale collided with the first branch's and could not be
+ * posted. A branch-scoped number therefore carries the branch code:
+ * INV-DHK-000001. Company-wide sequences keep the bare prefix.
+ */
+export function formatDocumentNumber(prefix: string, branchCode: string | null, number: bigint, padding: number): string {
+  const code = branchCode?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return `${prefix}${code ? `${code}-` : ''}${String(number).padStart(padding, '0')}`;
 }
 
 export async function nextDocumentNumber(
@@ -84,7 +98,7 @@ export async function nextDocumentNumber(
   if (isMariaDb()) {
     const allocation = await reserveMariaDbRange(tx, params, 1);
     return {
-      documentNumber: `${params.prefix}${String(allocation.rangeStart).padStart(padding, '0')}`,
+      documentNumber: formatDocumentNumber(params.prefix, allocation.branchCode, allocation.rangeStart, padding),
       sequenceId: allocation.sequenceId,
       nextNumber: allocation.rangeStart,
     };

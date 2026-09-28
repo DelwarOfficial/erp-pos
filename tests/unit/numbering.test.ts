@@ -52,9 +52,9 @@ describe('nextDocumentNumber', () => {
     const b = await testDb.$transaction(async (tx) => nextDocumentNumber(tx, params));
     const c = await testDb.$transaction(async (tx) => nextDocumentNumber(tx, params));
 
-    expect(a.documentNumber).toBe('INV-000001');
-    expect(b.documentNumber).toBe('INV-000002');
-    expect(c.documentNumber).toBe('INV-000003');
+    expect(a.documentNumber).toBe('INV-MAIN-000001');
+    expect(b.documentNumber).toBe('INV-MAIN-000002');
+    expect(c.documentNumber).toBe('INV-MAIN-000003');
   });
 
   it('issues from a separate sequence for company-wide (branchId=null)', async () => {
@@ -64,8 +64,20 @@ describe('nextDocumentNumber', () => {
     const companyScoped = await testDb.$transaction(async (tx) =>
       nextDocumentNumber(tx, { companyId, branchId: null, documentType: 'TRANSFER', fiscalYear: 2026, prefix: 'TR-' }),
     );
-    expect(branchScoped.documentNumber).toBe('TR-000001');
+    expect(branchScoped.documentNumber).toBe('TR-MAIN-000001');
     expect(companyScoped.documentNumber).toBe('TR-000001'); // separate sequence
+  });
+
+  it('gives each branch its own numbers that never collide across the company', async () => {
+    // Reference numbers are unique per company. With the bare prefix both
+    // branches issued INV-000001 first, and the second branch's first sale
+    // could not be posted.
+    const second = await testDb.branch.create({ data: { companyId, name: 'Uttara', code: 'utt-2', isActive: true } });
+    const params = { companyId, documentType: 'RETURN', fiscalYear: 2026, prefix: 'RET-' };
+    const main = await testDb.$transaction(tx => nextDocumentNumber(tx, { ...params, branchId }));
+    const other = await testDb.$transaction(tx => nextDocumentNumber(tx, { ...params, branchId: second.id }));
+    expect(main.documentNumber).toBe('RET-MAIN-000001');
+    expect(other.documentNumber).toBe('RET-UTT2-000001');
   });
 
   it('rolls back the increment if the parent transaction rolls back', async () => {
@@ -107,9 +119,9 @@ describe('nextDocumentNumber', () => {
     }
     const uniqueNumbers = new Set(numbers);
     expect(uniqueNumbers.size).toBe(10);
-    // Numbers should be 000001..000010
+    // Numbers should be MAIN-000001..MAIN-000010
     expect(numbers.sort()).toEqual(
-      Array.from({ length: 10 }, (_, i) => `CC-${String(i + 1).padStart(6, '0')}`),
+      Array.from({ length: 10 }, (_, i) => `CC-MAIN-${String(i + 1).padStart(6, '0')}`),
     );
   });
 });
