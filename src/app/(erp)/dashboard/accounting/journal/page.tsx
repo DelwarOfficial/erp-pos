@@ -154,9 +154,14 @@ export default function JournalPage() {
                       <Label htmlFor={`field-app-erp-dashboard-accounting-journal-page-6-${idx}`} className="text-xs">Memo</Label>
                       <Input id={`field-app-erp-dashboard-accounting-journal-page-6-${idx}`} value={line.memo} onChange={e => updateLine(idx, 'memo', e.target.value)} />
                     </div>
+                    <div className="col-span-2 lg:col-span-12 flex justify-end">
+                      <Button type="button" size="sm" variant="outline" aria-label={`Remove journal line ${idx + 1}`} disabled={posting || form.lines.length <= 2}
+                        onClick={() => setForm(current => ({ ...current, lines: current.lines.length > 2 ? current.lines.filter((_, index) => index !== idx) : current.lines }))}>Remove line</Button>
+                    </div>
                   </div>
                 ))}
                 <Button type="button" size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" /> Add Line</Button>
+                <p className="text-xs text-muted-foreground">Keep at least two lines for the journal entry.</p>
               </div>
               <div className="text-sm font-medium">
                 Total Debit: ৳ {form.lines.reduce((s, l) => s + Number(l.debit), 0).toFixed(2)} |

@@ -86,6 +86,7 @@ export default function POSPage() {
   const [cashierShifts, setCashierShifts] = useState<CashierShiftOption[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [optionsAttempt, setOptionsAttempt] = useState(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,7 +144,7 @@ export default function POSPage() {
       })
       .finally(() => { if (!cancelled) setOptionsLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [optionsAttempt]);
 
   // Debounced product search — no N+1 (single fetch per query).
   useEffect(() => {
@@ -463,8 +464,9 @@ export default function POSPage() {
 
               <div className="space-y-3 pt-2 border-t">
                 {optionsError && (
-                  <div className="text-xs text-destructive bg-destructive/5 border border-destructive/20 rounded p-2">
-                    {optionsError}
+                  <div className="space-y-2 border border-destructive/20 bg-destructive/5 rounded p-2">
+                    <p role="alert" className="text-sm text-foreground">{optionsError}</p>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setOptionsAttempt(attempt => attempt + 1)}>Retry checkout options</Button>
                   </div>
                 )}
                 <div className="space-y-1.5">

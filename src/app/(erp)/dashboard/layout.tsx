@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { House, ArrowLeft } from 'lucide-react';
 import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -195,6 +196,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   const branches = (user.branches ?? []).filter(branch => user.branch_ids.includes(branch.id));
+  const parentPage = NAV_ITEMS
+    .filter(item => item.href !== '/dashboard' && !item.href.startsWith('/dashboard/access/') && pathname.startsWith(`${item.href}/`))
+    // Product details already render their own return control.
+    .filter(item => item.href !== '/dashboard/products' || pathname === '/dashboard/products/new')
+    .sort((a, b) => b.href.length - a.href.length)[0];
   const branchLabel = user.is_global ? 'Platform / Global' : user.access_scope === 'global' ? 'All company branches'
     : branches.length === 1 ? branches[0].name : `${user.branch_ids.length} assigned branches`;
 
@@ -226,6 +232,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
           <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+            <Button asChild variant="ghost" className="gap-1.5 px-2" aria-current={pathname === '/dashboard' ? 'page' : undefined}>
+              <Link href="/dashboard"><House className="h-4 w-4" aria-hidden="true" />Home</Link>
+            </Button>
             <ThemeControl />
             <div className="text-right text-sm hidden sm:block">
               <div className="font-medium truncate max-w-[160px]">{user.name}</div>
@@ -264,6 +273,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </SheetContent>
 
         <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-5 lg:p-6 min-w-0">
+          {parentPage && <nav aria-label="Page navigation" className="mx-auto mb-4 w-full max-w-[1600px]">
+            <Button asChild variant="outline"><Link href={parentPage.href}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to {parentPage.label}</Link></Button>
+          </nav>}
           <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div></DashboardSession.Provider>
         </main>
       </div>

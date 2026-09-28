@@ -22,6 +22,68 @@ async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 }
 
+test('Home is visible without opening navigation on a narrow screen', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 320, height: 812 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  try {
+    const page = await context.newPage(); await fixtures(page);
+    await page.goto('/dashboard/products');
+    const home = page.locator('header').first().getByRole('link', { name: 'Home', exact: true });
+    await expect(home).toBeVisible();
+    const bounds = await home.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+    await fits(page); await home.click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+  } finally { await context.close(); }
+});
+
+test('direct product form entry has a deterministic return link', async ({ page }) => {
+  await fixtures(page); await page.goto('/dashboard/products/new');
+  const back = page.getByRole('navigation', { name: 'Page navigation' }).getByRole('link', { name: 'Back to Products' });
+  await expect(back).toHaveAttribute('href', '/dashboard/products');
+  await back.click(); await expect(page).toHaveURL(/\/dashboard\/products$/);
+});
+
+for (const [module, opener, removeName, minimum] of [
+  ['accounting/journal', 'New Entry', 'journal', 2], ['purchases', 'New Purchase', 'purchase', 1],
+] as const) {
+  test(`draft lines can be removed without submitting: ${module}`, async ({ page }) => {
+    let mutations = 0; await fixtures(page, { is_global: true });
+    page.on('request', request => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) mutations++; });
+    await page.setViewportSize({ width: 320, height: 812 }); await page.goto(`/dashboard/${module}`);
+    await page.getByRole('button', { name: opener, exact: true }).click();
+    const retainedField = page.getByLabel(module === 'purchases' ? 'Qty Ordered' : 'Debit', { exact: true }).first();
+    await retainedField.fill('12.5');
+    const controls = page.getByRole('button', { name: new RegExp(`^Remove ${removeName} line`) });
+    await expect(controls).toHaveCount(minimum);
+    await expect(controls.first()).toBeDisabled();
+    await page.getByRole('button', { name: 'Add Line', exact: true }).click();
+    await expect(controls).toHaveCount(minimum + 1);
+    await controls.last().click(); await expect(controls).toHaveCount(minimum);
+    await expect(retainedField).toHaveValue('12.5');
+    await expect(controls.first()).toBeDisabled(); await fits(page);
+    expect(mutations).toBe(0);
+  });
+}
+
+test('checkout options retry preserves populated POS cart', async ({ page }) => {
+  await fixtures(page, { is_global: true });
+  let recovered = false; let posts = 0;
+  await page.route('**/api/v1/products?*', route => route.fulfill({ json: { items: [{ id: 'retry-product', name: 'Retry fixture product', code: 'RETRY', default_price: '100', is_serialized: false, unit: { code: 'PCS', name: 'Piece' } }] } }));
+  for (const endpoint of ['warehouses', 'financial-accounts', 'cashier-shifts?status=open']) {
+    await page.route(`**/api/v1/${endpoint}`, route => route.fulfill(recovered ? { json: { items: [] } } : { status: 503, json: { error: { message: 'Options unavailable' } } }));
+  }
+  await page.route('**/api/v1/sales', route => { posts++; return route.fulfill({ status: 503, json: {} }); });
+  await page.goto('/dashboard/pos');
+  await page.getByRole('textbox', { name: 'Search products' }).fill('Retry');
+  await page.getByRole('group', { name: 'Product search results' }).getByRole('button').click();
+  await expect(page.getByRole('button', { name: 'Remove item' })).toBeVisible();
+  recovered = true; await page.getByRole('button', { name: 'Retry checkout options' }).click();
+  await expect(page.getByRole('button', { name: 'Retry checkout options' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Remove item' })).toBeVisible();
+  expect(posts).toBe(0);
+});
+
 test('unknown page provides a readable recovery link', async ({ page }) => {
   await fixtures(page);
   await page.setViewportSize({ width: 320, height: 812 });

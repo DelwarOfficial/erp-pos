@@ -257,6 +257,10 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
                     <Label htmlFor={`field-app-erp-dashboard-purchases-page-8-${idx}`} className="text-xs">Unit Cost ({currency})</Label>
                     <Input id={`field-app-erp-dashboard-purchases-page-8-${idx}`} type="number" step="0.000001" value={item.unitCost} onChange={e => setItems(items.map((it, i) => i === idx ? { ...it, unitCost: e.target.value } : it))} required />
                   </div>
+                  <div className="col-span-2 lg:col-span-12 flex justify-end">
+                    <Button type="button" size="sm" variant="outline" aria-label={`Remove purchase line ${idx + 1}`} disabled={creating || items.length <= 1}
+                      onClick={() => setItems(current => current.length > 1 ? current.filter((_, index) => index !== idx) : current)}>Remove line</Button>
+                  </div>
                 </div>
               ))}
             </div>
