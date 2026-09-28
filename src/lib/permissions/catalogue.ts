@@ -193,6 +193,9 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'communication.campaign.manage.company', module: 'communication', description: 'Manage marketing campaigns' },
   { code: 'communication.reminder_policy.manage.company', module: 'communication', description: 'View and change the due reminder policy' },
   { code: 'communication.sms_provider.manage.company', module: 'communication', description: 'Set the company SMS provider account (credentials are write-only)' },
+  { code: 'communication.transactional.send.branch', module: 'communication', description: 'Send a manual due reminder SMS to a customer' },
+  // Collections
+  { code: 'collection.view.branch', module: 'collection', description: 'View dues, the collection worklist, customer collection history and SMS history' },
   // HR
   { code: 'employee.manage.branch', module: 'hr', description: 'Manage employees' },
   { code: 'attendance.manage.branch', module: 'hr', description: 'Manage attendance records' },
@@ -241,12 +244,12 @@ export const SYSTEM_ROLES = [
   {
     name: 'global_admin',
     description: 'Company global admin. Full access except owner-only operations. MFA mandatory.',
-    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*', 'asset.*', 'bank.*'],
+    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'collection.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*', 'asset.*', 'bank.*'],
   },
   {
     name: 'branch_manager',
     description: 'Branch manager. Branch-scoped operations + approvals.',
-    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company'],
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'communication.transactional.send.branch'],
   },
   {
     name: 'cashier',

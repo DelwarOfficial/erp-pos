@@ -1,27 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { buildTenantContext, runInTenantContext } from '@/lib/db/transaction';
-import { cookies } from 'next/headers';
-import { verifyAccessToken } from '@/lib/auth/jwt';
+import { runInTenantContext } from '@/lib/db/transaction';
+import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { errorResponse } from '@/lib/errors/codes';
+import { getCorrelationId } from '@/lib/http';
 import { renderInvoiceHtml, renderPdf, type InvoiceTemplateData } from '@/lib/pdf';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const cookieStore = await cookies();
-  const token = cookieStore.get('erp_access')?.value;
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  let companyId: string;
-  let userId: string;
   try {
-    const claims = await verifyAccessToken(token);
-    companyId = claims.company_id;
-    userId = claims.sub;
-  }
-  catch { return NextResponse.json({ error: 'Invalid token' }, { status: 401 }); }
-
-  // Tenant-scoped read inside explicit context built from verified claims.
-  const ctx = buildTenantContext({ companyId, userId, branchIds: [] });
-  const sale = await runInTenantContext(ctx, async () => {
+  const { id } = await params;
+  const auth = await authenticateRequest();
+  await requirePermission(auth, 'sale.read');
+  const companyId = auth.companyId;
+  const sale = await runInTenantContext(auth.ctx, async () => {
     return db.sale.findFirst({
       where: { id, companyId },
       include: {
@@ -38,6 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   });
   if (!sale) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  await requirePermission(auth, 'sale.read', sale.branchId);
 
   const format = new URL(req.url).searchParams.get('format') ?? 'html';
 
@@ -113,5 +105,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     <div class="page">${htmlBody}</div>
     <div class="no-print"><button onclick="window.print()" style="padding:8px 16px;background:#0f172a;color:white;border:none;border-radius:6px;cursor:pointer;">Print</button></div>
     </body></html>`;
-  return new NextResponse(fullHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return new NextResponse(fullHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' } });
+  } catch (error) { return errorResponse(error, getCorrelationId(req)); }
 }

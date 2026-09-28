@@ -134,3 +134,35 @@ describe('payment schedule', () => {
     expect(() => buildSchedule(D('0'), '2026-09-28', { type: 'due', dueDate: '2026-10-10' })).toThrow(/unpaid amount/);
   });
 });
+
+describe('server-computed schedules', () => {
+  it('splits equally to the paisa, the remainder in the last installment', () => {
+    const schedule = buildSchedule(D('1000'), '2026-09-28', { type: 'equal', count: 3, firstDueDate: '2026-10-10' });
+    expect(schedule.map(i => [i.dueDate.toISOString().slice(0, 10), i.amount.toFixed(2)])).toEqual([
+      ['2026-10-10', '333.33'], ['2026-11-10', '333.33'], ['2026-12-10', '333.34'],
+    ]);
+    expect(schedule.reduce((s, i) => s.plus(i.amount), D('0')).toFixed(2)).toBe('1000.00');
+  });
+
+  it('clamps monthly dates to the end of shorter months', () => {
+    const schedule = buildSchedule(D('300'), '2026-01-01', { type: 'equal', count: 3, firstDueDate: '2027-01-31' });
+    expect(schedule.map(i => i.dueDate.toISOString().slice(0, 10))).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+  });
+
+  it('takes the rest in the last custom installment only', () => {
+    const schedule = buildSchedule(D('1234.56'), '2026-09-28', { type: 'installments', installments: [
+      { dueDate: '2026-10-10', amount: '500' }, { dueDate: '2026-11-10', amount: 'rest' },
+    ] });
+    expect(schedule.map(i => i.amount.toFixed(2))).toEqual(['500.00', '734.56']);
+    expect(() => buildSchedule(D('100'), '2026-09-28', { type: 'installments', installments: [
+      { dueDate: '2026-10-10', amount: 'rest' }, { dueDate: '2026-11-10', amount: '50' },
+    ] })).toThrow(/Only the last/);
+    expect(() => buildSchedule(D('100'), '2026-09-28', { type: 'installments', installments: [
+      { dueDate: '2026-10-10', amount: '100' }, { dueDate: '2026-11-10', amount: 'rest' },
+    ] })).toThrow(/already cover/);
+  });
+
+  it('refuses a split too fine for the amount', () => {
+    expect(() => buildSchedule(D('0.05'), '2026-09-28', { type: 'equal', count: 10, firstDueDate: '2026-10-10' })).toThrow(/too small/);
+  });
+});

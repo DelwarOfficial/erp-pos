@@ -60,7 +60,7 @@ export async function receivePurchase(
   // 1. Load the purchase
   const purchase = await tx.purchase.findFirst({
     where: { id: input.purchaseId, companyId: input.companyId },
-    include: { items: true, supplier: true },
+    include: { items: { include: { product: { select: { isSerialized: true } } } }, supplier: true },
   });
   if (!purchase) {
     throw new DomainError('RESOURCE_NOT_FOUND', 'Purchase not found', {}, 404);
@@ -72,6 +72,25 @@ export async function receivePurchase(
   // 2. Validate warehouse + branch match the purchase
   if (purchase.warehouseId !== input.warehouseId || purchase.branchId !== input.branchId) {
     throw new DomainError('VALIDATION_FAILED', 'Warehouse/branch mismatch with purchase', {}, 400);
+  }
+
+  const lineIds = new Set<string>();
+  const serialNumbers = new Set<string>();
+  if (!input.items.length) throw new DomainError('VALIDATION_FAILED', 'At least one receiving line is required', {}, 400);
+  for (const item of input.items) {
+    if (lineIds.has(item.purchaseItemId)) throw new DomainError('VALIDATION_FAILED', 'A purchase line may appear only once per receiving', {}, 400);
+    lineIds.add(item.purchaseItemId);
+    if (!Number.isFinite(item.qtyReceivedNow) || item.qtyReceivedNow <= 0) throw new DomainError('VALIDATION_FAILED', 'Receiving quantity must be positive', {}, 400);
+    const source = purchase.items.find(line => line.id === item.purchaseItemId);
+    if (!source) throw new DomainError('VALIDATION_FAILED', 'Purchase item not found', {}, 400);
+    if (source.product.isSerialized && (!Number.isInteger(item.qtyReceivedNow) || item.serials?.length !== item.qtyReceivedNow)) {
+      throw new DomainError('VALIDATION_FAILED', 'Serialized products require one serial number per received unit', {}, 400);
+    }
+    if (!source.product.isSerialized && item.serials?.length) throw new DomainError('VALIDATION_FAILED', 'Serial numbers are only allowed for serialized products', {}, 400);
+    for (const serial of item.serials ?? []) {
+      if (!serial.trim() || serial !== serial.trim() || serialNumbers.has(serial)) throw new DomainError('VALIDATION_FAILED', 'Serial numbers must be non-empty and unique', {}, 400);
+      serialNumbers.add(serial);
+    }
   }
 
   // 3. Generate receiving reference number

@@ -1622,5 +1622,69 @@
       "communication.sms_provider.manage.company"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/collections/overview/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/worklist/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/installments/[id]/reminder/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/installments/[id]/reminder/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.transactional.send.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/collection-timeline/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/messages/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/messages/[id]/resolve/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.sms_provider.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/quote/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
+    ],
+    "exception": null
   }
 ]

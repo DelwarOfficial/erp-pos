@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Plus, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
+import { PurchaseDetail } from '@/components/purchases/PurchaseDetail';
+import { useDashboardSession } from '@/components/dashboard/session';
 
 interface Purchase {
   id: string;
@@ -30,62 +33,80 @@ interface Purchase {
   receiving_count: number;
 }
 
-interface Supplier { id: string; name: string }
-interface Branch { id: string; name: string; code: string }
-
 export default function PurchasesPage() {
+  const session = useDashboardSession();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [creating, setCreating] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [filters, setFilters] = useState('');
+  const [cursor, setCursor] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadPurchases();
-    apiFetch('/api/v1/suppliers').then(r => r.json()).then(d => setSuppliers(d.items ?? [])).catch(console.error);
-    // Branches: we need an endpoint. For now use a simple approach.
-  }, []);
-
-  async function loadPurchases() {
+  const loadPurchases = useCallback(async (next?: string) => {
     setLoading(true);
+    setError('');
     try {
-      const res = await apiFetch('/api/v1/purchases?limit=50');
+      const query = new URLSearchParams(filters);
+      query.set('limit', '50'); query.set('all_dates', 'true');
+      if (next) query.set('cursor', next);
+      const res = await apiFetch(`/api/v1/purchases?${query}`);
       const data = await res.json();
-      setPurchases(data.items ?? []);
+      if (!res.ok) throw new Error(data.error?.message ?? 'Unable to load purchases');
+      setPurchases(current => next ? [...current, ...(data.items ?? [])] : data.items ?? []);
+      setCursor(data.has_more ? data.next_cursor : null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Unable to load purchases');
     } finally {
       setLoading(false);
     }
-  }
+  }, [filters]);
+  useEffect(() => { void loadPurchases(); }, [loadPurchases]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Package className="h-6 w-6" /> Purchases</h1>
           <p className="text-muted-foreground">Purchase orders + receivings. Stock changes only through receiving.</p>
         </div>
-        <Button onClick={() => setShowCreate(!showCreate)}>
+        {(session?.is_global || session?.permissions.includes('purchase.create')) && <Button onClick={() => setShowCreate(true)}>
           <Plus className="h-4 w-4 mr-2" /> New Purchase
-        </Button>
+        </Button>}
       </div>
 
       {showCreate && (
         <CreatePurchaseForm
-          suppliers={suppliers}
           onClose={() => setShowCreate(false)}
           onCreated={() => { setShowCreate(false); loadPurchases(); }}
         />
       )}
+
+      {selectedId && <PurchaseDetail key={selectedId} id={selectedId} onClose={() => setSelectedId(null)} onChanged={() => void loadPurchases()} />}
 
       <Card>
         <CardHeader>
           <CardTitle>Purchase Orders ({purchases.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          <form className="mb-4 grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={event => {
+            event.preventDefault();
+            const query = new URLSearchParams();
+            if (search.trim()) query.set('search', search.trim());
+            if (from) query.set('from', new Date(from).toISOString());
+            if (to) query.set('to', new Date(`${to}T23:59:59.999Z`).toISOString());
+            setFilters(query.toString());
+            if (query.toString() === filters) void loadPurchases();
+          }}>
+            <div><Label htmlFor="purchase-search">Reference or supplier</Label><Input id="purchase-search" value={search} onChange={e => setSearch(e.target.value)} /></div>
+            <div><Label htmlFor="purchase-from">From</Label><Input id="purchase-from" type="date" value={from} onChange={e => setFrom(e.target.value)} /></div>
+            <div><Label htmlFor="purchase-to">To</Label><Input id="purchase-to" type="date" min={from || undefined} value={to} onChange={e => setTo(e.target.value)} /></div>
+            <Button type="submit" variant="outline" disabled={loading}>Apply filters / refresh</Button>
+          </form>
+          {error ? <div role="alert"><p>{error}</p><Button variant="outline" onClick={() => void loadPurchases()}>Retry purchases</Button></div> : loading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : purchases.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No purchases yet.</div>
@@ -102,6 +123,7 @@ export default function PurchasesPage() {
                     <th className="text-right">Items</th>
                     <th className="text-right">Receivings</th>
                     <th>Date</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -119,48 +141,49 @@ export default function PurchasesPage() {
                       <td className="text-right">{p.item_count}</td>
                       <td className="text-right">{p.receiving_count}</td>
                       <td className="text-xs">{new Date(p.order_date).toLocaleDateString()}</td>
+                      <td><Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>View purchase</Button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+          {cursor && !loading && !error ? <Button className="mt-4" variant="outline" onClick={() => void loadPurchases(cursor)}>Load older purchases</Button> : null}
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
-  suppliers: Supplier[];
+function CreatePurchaseForm({ onClose, onCreated }: {
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [supplierId, setSupplierId] = useState('');
-  const [warehouseId, setWarehouseId] = useState('');
+  const [warehouse, setWarehouse] = useState<BusinessEntity | null>(null);
+  const [supplier, setSupplier] = useState<BusinessEntity | null>(null);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
   const [currency, setCurrency] = useState('BDT');
   const [exchangeRate, setExchangeRate] = useState('1');
-  const [items, setItems] = useState<Array<{ productId: string; qty: string; unitCost: string }>>([{ productId: '', qty: '', unitCost: '' }]);
+  const [items, setItems] = useState<Array<{ productId: string; product?: BusinessEntity; qty: string; unitCost: string }>>([{ productId: '', qty: '', unitCost: '' }]);
   const [creating, setCreating] = useState(false);
-  const [products, setProducts] = useState<Array<{ id: string; name: string; code: string }>>([]);
-
-  useEffect(() => {
-    apiFetch('/api/v1/products?limit=200&is_active=true').then(r => r.json()).then(d => setProducts(d.items ?? [])).catch(console.error);
-  }, []);
+  const retry = useRef<{ payload: string; key: string } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!warehouse?.branch?.id || !supplier) {
+      toast.error('Select a supplier and warehouse before creating the purchase.');
+      return;
+    }
+    if (items.some(item => !item.productId || Number(item.qty) <= 0 || item.unitCost === '' || Number(item.unitCost) < 0)) {
+      toast.error('Every line needs a product, positive quantity and non-negative unit cost.');
+      return;
+    }
     setCreating(true);
     try {
-      const idempotencyKey = `purchase-${Date.now()}`;
-      const res = await apiFetch('/api/v1/purchases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-        body: JSON.stringify({
-          branch_id: warehouseId,  // TODO: separate branch selection; for now use warehouse's branch
-          warehouse_id: warehouseId,
-          supplier_id: supplierId,
+      const payload = JSON.stringify({
+          branch_id: warehouse.branch.id,
+          warehouse_id: warehouse.id,
+          supplier_id: supplier.id,
           currency_code: currency,
           exchange_rate: Number(exchangeRate),
           order_date: new Date(orderDate).toISOString(),
@@ -169,7 +192,12 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
             qty_ordered: Number(i.qty),
             unit_cost: Number(i.unitCost),
           })),
-        }),
+        });
+      if (retry.current?.payload !== payload) retry.current = { payload, key: crypto.randomUUID() };
+      const res = await apiFetch('/api/v1/purchases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': retry.current.key },
+        body: payload,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -194,18 +222,10 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <EntityPicker label="Supplier" endpoint="/api/v1/suppliers" value={supplier} onChange={setSupplier} disabled={creating} />
             <div>
-              <Label htmlFor="field-app-erp-dashboard-purchases-page-1">Supplier *</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger id="field-app-erp-dashboard-purchases-page-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="field-app-erp-dashboard-purchases-page-2">Warehouse ID *</Label>
-              <Input id="field-app-erp-dashboard-purchases-page-2" placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
+              <EntityPicker label="Warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={warehouse} onChange={setWarehouse} disabled={creating} />
+              {warehouse?.branch ? <p className="mt-1 text-xs text-muted-foreground">Branch: {warehouse.branch.name}</p> : null}
             </div>
             <div>
               <Label htmlFor="field-app-erp-dashboard-purchases-page-3">Order Date *</Label>
@@ -241,13 +261,7 @@ function CreatePurchaseForm({ suppliers, onClose, onCreated }: {
               {items.map((item, idx) => (
                 <div key={idx} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end rounded-md border p-3">
                   <div className="col-span-2 lg:col-span-6 min-w-0">
-                    <Label htmlFor={`field-app-erp-dashboard-purchases-page-6-${idx}`} className="text-xs">Product</Label>
-                    <Select value={item.productId} onValueChange={v => setItems(items.map((it, i) => i === idx ? { ...it, productId: v } : it))}>
-                      <SelectTrigger id={`field-app-erp-dashboard-purchases-page-6-${idx}`}><SelectValue placeholder="Select product" /></SelectTrigger>
-                      <SelectContent>
-                        {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <EntityPicker label={`Product ${idx + 1}`} endpoint="/api/v1/products?is_active=true" value={item.product ?? null} disabled={creating} onChange={product => setItems(current => current.map((it, i) => i === idx ? { ...it, product, productId: product.id } : it))} />
                   </div>
                   <div className="lg:col-span-3 min-w-0">
                     <Label htmlFor={`field-app-erp-dashboard-purchases-page-7-${idx}`} className="text-xs">Qty Ordered</Label>

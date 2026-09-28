@@ -11,46 +11,7 @@ import { postSale } from '@/domain/commands/m3/PostSale';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { providerRegistry } from '@/adapters';
-
-const SaleItemSchema = z.object({
-  product_id: z.string().uuid(),
-  qty: z.number().positive(),
-  unit_price: z.number().min(0),
-  discount_amount: z.number().min(0).optional(),
-  serials: z.array(z.string()).optional(),
-});
-
-const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
-const Money = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/, 'An amount with at most two decimal places, as a string');
-
-const PaymentSchema = z.object({
-  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'other']),
-  amount: z.number().positive(),
-  financial_account_id: z.string().uuid(),
-  method_reference: z.string().max(120).optional(),
-});
-
-const PostSaleSchema = z.object({
-  branch_id: z.string().uuid(),
-  warehouse_id: z.string().uuid(),
-  cashier_shift_id: z.string().uuid().optional(),
-  customer_id: z.string().uuid().optional(),
-  currency_code: z.string().length(3).default('BDT'),
-  exchange_rate: z.number().positive().default(1),
-  sale_note: z.string().optional(),
-  items: z.array(SaleItemSchema).min(1),
-  // Empty for a sale entirely on credit; PostSale's credit checks decide
-  // whether an unpaid remainder is allowed.
-  payments: z.array(PaymentSchema).default([]),
-  // When the unpaid part falls due (src/domain/receivables/schedule.ts).
-  // Amounts are decimal strings, so they never pass through floating point.
-  payment_arrangement: z.discriminatedUnion('type', [
-    z.object({ type: z.literal('due'), due_date: IsoDate }),
-    z.object({ type: z.literal('installments'), installments: z.array(z.object({ due_date: IsoDate, amount: Money })).min(1).max(60) }),
-  ]).optional(),
-  reminder_phone: z.string().max(20).optional(),
-  due_reminders_enabled: z.boolean().optional(),
-});
+import { PostSaleSchema, postSaleInput } from '@/lib/sales/saleRequest';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -136,38 +97,7 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'sale.post', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
-            const result = await postSale(tx, {
-              companyId: auth.companyId,
-              branchId: body.branch_id,
-              warehouseId: body.warehouse_id,
-              cashierId: auth.userId,
-              cashierShiftId: body.cashier_shift_id,
-              customerId: body.customer_id,
-              currencyCode: body.currency_code,
-              exchangeRate: body.exchange_rate,
-              businessDate: new Date(),
-              saleNote: body.sale_note,
-              items: body.items.map(i => ({
-                productId: i.product_id,
-                qty: i.qty,
-                unitPrice: i.unit_price,
-                discountAmount: i.discount_amount,
-                serials: i.serials,
-              })),
-              payments: body.payments.map(p => ({
-                paymentMethod: p.payment_method,
-                amount: p.amount,
-                financialAccountId: p.financial_account_id,
-                methodReference: p.method_reference,
-              })),
-              paymentArrangement: body.payment_arrangement?.type === 'due'
-                ? { type: 'due', dueDate: body.payment_arrangement.due_date }
-                : body.payment_arrangement
-                  ? { type: 'installments', installments: body.payment_arrangement.installments.map(i => ({ dueDate: i.due_date, amount: i.amount })) }
-                  : undefined,
-              reminderPhone: body.reminder_phone,
-              dueRemindersEnabled: body.due_reminders_enabled,
-            }, correlationId);
+            const result = await postSale(tx, postSaleInput(body, auth), correlationId);
 
             return {
               status: 201,

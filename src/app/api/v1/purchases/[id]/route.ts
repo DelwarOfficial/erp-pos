@@ -46,7 +46,7 @@ export async function GET(
         items: {
           orderBy: { lineNo: 'asc' },
           include: {
-            product: { select: { id: true, name: true, code: true } },
+            product: { select: { id: true, name: true, code: true, isSerialized: true, trackBatches: true } },
           },
         },
         receivings: {

@@ -20,6 +20,8 @@ export const BRANCH_PARENTS: Record<string, string[]> = {
   StockAdjustmentItemSerial: ['stockAdjustmentItem'], PurchaseReceivingItemSerial: ['purchaseReceivingItem'],
   PurchaseReturnItemSerial: ['purchaseReturnItem'], TransferItemSerial: ['transferItem'], SaleItemSerial: ['saleItem'],
   SaleReturnItemSerial: ['saleReturnItem'], LandedCostAllocation: ['landedCostDocument'],
+  // Due reminders belong to the branch of the sale they are about.
+  ReminderOccurrence: ['sale'], OutboundMessage: ['sale'],
 };
 
 export const modelByName = new Map(Prisma.dmmf.datamodel.models.map(model => [model.name, model]));

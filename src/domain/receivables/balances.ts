@@ -131,3 +131,65 @@ async function saleOutstanding(client: Client, companyId: string, saleIds: strin
     WHERE s.company_id = ${companyId} AND s.id IN (${Prisma.join(saleIds)})`;
   return new Map(rows.map(r => [r.sale_id, new Prisma.Decimal(r.owed)]));
 }
+
+/**
+ * The same balances for a whole company in one query, for dashboards and
+ * worklists where loading every installment into memory would not scale.
+ * Produces a CTE `bal`, one row per scheduled installment of an open sale:
+ *
+ *   installment_id, sale_id, reference_no, customer_id, branch_id, biller_id,
+ *   phone_snapshot, reminders_enabled, installment_no, due_date, amount,
+ *   collected, outstanding
+ *
+ * `outstanding` follows installmentBalances() exactly: amount less collections
+ * by posted payments, then any excess over what the sale still owes taken off
+ * the oldest installments first (window sums over the sale's installments in
+ * due-date order). tests/integration/collectionsOverview.test.ts checks the
+ * two agree.
+ */
+export function openInstallmentsCte(companyId: string): Prisma.Sql {
+  const scope = reportSqlScope(companyId);
+  return Prisma.sql`
+    WITH inst AS (
+      SELECT i.id AS installment_id, i.sale_id, s.reference_no, s.customer_id, s.branch_id, s.biller_id,
+             s.customer_phone_snapshot AS phone_snapshot, s.due_reminders_enabled AS reminders_enabled,
+             i.installment_no, i.due_date, i.amount, s.business_date,
+             COALESCE((SELECT SUM(ia.allocated_amount)
+                         FROM installment_allocations ia
+                         JOIN payment_allocations pa ON pa.id = ia.payment_allocation_id AND pa.company_id = ia.company_id
+                         JOIN payments p ON p.id = pa.payment_id AND p.company_id = pa.company_id
+                        WHERE ia.installment_id = i.id AND ia.company_id = i.company_id AND p.payment_status = 'posted'), 0) AS collected
+      FROM installments i
+      JOIN sales s ON s.id = i.sale_id AND s.company_id = i.company_id
+      WHERE i.company_id = ${scope.companyId} AND i.status = 'scheduled'
+        AND s.sale_status IN (${Prisma.join([...OPEN_SALE_STATUSES])})
+        ${scope.branch('s.branch_id')}
+    ), owed AS (
+      SELECT s.id AS sale_id,
+             s.grand_total
+             - COALESCE((SELECT SUM(a.allocated_amount) FROM payment_allocations a
+                           JOIN payments p ON p.id = a.payment_id AND p.company_id = a.company_id
+                          WHERE a.sale_id = s.id AND a.company_id = s.company_id AND p.payment_status = 'posted'), 0)
+             - COALESCE((SELECT SUM(r.total_credit) FROM sale_returns r
+                          WHERE r.sale_id = s.id AND r.company_id = s.company_id AND r.status = 'posted'), 0)
+             + COALESCE((SELECT SUM(p.amount) FROM payments p
+                           JOIN sale_returns r ON r.id = p.sale_return_id AND r.company_id = p.company_id
+                          WHERE r.sale_id = s.id AND p.company_id = s.company_id AND r.status = 'posted'
+                            AND p.payment_type = 'sale_refund' AND p.direction = 'outgoing' AND p.payment_status = 'posted'), 0) AS owed
+      FROM sales s
+      WHERE s.company_id = ${scope.companyId} AND s.id IN (SELECT DISTINCT sale_id FROM inst)
+    ), rem AS (
+      SELECT inst.*, GREATEST(inst.amount - inst.collected, 0) AS remaining FROM inst
+    ), capped AS (
+      SELECT rem.*,
+             GREATEST(SUM(rem.remaining) OVER (PARTITION BY rem.sale_id) - GREATEST(owed.owed, 0), 0) AS excess,
+             COALESCE(SUM(rem.remaining) OVER (PARTITION BY rem.sale_id ORDER BY rem.due_date, rem.installment_no
+                                                ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS before_remaining
+      FROM rem JOIN owed ON owed.sale_id = rem.sale_id
+    ), bal AS (
+      SELECT installment_id, sale_id, reference_no, customer_id, branch_id, biller_id, phone_snapshot, reminders_enabled,
+             installment_no, due_date, amount, collected, business_date,
+             GREATEST(remaining - GREATEST(excess - before_remaining, 0), 0) AS outstanding
+      FROM capped
+    )`;
+}

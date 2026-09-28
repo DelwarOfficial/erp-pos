@@ -19,6 +19,8 @@
 // status, so a duplicate or late job can never move a message backwards.
 
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { DomainError } from '@/lib/errors/codes';
 import { db } from '@/lib/db';
 import { withTenant, runInTenantContext, type TenantContext } from '@/lib/db/transaction';
 import { encryptString, decryptString, sha256 } from '@/lib/crypto';
@@ -113,26 +115,43 @@ type Occurrence = Prisma.ReminderOccurrenceGetPayload<{
     customer: { select: { name: true; phone: true } } };
 }>;
 
-/** Why an occurrence must not be messaged now, or null if it may. */
-async function blockReason(tx: Prisma.TransactionClient, occurrence: Occurrence, policy: ReminderPolicySettings | null, today: string) {
-  if (!policy?.enabled) return { status: 'cancelled', reason: 'policy_disabled' } as const;
-  if (addDays(isoFromDate(occurrence.dueDate), occurrence.stageOffsetDays) !== today) return { status: 'cancelled', reason: 'stage_passed' } as const;
-  if (occurrence.installment.status !== 'scheduled') return { status: 'cancelled', reason: 'installment_cancelled' } as const;
-  if (occurrence.installment.dueDate.getTime() !== occurrence.dueDate.getTime()) return { status: 'cancelled', reason: 'due_date_changed' } as const;
-  if (!OPEN_SALE_STATUSES.includes(occurrence.sale.saleStatus as never)) return { status: 'cancelled', reason: 'sale_not_open' } as const;
-  if (!occurrence.sale.dueRemindersEnabled) return { status: 'cancelled', reason: 'reminders_off_for_sale' } as const;
-  const [balance] = await installmentBalances(tx, occurrence.companyId, { installmentIds: [occurrence.installmentId] });
+/** What a reminder is about: an occurrence, or the installment of a manual reminder. */
+type Target = Pick<Occurrence, 'companyId' | 'installmentId' | 'saleId' | 'customerId' | 'dueDate' | 'stageOffsetDays' | 'installment' | 'sale' | 'customer'>;
+
+/** Settings for a company that has not saved a policy: manual reminders still need a window and a locale. */
+export const DEFAULT_POLICY: ReminderPolicySettings = {
+  enabled: false, stageOffsets: [-3, -1, 0, 1, 3, 7], sendWindowStartMinute: 540, sendWindowEndMinute: 1200,
+  minOutstanding: new Prisma.Decimal('0.01'), maxPerCustomerPerDay: 1, dailyCompanyLimit: 500, locale: 'bn',
+};
+
+/**
+ * Why a reminder must not go now, or null if it may. An automatic reminder
+ * needs the policy on, its stage to be today, its due date unchanged and the
+ * sale's reminders on; a manual one is a deliberate decision by staff and
+ * needs none of those. Both need an open sale, money still owed and no
+ * opt-out.
+ */
+async function blockReason(tx: Prisma.TransactionClient, target: Target, policy: ReminderPolicySettings | null, today: string, manual = false) {
+  if (!manual) {
+    if (!policy?.enabled) return { status: 'cancelled', reason: 'policy_disabled' } as const;
+    if (addDays(isoFromDate(target.dueDate), target.stageOffsetDays) !== today) return { status: 'cancelled', reason: 'stage_passed' } as const;
+    if (target.installment.dueDate.getTime() !== target.dueDate.getTime()) return { status: 'cancelled', reason: 'due_date_changed' } as const;
+    if (!target.sale.dueRemindersEnabled) return { status: 'cancelled', reason: 'reminders_off_for_sale' } as const;
+  }
+  if (target.installment.status !== 'scheduled') return { status: 'cancelled', reason: 'installment_cancelled' } as const;
+  if (!OPEN_SALE_STATUSES.includes(target.sale.saleStatus as never)) return { status: 'cancelled', reason: 'sale_not_open' } as const;
+  const [balance] = await installmentBalances(tx, target.companyId, { installmentIds: [target.installmentId] });
   if (!balance || balance.outstanding.lte(0)) return { status: 'skipped', reason: 'paid' } as const;
-  if (balance.outstanding.lt(policy.minOutstanding)) return { status: 'skipped', reason: 'below_minimum' } as const;
+  if (!manual && balance.outstanding.lt((policy ?? DEFAULT_POLICY).minOutstanding)) return { status: 'skipped', reason: 'below_minimum' } as const;
   const optOut = await tx.communicationConsent.findFirst({
-    where: { companyId: occurrence.companyId, customerId: occurrence.customerId, channel: 'sms', purpose: 'transactional' },
+    where: { companyId: target.companyId, customerId: target.customerId, channel: 'sms', purpose: 'transactional' },
     orderBy: { capturedAt: 'desc' }, select: { consentStatus: true },
   });
   if (optOut?.consentStatus === 'withdrawn') return { status: 'skipped', reason: 'opted_out' } as const;
   return null;
 }
 
-async function renderFor(tx: Prisma.TransactionClient, occurrence: Occurrence, outstanding: Prisma.Decimal, locale: ReminderLocale, companyName: string, today: string) {
+async function renderFor(tx: Prisma.TransactionClient, occurrence: Target, outstanding: Prisma.Decimal, locale: ReminderLocale, companyName: string, today: string) {
   const kind = reminderKind(occurrence.stageOffsetDays);
   const custom = await tx.communicationTemplate.findFirst({
     where: { companyId: occurrence.companyId, code: templateCode(kind, locale), channel: 'sms', isActive: true },
@@ -235,22 +254,28 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
     const { policy, timezone, companyName } = await setup(tx, companyId);
     const today = localDate(timezone, now);
     let text = message.renderedBody;
-    if (message.reminderOccurrenceId) {
-      const occurrence = await tx.reminderOccurrence.findFirstOrThrow({ where: { id: message.reminderOccurrenceId, companyId }, include: occurrenceInclude });
-      const blocked = await blockReason(tx, occurrence, policy, today);
+    if (message.reminderOccurrenceId || (message.triggerSource === 'manual' && message.installmentId)) {
+      const manual = !message.reminderOccurrenceId;
+      const target: Target = manual
+        ? await manualTarget(tx, companyId, message.installmentId!, today)
+        : await tx.reminderOccurrence.findFirstOrThrow({ where: { id: message.reminderOccurrenceId!, companyId }, include: occurrenceInclude });
+      const effective = policy ?? DEFAULT_POLICY;
+      const blocked = await blockReason(tx, target, policy, today, manual);
       if (blocked) return { stop: blocked } as const;
       const minute = localMinuteOfDay(timezone, now);
-      if (minute < policy!.sendWindowStartMinute || minute >= policy!.sendWindowEndMinute) return { defer: true } as const;
-      const [balance] = await installmentBalances(tx, companyId, { installmentIds: [occurrence.installmentId] });
-      text = (await renderFor(tx, occurrence, balance.outstanding, (message.locale as ReminderLocale) ?? policy!.locale, companyName, today)).text;
-      // Daily limits, counted from the start of the company's day.
+      if (minute < effective.sendWindowStartMinute || minute >= effective.sendWindowEndMinute) return { defer: true } as const;
+      const [balance] = await installmentBalances(tx, companyId, { installmentIds: [target.installmentId] });
+      text = (await renderFor(tx, target, balance.outstanding, (message.locale as ReminderLocale) ?? effective.locale, companyName, today)).text;
+      // Daily limits, counted from the start of the company's day. A manual
+      // reminder is a deliberate decision and is not held to the per-customer
+      // limit; the company's daily cap applies to every message.
       const since = zonedMidnight(timezone, today);
       const [toCustomer, total] = await Promise.all([
-        tx.outboundMessage.count({ where: { companyId, destinationHash: message.destinationHash, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
+        manual ? Promise.resolve(0) : tx.outboundMessage.count({ where: { companyId, destinationHash: message.destinationHash, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
         tx.outboundMessage.count({ where: { companyId, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
       ]);
-      if (toCustomer >= policy!.maxPerCustomerPerDay) return { stop: { status: 'skipped', reason: 'customer_daily_limit' } } as const;
-      if (total >= policy!.dailyCompanyLimit) return { stop: { status: 'skipped', reason: 'company_daily_limit' } } as const;
+      if (toCustomer >= effective.maxPerCustomerPerDay) return { stop: { status: 'skipped', reason: 'customer_daily_limit' } } as const;
+      if (total >= effective.dailyCompanyLimit) return { stop: { status: 'skipped', reason: 'company_daily_limit' } } as const;
     }
     const gateway = await loadSmsGateway(tx, companyId, fetchImpl);
     return { message, text, gateway } as const;
@@ -310,6 +335,104 @@ export async function sendableMessageIds(ctx: TenantContext, now = new Date(), l
     select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: limit,
   }));
   return rows.map(r => r.id);
+}
+
+// ── manual reminders ────────────────────────────────────────────────────────
+
+async function manualTarget(tx: Prisma.TransactionClient, companyId: string, installmentId: string, today: string): Promise<Target> {
+  const installment = await tx.installment.findFirst({
+    where: { id: installmentId, companyId },
+    include: { sale: { select: { id: true, customerId: true, ...occurrenceInclude.sale.select } } },
+  });
+  if (!installment || !installment.sale.customerId) throw new DomainError('RESOURCE_NOT_FOUND', 'Installment not found', {}, 404);
+  const customer = await tx.customer.findFirstOrThrow({ where: { id: installment.sale.customerId, companyId }, select: occurrenceInclude.customer.select });
+  return {
+    companyId, installmentId, saleId: installment.saleId, customerId: installment.sale.customerId,
+    dueDate: installment.dueDate, stageOffsetDays: daysBetween(isoFromDate(installment.dueDate), today),
+    installment, sale: installment.sale, customer,
+  };
+}
+
+export interface ManualReminderPreview {
+  installmentId: string;
+  customerName: string;
+  phone: string | null;
+  phoneStatus: 'ok' | 'invalid' | 'missing';
+  invoiceNo: string;
+  installmentNo: number;
+  dueDate: string;
+  outstanding: string;
+  text: string | null;
+  encoding: 'gsm7' | 'ucs2' | null;
+  segments: number;
+  blocked: string | null;
+}
+
+/** What a manual reminder would say and to whom, right now. Sends nothing. */
+export async function previewManualReminder(tx: Prisma.TransactionClient, companyId: string, installmentId: string, now = new Date(), locale?: ReminderLocale): Promise<ManualReminderPreview> {
+  const { policy, timezone, companyName } = await setup(tx, companyId);
+  const today = localDate(timezone, now);
+  const target = await manualTarget(tx, companyId, installmentId, today);
+  const phone = normalizeBdMobile(target.sale.customerPhoneSnapshot) ?? normalizeBdMobile(target.customer.phone);
+  const phoneStatus = phone ? 'ok' : (target.sale.customerPhoneSnapshot || target.customer.phone ? 'invalid' : 'missing');
+  const blocked = await blockReason(tx, target, policy, today, true);
+  const [balance] = await installmentBalances(tx, companyId, { installmentIds: [installmentId] });
+  const outstanding = balance?.outstanding ?? new Prisma.Decimal(0);
+  const rendered = blocked ? null : await renderFor(tx, target, outstanding, locale ?? (policy ?? DEFAULT_POLICY).locale, companyName, today);
+  return {
+    installmentId, customerName: target.customer.name, phone, phoneStatus,
+    invoiceNo: target.sale.referenceNo, installmentNo: target.installment.installmentNo,
+    dueDate: isoFromDate(target.dueDate), outstanding: outstanding.toFixed(2),
+    text: rendered?.text ?? null, encoding: rendered?.encoding ?? null, segments: rendered?.segments ?? 0,
+    blocked: blocked?.reason ?? (phone ? null : `${phoneStatus}_phone`),
+  };
+}
+
+/**
+ * Queue a manual reminder for an installment. The worker sends it through the
+ * same claim-and-revalidate path as an automatic one, with the amount owed at
+ * that moment. One manual reminder per installment per day: a second request
+ * that day is refused rather than sending the customer the same text twice.
+ */
+export async function queueManualReminder(tx: Prisma.TransactionClient, companyId: string, installmentId: string, requestedBy: string, now = new Date(), locale?: ReminderLocale) {
+  const preview = await previewManualReminder(tx, companyId, installmentId, now, locale);
+  if (preview.blocked || !preview.phone || !preview.text) {
+    throw new DomainError('VALIDATION_FAILED', `This reminder cannot be sent: ${preview.blocked ?? 'no message'}`, { reason: preview.blocked }, 409);
+  }
+  // One per installment per day: lock the installment, then look.
+  await tx.$queryRaw`SELECT id FROM installments WHERE id = ${installmentId} AND company_id = ${companyId} FOR UPDATE`;
+  const { timezone } = await setup(tx, companyId);
+  const today = localDate(timezone, now);
+  const already = await tx.outboundMessage.findFirst({
+    where: { companyId, installmentId, triggerSource: 'manual', createdAt: { gte: zonedMidnight(timezone, today) }, status: { notIn: ['cancelled', 'skipped', 'failed'] } },
+    select: { id: true, status: true },
+  });
+  if (already) throw new DomainError('VALIDATION_FAILED', `A reminder for this installment was already sent or queued today (${already.status})`, { message_id: already.id }, 409);
+  const target = await manualTarget(tx, companyId, installmentId, today);
+  const message = await tx.outboundMessage.create({ data: {
+    companyId, channel: 'sms', purpose: 'transactional', triggerSource: 'manual',
+    installmentId, saleId: target.saleId, customerId: target.customerId, createdBy: requestedBy,
+    locale: locale ?? null, destinationHash: sha256(preview.phone), destinationEncrypted: encryptString(preview.phone).ciphertext.toString('base64'),
+    renderedBody: preview.text, encoding: preview.encoding, segments: preview.segments, status: 'queued',
+  } });
+  return { messageId: message.id, preview };
+}
+
+/**
+ * Staff settle an 'unknown' message after checking the provider's own send
+ * history: it went out (sent), or it did not (failed). Only 'unknown' moves.
+ */
+export async function resolveUnknownMessage(tx: Prisma.TransactionClient, companyId: string, messageId: string, outcome: 'sent' | 'not_sent', resolvedBy: string, note?: string) {
+  const moved = await tx.outboundMessage.updateMany({
+    where: { id: messageId, companyId, status: 'unknown' },
+    data: outcome === 'sent'
+      ? { status: 'sent', providerStatus: 'confirmed_by_staff', failureCategory: null, sentAt: new Date() }
+      : { status: 'failed', providerStatus: 'confirmed_not_sent_by_staff', failureCategory: 'ambiguous' },
+  });
+  if (moved.count !== 1) throw new DomainError('VALIDATION_FAILED', 'Only a message in state unknown can be resolved', {}, 409);
+  await tx.auditLog.create({ data: { companyId, userId: resolvedBy, correlationId: randomUUID(),
+    action: 'sms_message.resolve_unknown', entityType: 'outbound_message', entityId: messageId,
+    afterValue: JSON.stringify({ outcome, note: note ?? null }) } });
 }
 
 // ── recover / poll ──────────────────────────────────────────────────────────

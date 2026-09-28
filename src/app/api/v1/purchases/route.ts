@@ -10,6 +10,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { nextDocumentNumber } from '@/lib/numbering';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const PurchaseItemSchema = z.object({
   product_id: z.string().uuid(),
@@ -50,9 +51,14 @@ export async function GET(req: NextRequest) {
     const applyDateFilter = url.searchParams.get('all_dates') !== 'true';
     const from = fromParam ? new Date(fromParam) : (applyDateFilter ? thirtyDaysAgo : undefined);
     const to = toParam ? new Date(toParam) : undefined;
-    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
+    const page = readListPage(url);
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime())) || (from && to && from > to)) {
+      throw new DomainError('VALIDATION_FAILED', 'Enter a valid date range', {}, 400);
+    }
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
+    const search = url.searchParams.get('search')?.trim();
+    if (search) where.OR = [{ referenceNo: { contains: search } }, { supplier: { name: { contains: search } } }];
     if (status) where.orderStatus = status;
     if (supplierId) where.supplierId = supplierId;
     if (from || to) {
@@ -62,11 +68,11 @@ export async function GET(req: NextRequest) {
     }
 
     // `select` keeps the payload small; `_count` avoids N+1 on items/receivings.
-    const purchases = await runInTenantContext(auth.ctx, async () => {
+    const rows = await runInTenantContext(auth.ctx, async () => {
       return db.purchase.findMany({
         where,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+        ...listPageArgs(page),
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         select: {
         id: true,
         referenceNo: true,
@@ -86,7 +92,9 @@ export async function GET(req: NextRequest) {
       });
     });
 
+    const { items: purchases, has_more, next_cursor } = listPageResult(rows, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: purchases.map(p => ({
         id: p.id,
         reference_no: p.referenceNo,
