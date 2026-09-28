@@ -20,6 +20,8 @@ export const QUEUE_NAMES = {
   OUTBOX: 'outbox', WEBHOOK: 'webhook', COMMUNICATION: 'communication',
   OFFLINE_SYNC: 'offline-sync', RECONCILIATION: 'reconciliation',
   RETENTION: 'retention', EXPIRE_RESERVATIONS: 'expire-reservations',
+  // Customer due reminders: the scheduling tick, and one job per SMS send.
+  DUE_REMINDERS: 'due-reminders', SMS_SEND: 'sms-send',
 } as const;
 
 const queues = new Map<string, Queue>();

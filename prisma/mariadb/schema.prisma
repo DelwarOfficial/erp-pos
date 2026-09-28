@@ -245,6 +245,8 @@ model Company {
   cashierDevicePins     CashierDevicePin[]
   documentExchangeRates DocumentExchangeRate[]
   riskThresholdChanges  RiskThresholdChange[]
+  reminderPolicy        ReminderPolicy?
+  reminderOccurrences   ReminderOccurrence[]
 
   @@index([status])
   @@map("companies")
@@ -2331,6 +2333,8 @@ model Customer {
   campaignRecipients CommunicationCampaignRecipient[] @relation("CampaignRecipientCustomer")
   withholdingTransactions WithholdingTransaction[] @relation("WithholdingCustomer")
   dataSubjectRequests DataSubjectRequest[] @relation("DSRCustomer")
+  reminderOccurrences ReminderOccurrence[]
+  outboundMessages OutboundMessage[]
 
   @@index([companyId, isActive, updatedAt], map: "customers_company_active_updated_idx")
   @@index([customerGroupId])
@@ -2852,6 +2856,7 @@ model Sale {
   grandTotal            Decimal  @default(0) @map("grand_total")
   baseGrandTotal        Decimal  @default(0) @map("base_grand_total")
   saleNote              String?  @map("sale_note")
+  dueRemindersEnabled   Boolean  @default(true) @map("due_reminders_enabled") // SMS reminders for this sale's installments
   businessDate          DateTime @map("business_date")
   offlineCreatedAt      DateTime? @map("offline_created_at")
   postedAt              DateTime? @map("posted_at")
@@ -2879,6 +2884,8 @@ model Sale {
   // Gap model backward relations
   couponRedemptions CouponRedemption[]
   rewardPointTransactions RewardPointTransaction[]
+  reminderOccurrences ReminderOccurrence[]
+  outboundMessages OutboundMessage[]
 
   @@unique([companyId, referenceNo])
   @@unique([companyId, clientTxnId])
@@ -3236,6 +3243,8 @@ model Installment {
   company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
   sale    Sale       @relation(fields: [saleId], references: [id])
   allocations InstallmentAllocation[]
+  reminderOccurrences ReminderOccurrence[]
+  outboundMessages    OutboundMessage[]
 
   @@unique([saleId, installmentNo])
   @@index([companyId])
@@ -4815,26 +4824,51 @@ model OutboundMessage {
   channel             String   @default("sms") // sms/email/push/whatsapp
   purpose             String   @default("transactional") // transactional/marketing/internal
   destinationHash     String   @map("destination_hash")
-  destinationEncrypted String  @map("destination_encrypted")
+  destinationEncrypted String  @db.Text @map("destination_encrypted")
   encryptionKeyVersion String  @default("1") @map("encryption_key_version")
   renderedSubject     String?  @map("rendered_subject")
-  renderedBody        String   @map("rendered_body")
+  renderedBody        String   @db.Text @map("rendered_body")
   providerCode        String?  @map("provider_code")
   providerMessageId   String?  @map("provider_message_id")
-  status              String   @default("queued") // queued/sending/sent/delivered/failed/dead_letter
+  status              String   @default("queued") // queued/sending/sent/delivered/failed/unknown/skipped/cancelled/dead_letter
   attemptCount        Int      @default(0) @map("attempt_count")
   nextAttemptAt       DateTime? @map("next_attempt_at")
   lastErrorCode       String?  @map("last_error_code")
   createdAt           DateTime @default(now()) @map("created_at")
+  customerId          String?  @map("customer_id")
+  saleId              String?  @map("sale_id")
+  installmentId       String?  @map("installment_id")
+  reminderOccurrenceId String? @unique @map("reminder_occurrence_id") // at most one message per reminder
+  triggerSource       String   @default("manual") @map("trigger_source") // reminder/manual/bulk
+  locale              String?
+  encoding            String?  // gsm7/ucs2
+  segments            Int?
+  providerStatus      String?  @map("provider_status") // provider's own delivery status text
+  failureCategory     String?  @map("failure_category") // retryable/permanent/ambiguous/validation
+  claimedAt           DateTime? @map("claimed_at")
+  sentAt              DateTime? @map("sent_at")
+  deliveredAt         DateTime? @map("delivered_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+  createdBy           String?  @map("created_by")
 
   company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
   template  CommunicationTemplate? @relation("OutboundTemplate", fields: [templateId], references: [id])
+  customer  Customer?    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sale      Sale?        @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  // ON UPDATE RESTRICT: MariaDB rejects a CHECK on a column whose foreign key cascades updates
+  // (outbound_messages_reminder_link_chk), and ids never change.
+  installment Installment? @relation(fields: [installmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reminderOccurrence ReminderOccurrence? @relation(fields: [reminderOccurrenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([companyId])
   @@index([templateId])
   @@index([status])
   @@index([providerMessageId])
   @@index([createdAt])
+  @@index([companyId, status, nextAttemptAt], map: "outbound_messages_company_status_next_idx")
+  @@index([companyId, customerId, createdAt], map: "outbound_messages_company_customer_created_idx")
+  @@index([saleId])
+  @@index([installmentId])
   @@map("outbound_messages")
 }
 
@@ -5197,4 +5231,57 @@ model BankReconciliationLine {
   @@index([reconciliationId])
   @@index([matchStatus])
   @@map("bank_reconciliation_lines")
+}
+
+// Customer due reminders (docs/master-plan/ERP_Pos_Blueprint_v4.2.md §5.11A).
+// One policy per company. Stages are day offsets from an installment's due
+// date: -3 is three days before, 0 the due date, 7 a week overdue.
+model ReminderPolicy {
+  id                    String   @id @default(uuid())
+  companyId             String   @unique @map("company_id")
+  enabled               Boolean  @default(false)
+  stageOffsets          String   @default("[-3,-1,0,1,3,7]") @map("stage_offsets") // JSON int array, validated by src/domain/receivables/reminderPolicy.ts
+  sendWindowStartMinute Int      @default(540) @map("send_window_start_minute") // minutes after local midnight (09:00)
+  sendWindowEndMinute   Int      @default(1200) @map("send_window_end_minute") // (20:00)
+  minOutstanding        Decimal  @default(1) @map("min_outstanding")
+  maxPerCustomerPerDay  Int      @default(1) @map("max_per_customer_per_day")
+  dailyCompanyLimit     Int      @default(500) @map("daily_company_limit")
+  locale                String   @default("bn")
+  updatedBy             String?  @map("updated_by")
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@map("reminder_policies")
+}
+
+// One reminder stage of one installment, for the due date it was computed
+// from. The unique key is the idempotency identity: a scheduler rerun, a
+// retried job or two concurrent schedulers insert it at most once. A changed
+// due date yields a new identity; the old occurrence is cancelled.
+model ReminderOccurrence {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  installmentId    String   @map("installment_id")
+  saleId           String   @map("sale_id")
+  customerId       String   @map("customer_id")
+  stageOffsetDays  Int      @map("stage_offset_days")
+  dueDate          DateTime @map("due_date")
+  scheduledFor     DateTime @map("scheduled_for")
+  status           String   @default("pending") // pending/messaged/skipped/cancelled
+  skipReason       String?  @map("skip_reason")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  message     OutboundMessage?
+
+  @@unique([companyId, installmentId, stageOffsetDays, dueDate], map: "uq_reminder_occurrence_stage")
+  @@index([companyId, status, scheduledFor], map: "reminder_occurrences_company_status_scheduled_idx")
+  @@index([installmentId])
+  @@index([saleId])
+  @@index([customerId])
+  @@map("reminder_occurrences")
 }

@@ -21,6 +21,10 @@ import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/Po
 import { computeLineTax } from '@/domain/tax/computeLineTax';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
+import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/schedule';
+import { installmentBalances } from '@/domain/receivables/balances';
+import { localDate, isoFromDate } from '@/domain/receivables/calendar';
+import { normalizeBdMobile } from '@/domain/receivables/phone';
 
 export interface PostSaleInput {
   companyId: string;
@@ -46,6 +50,12 @@ export interface PostSaleInput {
     financialAccountId: string;
     methodReference?: string;
   }>;
+  /** When the unpaid part of a credit sale falls due. Default: all of it after DEFAULT_CREDIT_DAYS. */
+  paymentArrangement?: PaymentArrangement;
+  /** Mobile number for this sale's due reminders; defaults to the customer's. */
+  reminderPhone?: string;
+  /** Send SMS due reminders for this sale (default true; the company policy must also be on). */
+  dueRemindersEnabled?: boolean;
 }
 
 export interface PostSaleResult {
@@ -292,6 +302,8 @@ export async function postSale(
   // When enabled: customer must exist, have credit limit > 0, not be overdue,
   // and the new exposure (existing AR + this sale's unpaid amount) must not exceed credit limit.
   // Walk-in customers cannot make credit sales.
+  const company = await tx.company.findFirst({ where: { id: input.companyId }, select: { timezone: true } });
+  const companyTimezone = company?.timezone ?? 'Asia/Dhaka';
   const totalPaid = input.payments.reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
   if (totalPaid.gt(grandTotal)) throw new DomainError('VALIDATION_FAILED', 'Record only the applied payment amount; return cash change separately', {}, 400);
   const isCreditSale = totalPaid.lt(grandTotal);
@@ -329,8 +341,8 @@ export async function postSale(
       throw new DomainError('RESOURCE_NOT_FOUND', 'Customer not found or inactive', {}, 404);
     }
 
-    const creditLimit = parseFloat(customer.creditLimit?.toString() ?? '0');
-    if (creditLimit <= 0) {
+    const creditLimit = new Prisma.Decimal(customer.creditLimit ?? 0);
+    if (creditLimit.lte(0)) {
       throw new DomainError(
         'CREDIT_LIMIT_EXCEEDED',
         `Customer ${customer.name} has no credit limit set (credit limit = 0)`,
@@ -339,45 +351,20 @@ export async function postSale(
       );
     }
 
-    // Calculate current AR exposure (outstanding sales - payments allocated)
-    const outstandingSales = await tx.sale.aggregate({
-      where: {
-        companyId: input.companyId,
-        customerId: input.customerId,
-        saleStatus: { in: ['completed', 'partially_paid'] },
-      },
-      _sum: { grandTotal: true },
-    });
-    const outstandingPayments = await tx.payment.aggregate({
-      where: {
-        companyId: input.companyId,
-        customerId: input.customerId,
-        paymentStatus: { in: ['posted', 'completed'] },
-      },
-      _sum: { amount: true },
-    });
-    const currentAR = parseFloat(String(outstandingSales._sum.grandTotal ?? '0'))
-      - parseFloat(String(outstandingPayments._sum.amount ?? '0'));
-
-    // Check if customer is overdue (has sales older than credit period with unpaid balance)
-    // Default credit period: 30 days (configurable via configuration_definitions)
-    const creditPeriodDays = 30; // TODO: load from configuration_definitions
-    const overdueDate = new Date();
-    overdueDate.setDate(overdueDate.getDate() - creditPeriodDays);
-    const overdueSales = await tx.sale.findFirst({
-      where: {
-        companyId: input.companyId,
-        customerId: input.customerId,
-        saleStatus: { in: ['completed', 'partially_paid'] },
-        businessDate: { lt: overdueDate },
-      },
-      select: { id: true },
-    });
-    if (overdueSales) {
+    // Current exposure and overdue status, from what the customer's
+    // installments still owe (src/domain/receivables/balances.ts). This used to
+    // be all sales minus all payments in floating point, and blocked any
+    // customer with a sale older than 30 days -- even one paid in full at the
+    // till -- which barred every returning customer from credit.
+    const today = localDate(companyTimezone);
+    const balances = await installmentBalances(tx, input.companyId, { customerId: input.customerId });
+    const currentAR = balances.reduce((sum, b) => sum.plus(b.outstanding), new Prisma.Decimal(0));
+    const overdue = balances.find(b => b.outstanding.gt(0) && isoFromDate(b.dueDate) < today);
+    if (overdue) {
       throw new DomainError(
         'CUSTOMER_OVERDUE',
-        `Customer ${customer.name} has overdue sales older than ${creditPeriodDays} days. Credit sale blocked until overdue balance is cleared.`,
-        { customer_id: input.customerId, credit_period_days: creditPeriodDays },
+        `Customer ${customer.name} has an overdue installment (${overdue.saleReferenceNo} #${overdue.installmentNo}, due ${isoFromDate(overdue.dueDate)}). Credit sale blocked until it is paid.`,
+        { customer_id: input.customerId, sale_id: overdue.saleId, installment_id: overdue.installmentId, due_date: isoFromDate(overdue.dueDate) },
         409,
       );
     }
@@ -390,14 +377,29 @@ export async function postSale(
         `Credit limit exceeded for customer ${customer.name}: current AR = ৳${currentAR.toFixed(2)}, this sale unpaid = ৳${unpaidAmount.toFixed(2)}, total exposure = ৳${newExposure.toFixed(2)}, credit limit = ৳${creditLimit.toFixed(2)}`,
         {
           customer_id: input.customerId,
-          current_ar: currentAR,
-          unpaid_amount: unpaidAmount,
-          new_exposure: newExposure,
-          credit_limit: creditLimit,
+          current_ar: currentAR.toFixed(2),
+          unpaid_amount: unpaidAmount.toFixed(2),
+          new_exposure: newExposure.toFixed(2),
+          credit_limit: creditLimit.toFixed(2),
         },
         409,
       );
     }
+  }
+
+  // The unpaid part's schedule, validated before anything is written: it must
+  // equal the unpaid amount exactly (src/domain/receivables/schedule.ts).
+  const schedule = buildSchedule(unpaidAmount, localDate(companyTimezone, input.businessDate), input.paymentArrangement);
+
+  // The number this sale's reminders go to, kept on the sale as sold. A number
+  // given at the till must be valid; the customer record is not changed here.
+  let reminderPhone: string | null = null;
+  if (input.reminderPhone !== undefined && input.reminderPhone !== '') {
+    reminderPhone = normalizeBdMobile(input.reminderPhone);
+    if (!reminderPhone) throw new DomainError('VALIDATION_FAILED', 'The reminder mobile number is not a valid Bangladesh mobile number', {}, 400);
+  } else if (input.customerId) {
+    const customerPhone = await tx.customer.findFirst({ where: { id: input.customerId, companyId: input.companyId }, select: { phone: true } });
+    reminderPhone = normalizeBdMobile(customerPhone?.phone);
   }
 
   const sale = await tx.sale.create({
@@ -410,9 +412,18 @@ export async function postSale(
       currencyCode: input.currencyCode, exchangeRate: input.exchangeRate,
       subtotal, discountTotal, taxTotal, grandTotal, baseGrandTotal,
       saleNote: input.saleNote ?? null,
+      customerPhoneSnapshot: reminderPhone,
+      dueRemindersEnabled: input.dueRemindersEnabled ?? true,
       businessDate: input.businessDate, postedAt: new Date(),
     },
   });
+
+  for (const installment of schedule) {
+    await tx.installment.create({
+      data: { companyId: input.companyId, saleId: sale.id, installmentNo: installment.installmentNo,
+        dueDate: installment.dueDate, amount: installment.amount, status: 'scheduled' },
+    });
+  }
 
   let eventLineNo = 1;
   for (const itemData of saleItemsData) {
@@ -553,6 +564,7 @@ export async function postSale(
     if (arAmount.gt(0)) {
       revenueJournalLines.push({
         chartOfAccountId: policies.arAccountId,
+        customerId: input.customerId,
         debit: arAmount, credit: 0,
         memo: `AR for ${referenceNo}`,
         branchId: input.branchId,
@@ -616,6 +628,8 @@ export async function postSale(
         lines: revenueJournalLines.map(l => ({
           chartOfAccountId: l.chartOfAccountId,
           branchId: l.branchId,
+          // The AR line names the customer, so the customer ledger shows the sale.
+          customerId: l.customerId,
           // Revenue/receipts originate in transaction currency. COGS below
           // already originates in base currency and MUST NOT be converted again.
           debit: new Prisma.Decimal(l.debit).mul(input.exchangeRate),

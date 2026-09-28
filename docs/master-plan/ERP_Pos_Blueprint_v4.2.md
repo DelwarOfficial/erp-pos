@@ -2298,6 +2298,67 @@ Allocation of a payment allocation to an installment.
 
 - Paid when allocation sum reaches amount; overdue when due_date is past, status scheduled, and allocation sum is below amount.
 
+## 5.11A Customer Receivables and Collection Management
+
+Status key: **IMPLEMENTED** is in code and tested; **PLANNED** is designed and not built. Decisions and their reasons: [ADR 0008](../adr/0008-due-reminders.md).
+
+### Data flow — IMPLEMENTED (Phase 1)
+
+Sale (`PostSale`) → receivable (AR in the ledger) → payment schedule (`installments`) → collection (`CollectCustomerPayment`: `payments`, `payment_allocations`, `installment_allocations`, journal) → reminder occurrence (`reminder_occurrences`) → message (`outbound_messages`) → queue (`due-reminders` tick, `sms-send` jobs) → provider (`SmsGateway` → `MimSmsGateway`) → delivery status (polled `DlrApi`).
+
+### Authoritative balance — IMPLEMENTED
+
+Nothing owed is stored. Per installment: `amount` − installment allocations of payments with `payment_status = 'posted'`, capped by the sale's outstanding (grand total − posted payment allocations − posted return credits + refunds paid against those returns); credits outside the installments come off the oldest outstanding installment first; a sale not `completed`/`partially_returned` owes nothing. Code: `src/domain/receivables/balances.ts`. AR aging (`src/reports`) uses the same sale-level formula.
+
+### Credit sale workflow — IMPLEMENTED (API); UI PLANNED (Phase 2)
+
+`POST /api/v1/sales` accepts `payments: []` for a sale entirely on credit, and:
+
+| Field | Meaning |
+|---|---|
+| `payment_arrangement` | `{type:'due', due_date}` or `{type:'installments', installments:[{due_date, amount}]}`; amounts are decimal strings; installments must total the unpaid amount exactly (refused otherwise); no date before the sale; dates strictly increasing; at most 60 |
+| `reminder_phone` | Bangladesh mobile, normalized to `8801XXXXXXXXX`; invalid numbers are refused; stored on the sale as `customer_phone_snapshot`; the customer record is not changed |
+| `due_reminders_enabled` | per sale, default true (`sales.due_reminders_enabled`) |
+
+Without an arrangement the unpaid amount falls due 30 days after the sale in one installment. Credit exposure and the overdue block come from installment balances (an installment past due with anything outstanding blocks new credit).
+
+### Payment allocation — IMPLEMENTED
+
+`POST /api/v1/customers/{id}/collections` (`payment.pay.branch`, idempotency key required): the amount goes to open installments oldest due first (then oldest sale, then installment number), or only to `sale_ids`. One payment allocation + one installment allocation per installment touched. Journal: Dr cash/bank, Cr AR (customer- and branch-tagged). Overpayment → 409, use a customer advance. Reversal (`ReversePayment`) reopens the installments automatically. `GET /api/v1/customers/{id}/receivable` (`customer.credit.view.branch`) returns per-installment amount, collected, outstanding and status `pending/partially_paid/overdue/paid` (derived).
+
+Direct `POST /payments` sale receipts remain unallocated; use collections for credit sales. Credit sales created before this release have no schedule and are not reminded.
+
+### Reminder engine — IMPLEMENTED
+
+| Table | Role | Key constraints |
+|---|---|---|
+| `reminder_policies` | one per company: `enabled` (default off), `stage_offsets` (JSON day offsets, −30…180, e.g. `[-3,-1,0,1,3,7]`), sending window (minutes after local midnight), `min_outstanding`, `max_per_customer_per_day`, `daily_company_limit`, `locale` bn/en | UNIQUE company; CHECK window and limits |
+| `reminder_occurrences` | one stage of one installment for one due date; `pending → messaged / skipped / cancelled` with `skip_reason` | UNIQUE (company, installment, stage, due date) — the idempotency identity; composite tenant FKs to installment, sale, customer |
+| `outbound_messages` | the message: encrypted destination + SHA-256 hash, rendered body, encoding, segments, provider IDs and status, `trigger_source` reminder/manual/bulk | UNIQUE `reminder_occurrence_id`; CHECK status `queued/sending/sent/delivered/failed/unknown/skipped/cancelled/dead_letter`; a reminder message must name its installment |
+
+Lifecycle: `queued → sending (claimed by one worker) → sent → delivered | failed`; `sending → queued` after a temporary refusal (1/5/15/60 min backoff, then `dead_letter`); `sending → unknown` on an ambiguous outcome or a crash mid-send (never resent automatically); `sending → skipped | cancelled` when revalidation fails. Revalidation before every send: installment still scheduled, due date unchanged, sale open, reminders on, outstanding above the minimum, customer not opted out (`communication_consents` sms/transactional `withdrawn`), stage is today, inside the window, per-customer and company daily limits. The text is rendered with the amount owed at that moment.
+
+Stage kinds: before due → `upcoming`, on → `due_today`, after → `overdue`. Built-in texts in Bangla and English; a company overrides with an active SMS template coded `due_reminder.<kind>.<bn|en>`. Placeholders: `customer_name, company_name, invoice_no, installment_no, due_amount, outstanding_amount, due_date, days_overdue`; any other is refused. Segments: GSM-7 160/153, UCS-2 (Bangla) 70/67.
+
+### Dates — IMPLEMENTED
+
+A due date is a calendar date in `companies.timezone` (default Asia/Dhaka), stored as that date at 00:00 UTC. Today, stage days, windows and daily limits use the company's local time. A stage missed because the worker was down all day is cancelled (`stage_passed`), not sent late.
+
+### Workers — IMPLEMENTED
+
+Queue `due-reminders`: repeatable `tick` every 5 minutes; per company (listed by id, then worked in that company's tenant context): plan, queue, recover interrupted sends, poll delivery reports (5 minutes to 72 hours after sending), enqueue sends. Queue `sms-send`: one job per message, concurrency 4, one attempt (the engine decides retries). Runbook: `docs/runbooks/due-reminders.md`.
+
+### SMS provider — IMPLEMENTED
+
+`SmsGateway` (send; delivery status and balance where documented) with `MimSmsGateway` from the official MiMSMS API v2.1 (`POST https://api.mimsms.com/api/V2/SMS`, `DlrApi`, `BalanceCheck`; credentials in the JSON body; server IP and domain whitelisted in the MiMSMS panel; registered Sender ID). Per-company accounts in `integration_credentials` (provider `mimsms`, encrypted). `GET/PUT /api/v1/communications/sms-account` (`communication.sms_provider.manage.company`) — credentials are write-only. `GET/PUT /api/v1/communications/reminder-policy` (`communication.reminder_policy.manage.company`), audited. Not provided by MiMSMS documentation, so not implemented: delivery webhooks, an idempotency key, lookup by our reference, rate limits, sandbox.
+
+The earlier guessed `MimSmsProvider` in `src/adapters/providers.ts` (Bearer token, undocumented endpoint) is superseded for reminders; campaigns still use the old adapter layer until Phase 3.
+
+### PLANNED
+
+- **Phase 2:** collection control centre (due today, overdue, upcoming, failed and unknown messages, missing/invalid numbers), worklist with actions, customer collection profile and timeline, manual reminder with preview, credit-sale UI (phone confirmation, schedule builder), SMS workspace (overview, history, provider settings).
+- **Phase 3:** template editor, bulk SMS with preview and eligibility summary, promise-to-pay (separate record; never rewrites the due date), collection follow-ups, collection reports, calendar view, due-date rescheduling with audit, rebuilding the campaign processor on the gateway.
+
 ## 5.12 Expenses
 
 ### `expense_categories`

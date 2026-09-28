@@ -20,6 +20,9 @@ const SaleItemSchema = z.object({
   serials: z.array(z.string()).optional(),
 });
 
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+const Money = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/, 'An amount with at most two decimal places, as a string');
+
 const PaymentSchema = z.object({
   payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'other']),
   amount: z.number().positive(),
@@ -36,7 +39,17 @@ const PostSaleSchema = z.object({
   exchange_rate: z.number().positive().default(1),
   sale_note: z.string().optional(),
   items: z.array(SaleItemSchema).min(1),
-  payments: z.array(PaymentSchema).min(1),
+  // Empty for a sale entirely on credit; PostSale's credit checks decide
+  // whether an unpaid remainder is allowed.
+  payments: z.array(PaymentSchema).default([]),
+  // When the unpaid part falls due (src/domain/receivables/schedule.ts).
+  // Amounts are decimal strings, so they never pass through floating point.
+  payment_arrangement: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('due'), due_date: IsoDate }),
+    z.object({ type: z.literal('installments'), installments: z.array(z.object({ due_date: IsoDate, amount: Money })).min(1).max(60) }),
+  ]).optional(),
+  reminder_phone: z.string().max(20).optional(),
+  due_reminders_enabled: z.boolean().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -147,6 +160,13 @@ export async function POST(req: NextRequest) {
                 financialAccountId: p.financial_account_id,
                 methodReference: p.method_reference,
               })),
+              paymentArrangement: body.payment_arrangement?.type === 'due'
+                ? { type: 'due', dueDate: body.payment_arrangement.due_date }
+                : body.payment_arrangement
+                  ? { type: 'installments', installments: body.payment_arrangement.installments.map(i => ({ dueDate: i.due_date, amount: i.amount })) }
+                  : undefined,
+              reminderPhone: body.reminder_phone,
+              dueRemindersEnabled: body.due_reminders_enabled,
             }, correlationId);
 
             return {

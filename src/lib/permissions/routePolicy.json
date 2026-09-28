@@ -1574,5 +1574,53 @@
   ,{"file":"v1/admin/permissions/route.ts","method":"GET","permissions":["role.read"],"exception":null}
   ,{"file":"v1/admin/companies/route.ts","method":"GET","permissions":["company.read"],"exception":null}
   ,{"file":"v1/admin/branches/route.ts","method":"GET","permissions":["branch.read"],"exception":null}
-  ,{"file":"v1/auth/password-reset/route.ts","method":"POST","permissions":[],"exception":"Single-use signed reset capability; scoped tenant transaction and token hash validation, no session issued."}
+  ,{"file":"v1/auth/password-reset/route.ts","method":"POST","permissions":[],"exception":"Single-use signed reset capability; scoped tenant transaction and token hash validation, no session issued."},
+  {
+    "file": "v1/customers/[id]/collections/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payment.pay.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/receivable/route.ts",
+    "method": "GET",
+    "permissions": [
+      "customer.credit.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/reminder-policy/route.ts",
+    "method": "GET",
+    "permissions": [
+      "communication.reminder_policy.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/reminder-policy/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "communication.reminder_policy.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/sms-account/route.ts",
+    "method": "GET",
+    "permissions": [
+      "communication.sms_provider.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/sms-account/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "communication.sms_provider.manage.company"
+    ],
+    "exception": null
+  }
 ]

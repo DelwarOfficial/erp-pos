@@ -42,6 +42,9 @@ describe('sale-posting N+1 regression', () => {
       })));
       let saleItemSequence = 0;
       const tx = {
+        // One read per sale (the company's time zone for the payment schedule), not per line.
+        company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
+        customer: { findFirst: vi.fn(async () => null) },
         cashierShift: { findFirst: vi.fn() },
         warehouse: { findFirst: vi.fn(async () => ({ id: 'warehouse-a' })) },
         businessEvent: { create: vi.fn(async () => ({})) },
@@ -113,6 +116,8 @@ describe('sale-posting N+1 regression', () => {
   it('rejects a product ID that the tenant-scoped preload cannot resolve', async () => {
     const productRead = vi.fn(async (_args: { where: { companyId: string } }) => []);
     const tx = {
+      company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
+      customer: { findFirst: vi.fn(async () => null) },
       warehouse: { findFirst: vi.fn(async () => ({ id: 'warehouse-a' })) },
       businessEvent: { create: vi.fn(async () => ({})) },
       product: { findMany: productRead },

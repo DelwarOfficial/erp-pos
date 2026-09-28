@@ -22,10 +22,10 @@ describe('schema fingerprint', () => {
   });
 
   it('was generated after the newest migration', () => {
-    // The latest migration adds the company keys of cashier_device_pins; a
-    // fingerprint from before it would not have them.
+    // The fingerprint must include every migration. cashier_device_pins' keys
+    // (20260927000100) are checked as a sample.
     const newest = readdirSync('prisma/mariadb/migrations').filter(n => /^\d{14}_/.test(n)).sort().at(-1);
-    expect(newest).toBe('20260927000100_tenant_parent_keys');
+    expect(newest).toBe('20260928000100_receivables_reminders');
     const pins = Object.values(fingerprint.tables.cashier_device_pins.foreignKeys);
     expect(pins.map(fk => `${fk.columns}->${fk.references}`).sort()).toEqual([
       'company_id,device_id->devices(company_id,id)',

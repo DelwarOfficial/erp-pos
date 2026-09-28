@@ -191,6 +191,8 @@ export const PERMISSIONS: PermissionSpec[] = [
   // Communications
   { code: 'communication.template.manage.company', module: 'communication', description: 'Manage communication templates' },
   { code: 'communication.campaign.manage.company', module: 'communication', description: 'Manage marketing campaigns' },
+  { code: 'communication.reminder_policy.manage.company', module: 'communication', description: 'View and change the due reminder policy' },
+  { code: 'communication.sms_provider.manage.company', module: 'communication', description: 'Set the company SMS provider account (credentials are write-only)' },
   // HR
   { code: 'employee.manage.branch', module: 'hr', description: 'Manage employees' },
   { code: 'attendance.manage.branch', module: 'hr', description: 'Manage attendance records' },

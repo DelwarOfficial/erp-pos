@@ -13,6 +13,8 @@ import { runScheduledReconciliation } from '@/lib/reconciliation/scheduler';
 import { expireStaleReservations } from '@/lib/inventory/reservationExpiry';
 import { processCommunicationCampaign } from '@/lib/communication/campaignProcessor';
 import { runRetentionJob } from '@/lib/retention/job';
+import { sendOutboundMessage } from '@/domain/receivables/reminders';
+import { reminderContext, runDueReminderTick, SEND_CONCURRENCY, TICK_MS } from '@/workers/dueReminders';
 import { assertProductionSecurityConfig } from '@/lib/config/productionGuards';
 import { initWorkerErrorTracking, captureJobFailure, flushWorkerErrorTracking } from '@/workers/sentry';
 import { clearWorkerHeartbeat, writeWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '@/lib/health/workerHeartbeat';
@@ -92,12 +94,43 @@ export async function startWorkers(): Promise<void> {
     captureJobFailure(QUEUE_NAMES.RETENTION, job?.id, err);
   });
 
+  // ── Due reminders: the scheduling tick, and the SMS sends it hands out ──
+  // (src/workers/dueReminders.ts). Sends retry themselves (reminders.ts
+  // decides what is safe to retry), so their jobs run once.
+  const smsSendQueue = getQueue(QUEUE_NAMES.SMS_SEND);
+  const dueReminderWorker = new Worker(
+    QUEUE_NAMES.DUE_REMINDERS,
+    async (_job: Job) => runDueReminderTick(
+      (companyId, messageId) => smsSendQueue.add('send', { companyId, messageId },
+        { jobId: `sms-${messageId}-${Date.now() >> 16}`, attempts: 1, removeOnComplete: 1000, removeOnFail: 1000 }),
+      new Date(),
+      (companyId, error) => {
+        log('error', 'due reminder tick failed for a company', { companyId, err: error instanceof Error ? error.message : String(error) });
+        captureJobFailure(QUEUE_NAMES.DUE_REMINDERS, companyId, error);
+      },
+    ),
+    { connection: getRedisConnection() as any, concurrency: 1 },
+  );
+  dueReminderWorker.on('failed', (job, err) => {
+    log('error', 'due reminder tick failed', { jobId: job?.id, err: err.message });
+    captureJobFailure(QUEUE_NAMES.DUE_REMINDERS, job?.id, err);
+  });
+  const smsSendWorker = new Worker(
+    QUEUE_NAMES.SMS_SEND,
+    async (job: Job) => ({ result: await sendOutboundMessage(reminderContext(job.data.companyId), job.data.messageId) }),
+    { connection: getRedisConnection() as any, concurrency: SEND_CONCURRENCY },
+  );
+  smsSendWorker.on('failed', (job, err) => {
+    log('error', 'sms send failed', { jobId: job?.id, err: err.message });
+    captureJobFailure(QUEUE_NAMES.SMS_SEND, job?.id, err);
+  });
+
   log('info', 'All workers started');
 
   // ── Heartbeat for /api/v1/health (src/lib/health/workerHeartbeat.ts) ──
   // Beats only while every worker is running; a crashed, hung or stopped
   // process stops beating and the key expires, which degrades health.
-  const workers = [outboxWorker, communicationWorker, reconciliationWorker, reservationWorker, retentionWorker];
+  const workers = [outboxWorker, communicationWorker, reconciliationWorker, reservationWorker, retentionWorker, dueReminderWorker, smsSendWorker];
   const beat = async () => {
     try {
       const alive = await writeWorkerHeartbeat(getRedisConnection(), workers.every(w => w.isRunning()));
@@ -134,6 +167,19 @@ export async function startWorkers(): Promise<void> {
     captureJobFailure(QUEUE_NAMES.RECONCILIATION, 'daily-reconciliation-schedule', e);
   }
 
+  // ── Schedule the due reminder tick ──
+  try {
+    const reminderQueue = getQueue(QUEUE_NAMES.DUE_REMINDERS);
+    for (const job of await reminderQueue.getRepeatableJobs()) {
+      if (job.id === 'due-reminder-tick') await reminderQueue.removeRepeatableByKey(job.key);
+    }
+    await reminderQueue.add('tick', {}, { repeat: { every: TICK_MS }, jobId: 'due-reminder-tick', attempts: 1 });
+    log('info', `Due reminder tick scheduled every ${TICK_MS / 60_000} minutes`);
+  } catch (e) {
+    log('warn', 'Failed to schedule the due reminder tick (Redis may be unavailable)', { error: e instanceof Error ? e.message : String(e) });
+    captureJobFailure(QUEUE_NAMES.DUE_REMINDERS, 'due-reminder-tick-schedule', e);
+  }
+
   // Graceful shutdown
   const shutdown = async () => {
     log('info', 'Shutting down workers...');
@@ -145,6 +191,8 @@ export async function startWorkers(): Promise<void> {
       reconciliationWorker.close(),
       reservationWorker.close(),
       retentionWorker.close(),
+      dueReminderWorker.close(),
+      smsSendWorker.close(),
     ]);
     await getRedisConnection().quit();
     await flushWorkerErrorTracking();
