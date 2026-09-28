@@ -30,7 +30,7 @@ export function ReminderDialog({ installmentId, open, onOpenChange, onSent }: {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   // One key per dialog: a double click cannot queue two reminders.
-  const idempotencyKey = useMemo(() => newIdempotencyKey('manual-reminder'), [installmentId, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const idempotencyKey = useMemo(() => newIdempotencyKey('manual-reminder'), [installmentId, open]);
 
   useEffect(() => {
     if (!open || !installmentId) return;

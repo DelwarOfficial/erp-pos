@@ -2310,17 +2310,19 @@ Sale (`PostSale`) → receivable (AR in the ledger) → payment schedule (`insta
 
 Nothing owed is stored. Per installment: `amount` − installment allocations of payments with `payment_status = 'posted'`, capped by the sale's outstanding (grand total − posted payment allocations − posted return credits + refunds paid against those returns); credits outside the installments come off the oldest outstanding installment first; a sale not `completed`/`partially_returned` owes nothing. Code: `src/domain/receivables/balances.ts`. AR aging (`src/reports`) uses the same sale-level formula.
 
-### Credit sale workflow — IMPLEMENTED (API); UI PLANNED (Phase 2)
+### Credit sale workflow — IMPLEMENTED
 
 `POST /api/v1/sales` accepts `payments: []` for a sale entirely on credit, and:
 
 | Field | Meaning |
 |---|---|
-| `payment_arrangement` | `{type:'due', due_date}` or `{type:'installments', installments:[{due_date, amount}]}`; amounts are decimal strings; installments must total the unpaid amount exactly (refused otherwise); no date before the sale; dates strictly increasing; at most 60 |
+| `payment_arrangement` | `{type:'due', due_date}`, `{type:'equal', count, first_due_date, interval_months}` (split rounded down to the paisa, remainder on the last installment; months clamp to month end) or `{type:'installments', installments:[{due_date, amount}]}` where the last amount may be `'rest'`; amounts are decimal strings; installments must total the unpaid amount exactly (refused otherwise); no date before the sale; dates strictly increasing; at most 60 |
 | `reminder_phone` | Bangladesh mobile, normalized to `8801XXXXXXXXX`; invalid numbers are refused; stored on the sale as `customer_phone_snapshot`; the customer record is not changed |
 | `due_reminders_enabled` | per sale, default true (`sales.due_reminders_enabled`) |
 
-Without an arrangement the unpaid amount falls due 30 days after the sale in one installment. Credit exposure and the overdue block come from installment balances (an installment past due with anything outstanding blocks new credit).
+Without an arrangement the unpaid amount falls due 30 days after the sale in one installment.
+
+`POST /api/v1/sales/quote` (`sale.post`, same body, idempotency key header required but nothing is stored) runs the whole posting in a transaction and rolls it back: it returns totals, `paid_now`, `unpaid`, the normalized reminder phone and the exact schedule, and consumes no document number. Credit refusals are the same as posting. The credit-sale screen (`/dashboard/sales/credit`) previews with it, then posts the same body. Credit exposure and the overdue block come from installment balances (an installment past due with anything outstanding blocks new credit).
 
 ### Payment allocation — IMPLEMENTED
 
@@ -2354,9 +2356,21 @@ Queue `due-reminders`: repeatable `tick` every 5 minutes; per company (listed by
 
 The earlier guessed `MimSmsProvider` in `src/adapters/providers.ts` (Bearer token, undocumented endpoint) is superseded for reminders; campaigns still use the old adapter layer until Phase 3.
 
+### Collections and SMS workspace — IMPLEMENTED (Phase 2)
+
+| Route | Permission | Purpose |
+|---|---|---|
+| `GET /api/v1/collections/overview` | `collection.view.branch` | ledger receivable vs scheduled outstanding, due today, overdue, next 7 days, collected today, customers without a valid mobile, SMS counts today, unknown/failed/dead-letter in the last 7 days |
+| `GET /api/v1/collections/worklist` | `collection.view.branch` | open installments by view `due_today/overdue/upcoming/all_open`, search, biller, branch; keyset cursor `due_date|id`, at most 200; masked phone, days overdue, last payment, last SMS |
+| `GET/POST /api/v1/collections/installments/{id}/reminder` | view: `collection.view.branch`; queue: `communication.transactional.send.branch` + idempotency key | preview the text, segments and any block; queue one manual reminder per installment per day (409 otherwise). Manual sends ignore the policy switch, stages and the per-customer limit, but still need a valid phone, consent, the window, the company limit and something owed |
+| `GET /api/v1/customers/{id}/collection-timeline` | `collection.view.branch` | credit sales, collections, reversals and SMS in order |
+| `GET /api/v1/communications/messages` | `collection.view.branch` | message history (status, trigger, customer, dates), numbers masked |
+| `POST /api/v1/communications/messages/{id}/resolve` | `communication.sms_provider.manage.company` + idempotency key | record the checked outcome of an `unknown` message (`sent` / `not_sent`), audited `sms_message.resolve_unknown`; nothing is resent |
+
+Open balances in SQL (`openInstallmentsCte`) use the same oldest-first cap to the sale's owed amount as the JS `installmentBalances`, tested equal. `reminder_occurrences` and `outbound_messages` are branch-scoped through their sale. Screens: `/dashboard/collections` (control centre and worklist), `/dashboard/collections/customers/{id}` (profile, installments, collect, timeline), `/dashboard/communications/sms` (overview, history with resolve, MiMSMS account and policy settings), `/dashboard/sales/credit`. New permissions: `collection.view.branch`, `communication.transactional.send.branch` (branch managers get both).
+
 ### PLANNED
 
-- **Phase 2:** collection control centre (due today, overdue, upcoming, failed and unknown messages, missing/invalid numbers), worklist with actions, customer collection profile and timeline, manual reminder with preview, credit-sale UI (phone confirmation, schedule builder), SMS workspace (overview, history, provider settings).
 - **Phase 3:** template editor, bulk SMS with preview and eligibility summary, promise-to-pay (separate record; never rewrites the due date), collection follow-ups, collection reports, calendar view, due-date rescheduling with audit, rebuilding the campaign processor on the gateway.
 
 ## 5.12 Expenses

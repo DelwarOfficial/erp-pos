@@ -40,7 +40,7 @@ A tick, per company: plan today's stages → queue messages inside the sending w
 
 A timeout, a connection lost mid-request, an unreadable response, or a worker crash during a send leaves the outcome unknown. MiMSMS offers no idempotency key or lookup by our reference, so a retry could send the customer the same reminder twice and bill twice. These are never retried automatically.
 
-To resolve one: find the destination number and the `claimed_at` time, check the MiMSMS panel's sent-SMS report for that number around that time, and record the outcome (Phase 2 adds a UI action; until then, leave it `unknown` — the next stage will remind the customer if they still owe).
+To resolve one: find the destination number and the `claimed_at` time, check the MiMSMS panel's sent-SMS report for that number around that time, and record the outcome in **SMS & Reminders → History**, filtered by status `unknown`: "It was sent" or "Not sent" (needs `communication.sms_provider.manage.company`; audited as `sms_message.resolve_unknown`). Neither resends anything; if unsure, leave it `unknown` — the next stage will remind the customer if they still owe. The Collections page shows a banner while any message from the last 7 days is unknown.
 
 ## Troubleshooting
 
