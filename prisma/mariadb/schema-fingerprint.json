@@ -2615,6 +2615,528 @@
    },
    "checks": {}
   },
+  "collection_follow_ups": {
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci",
+   "columns": {
+    "id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "company_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "customer_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "sale_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "installment_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "promise_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "follow_up_type": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "status": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": "'open'",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "assigned_to": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "due_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "note": {
+     "type": "text",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "outcome_note": {
+     "type": "text",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "created_by": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "created_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": "current_timestamp(3)",
+     "extra": null,
+     "collation": null
+    },
+    "closed_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "closed_by": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    }
+   },
+   "indexes": {
+    "collection_follow_ups_assigned_to_idx": {
+     "unique": false,
+     "columns": "assigned_to"
+    },
+    "collection_follow_ups_closed_by_fkey": {
+     "unique": false,
+     "columns": "closed_by"
+    },
+    "collection_follow_ups_company_status_due_idx": {
+     "unique": false,
+     "columns": "company_id,status,due_at"
+    },
+    "collection_follow_ups_created_by_fkey": {
+     "unique": false,
+     "columns": "created_by"
+    },
+    "collection_follow_ups_customer_id_idx": {
+     "unique": false,
+     "columns": "customer_id"
+    },
+    "collection_follow_ups_installment_id_idx": {
+     "unique": false,
+     "columns": "installment_id"
+    },
+    "collection_follow_ups_promise_id_idx": {
+     "unique": false,
+     "columns": "promise_id"
+    },
+    "collection_follow_ups_sale_id_idx": {
+     "unique": false,
+     "columns": "sale_id"
+    },
+    "fk_tenant_collection_follow_ups_assignee": {
+     "unique": false,
+     "columns": "company_id,assigned_to"
+    },
+    "fk_tenant_collection_follow_ups_closer": {
+     "unique": false,
+     "columns": "company_id,closed_by"
+    },
+    "fk_tenant_collection_follow_ups_creator": {
+     "unique": false,
+     "columns": "company_id,created_by"
+    },
+    "fk_tenant_collection_follow_ups_customer": {
+     "unique": false,
+     "columns": "company_id,customer_id"
+    },
+    "fk_tenant_collection_follow_ups_installment": {
+     "unique": false,
+     "columns": "company_id,installment_id"
+    },
+    "fk_tenant_collection_follow_ups_promise": {
+     "unique": false,
+     "columns": "company_id,promise_id"
+    },
+    "fk_tenant_collection_follow_ups_sale": {
+     "unique": false,
+     "columns": "company_id,sale_id"
+    },
+    "PRIMARY": {
+     "unique": true,
+     "columns": "id"
+    },
+    "uq_tenant_collection_follow_ups_id": {
+     "unique": true,
+     "columns": "company_id,id"
+    }
+   },
+   "foreignKeys": {
+    "collection_follow_ups_assigned_to_fkey": {
+     "columns": "assigned_to",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_closed_by_fkey": {
+     "columns": "closed_by",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_created_by_fkey": {
+     "columns": "created_by",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_customer_id_fkey": {
+     "columns": "customer_id",
+     "references": "customers(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_installment_id_fkey": {
+     "columns": "installment_id",
+     "references": "installments(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_promise_id_fkey": {
+     "columns": "promise_id",
+     "references": "collection_promises(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_follow_ups_sale_id_fkey": {
+     "columns": "sale_id",
+     "references": "sales(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_assignee": {
+     "columns": "company_id,assigned_to",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_closer": {
+     "columns": "company_id,closed_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_creator": {
+     "columns": "company_id,created_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_customer": {
+     "columns": "company_id,customer_id",
+     "references": "customers(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_installment": {
+     "columns": "company_id,installment_id",
+     "references": "installments(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_promise": {
+     "columns": "company_id,promise_id",
+     "references": "collection_promises(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_follow_ups_sale": {
+     "columns": "company_id,sale_id",
+     "references": "sales(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    }
+   },
+   "checks": {
+    "collection_follow_ups_closed_chk": "status = 'open' and closed_at is null or status <> 'open' and closed_at is not null and closed_by is not null",
+    "collection_follow_ups_status_chk": "status in ('open','done','cancelled')",
+    "collection_follow_ups_type_chk": "follow_up_type in ('call','visit','send_reminder','call_later','payment_promised','escalate','other')"
+   }
+  },
+  "collection_promises": {
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci",
+   "columns": {
+    "id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "company_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "customer_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "sale_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "installment_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "original_due_date": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "promised_date": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "deadline_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "promised_amount": {
+     "type": "decimal(65,30)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "note": {
+     "type": "text",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "recorded_by": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "created_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": "current_timestamp(3)",
+     "extra": null,
+     "collation": null
+    },
+    "cancelled_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "cancelled_by": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "cancel_reason": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    }
+   },
+   "indexes": {
+    "collection_promises_cancelled_by_fkey": {
+     "unique": false,
+     "columns": "cancelled_by"
+    },
+    "collection_promises_company_deadline_idx": {
+     "unique": false,
+     "columns": "company_id,deadline_at"
+    },
+    "collection_promises_customer_id_idx": {
+     "unique": false,
+     "columns": "customer_id"
+    },
+    "collection_promises_installment_id_idx": {
+     "unique": false,
+     "columns": "installment_id"
+    },
+    "collection_promises_recorded_by_fkey": {
+     "unique": false,
+     "columns": "recorded_by"
+    },
+    "collection_promises_sale_id_idx": {
+     "unique": false,
+     "columns": "sale_id"
+    },
+    "fk_tenant_collection_promises_canceller": {
+     "unique": false,
+     "columns": "company_id,cancelled_by"
+    },
+    "fk_tenant_collection_promises_customer": {
+     "unique": false,
+     "columns": "company_id,customer_id"
+    },
+    "fk_tenant_collection_promises_installment": {
+     "unique": false,
+     "columns": "company_id,installment_id"
+    },
+    "fk_tenant_collection_promises_recorder": {
+     "unique": false,
+     "columns": "company_id,recorded_by"
+    },
+    "fk_tenant_collection_promises_sale": {
+     "unique": false,
+     "columns": "company_id,sale_id"
+    },
+    "PRIMARY": {
+     "unique": true,
+     "columns": "id"
+    },
+    "uq_tenant_collection_promises_id": {
+     "unique": true,
+     "columns": "company_id,id"
+    }
+   },
+   "foreignKeys": {
+    "collection_promises_cancelled_by_fkey": {
+     "columns": "cancelled_by",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_promises_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "collection_promises_customer_id_fkey": {
+     "columns": "customer_id",
+     "references": "customers(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_promises_installment_id_fkey": {
+     "columns": "installment_id",
+     "references": "installments(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_promises_recorded_by_fkey": {
+     "columns": "recorded_by",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "collection_promises_sale_id_fkey": {
+     "columns": "sale_id",
+     "references": "sales(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_promises_canceller": {
+     "columns": "company_id,cancelled_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_promises_customer": {
+     "columns": "company_id,customer_id",
+     "references": "customers(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_promises_installment": {
+     "columns": "company_id,installment_id",
+     "references": "installments(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_promises_recorder": {
+     "columns": "company_id,recorded_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_collection_promises_sale": {
+     "columns": "company_id,sale_id",
+     "references": "sales(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    }
+   },
+   "checks": {
+    "collection_promises_amount_positive_chk": "promised_amount > 0",
+    "collection_promises_cancel_chk": "cancelled_at is null and cancelled_by is null or cancelled_at is not null and cancelled_by is not null"
+   }
+  },
   "communication_campaigns": {
    "engine": "InnoDB",
    "collation": "utf8mb4_unicode_ci",
@@ -10055,6 +10577,156 @@
    },
    "checks": {
     "installment_allocations_amount_positive_chk": "allocated_amount > 0"
+   }
+  },
+  "installment_due_date_changes": {
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci",
+   "columns": {
+    "id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "company_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "installment_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "sale_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "old_due_date": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "new_due_date": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "reason": {
+     "type": "text",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "changed_by": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "changed_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": "current_timestamp(3)",
+     "extra": null,
+     "collation": null
+    }
+   },
+   "indexes": {
+    "fk_tenant_installment_due_date_changes_changer": {
+     "unique": false,
+     "columns": "company_id,changed_by"
+    },
+    "fk_tenant_installment_due_date_changes_installment": {
+     "unique": false,
+     "columns": "company_id,installment_id"
+    },
+    "fk_tenant_installment_due_date_changes_sale": {
+     "unique": false,
+     "columns": "company_id,sale_id"
+    },
+    "installment_due_date_changes_changed_by_fkey": {
+     "unique": false,
+     "columns": "changed_by"
+    },
+    "installment_due_date_changes_company_id_idx": {
+     "unique": false,
+     "columns": "company_id"
+    },
+    "installment_due_date_changes_installment_id_idx": {
+     "unique": false,
+     "columns": "installment_id"
+    },
+    "installment_due_date_changes_sale_id_idx": {
+     "unique": false,
+     "columns": "sale_id"
+    },
+    "PRIMARY": {
+     "unique": true,
+     "columns": "id"
+    }
+   },
+   "foreignKeys": {
+    "fk_tenant_installment_due_date_changes_changer": {
+     "columns": "company_id,changed_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_installment_due_date_changes_installment": {
+     "columns": "company_id,installment_id",
+     "references": "installments(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_installment_due_date_changes_sale": {
+     "columns": "company_id,sale_id",
+     "references": "sales(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "installment_due_date_changes_changed_by_fkey": {
+     "columns": "changed_by",
+     "references": "users(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "installment_due_date_changes_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "installment_due_date_changes_installment_id_fkey": {
+     "columns": "installment_id",
+     "references": "installments(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "installment_due_date_changes_sale_id_fkey": {
+     "columns": "sale_id",
+     "references": "sales(id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    }
+   },
+   "checks": {
+    "installment_due_date_changes_differs_chk": "old_due_date <> new_due_date"
    }
   },
   "integration_credentials": {
@@ -27746,6 +28418,18 @@
   },
   "trg_giftcardtransactions_immutable_upd": {
    "table": "gift_card_transactions",
+   "timing": "BEFORE",
+   "event": "UPDATE",
+   "body": "dc43a2e1c18f3948"
+  },
+  "trg_installment_due_date_changes_immutable_del": {
+   "table": "installment_due_date_changes",
+   "timing": "BEFORE",
+   "event": "DELETE",
+   "body": "dc43a2e1c18f3948"
+  },
+  "trg_installment_due_date_changes_immutable_upd": {
+   "table": "installment_due_date_changes",
    "timing": "BEFORE",
    "event": "UPDATE",
    "body": "dc43a2e1c18f3948"

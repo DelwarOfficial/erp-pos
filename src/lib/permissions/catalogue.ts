@@ -196,6 +196,9 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'communication.transactional.send.branch', module: 'communication', description: 'Send a manual due reminder SMS to a customer' },
   // Collections
   { code: 'collection.view.branch', module: 'collection', description: 'View dues, the collection worklist, customer collection history and SMS history' },
+  { code: 'collection.manage.branch', module: 'collection', description: 'Record promises to pay and manage collection follow-ups' },
+  { code: 'collection.reschedule.branch', module: 'collection', description: "Change an installment's contractual due date (audited)" },
+  { code: 'communication.bulk_send.company', module: 'communication', description: 'Send due reminder SMS to many customers at once' },
   // HR
   { code: 'employee.manage.branch', module: 'hr', description: 'Manage employees' },
   { code: 'attendance.manage.branch', module: 'hr', description: 'Manage attendance records' },
@@ -249,7 +252,7 @@ export const SYSTEM_ROLES = [
   {
     name: 'branch_manager',
     description: 'Branch manager. Branch-scoped operations + approvals.',
-    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'communication.transactional.send.branch'],
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'collection.manage.branch', 'collection.reschedule.branch', 'communication.transactional.send.branch'],
   },
   {
     name: 'cashier',

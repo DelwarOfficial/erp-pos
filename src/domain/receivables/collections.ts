@@ -200,7 +200,7 @@ const TIMELINE_MAX = 200;
 
 /** A customer's collection history, newest first: links to the records, never copies of them. */
 export async function customerCollectionTimeline(tx: Tx, companyId: string, customerId: string): Promise<TimelineEvent[]> {
-  const [sales, collections, messages] = await Promise.all([
+  const [sales, collections, messages, promises, followUps, dueDateChanges] = await Promise.all([
     tx.sale.findMany({
       where: { companyId, customerId, installments: { some: {} } },
       select: { referenceNo: true, grandTotal: true, postedAt: true, businessDate: true, saleStatus: true,
@@ -219,6 +219,24 @@ export async function customerCollectionTimeline(tx: Tx, companyId: string, cust
         installment: { select: { installmentNo: true } }, sale: { select: { referenceNo: true } } },
       orderBy: { createdAt: 'desc' }, take: 100,
     }),
+    tx.collectionPromise.findMany({
+      where: { companyId, customerId },
+      select: { promisedDate: true, promisedAmount: true, createdAt: true, cancelledAt: true, cancelReason: true, note: true,
+        sale: { select: { referenceNo: true } }, installment: { select: { installmentNo: true } }, recorder: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }, take: 50,
+    }),
+    tx.collectionFollowUp.findMany({
+      where: { companyId, customerId },
+      select: { followUpType: true, status: true, dueAt: true, createdAt: true, closedAt: true, note: true, outcomeNote: true,
+        assignee: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }, take: 50,
+    }),
+    tx.installmentDueDateChange.findMany({
+      where: { companyId, sale: { customerId } },
+      select: { oldDueDate: true, newDueDate: true, reason: true, changedAt: true,
+        sale: { select: { referenceNo: true } }, installment: { select: { installmentNo: true } }, changer: { select: { name: true } } },
+      orderBy: { changedAt: 'desc' }, take: 50,
+    }),
   ]);
 
   const events: TimelineEvent[] = [];
@@ -233,6 +251,22 @@ export async function customerCollectionTimeline(tx: Tx, companyId: string, cust
   for (const m of messages) {
     const about = m.sale ? `${m.sale.referenceNo}${m.installment ? ` #${m.installment.installmentNo}` : ''}` : '';
     events.push({ at: m.deliveredAt ?? m.sentAt ?? m.createdAt, kind: 'sms', title: `${m.triggerSource === 'manual' ? 'Manual' : 'Automatic'} reminder ${about}`.trim(), status: m.status, detail: m.lastErrorCode ?? undefined });
+  }
+  for (const p of promises) {
+    const about = `${p.sale.referenceNo}${p.installment ? ` #${p.installment.installmentNo}` : ''}`;
+    events.push({ at: p.createdAt, kind: 'promise', title: `Promise to pay by ${p.promisedDate.toISOString().slice(0, 10)} on ${about} (recorded by ${p.recorder.name})`,
+      amount: dec(p.promisedAmount).toFixed(2), reference: p.sale.referenceNo, detail: p.note ?? undefined });
+    if (p.cancelledAt) events.push({ at: p.cancelledAt, kind: 'promise_cancelled', title: `Promise on ${about} cancelled`, detail: p.cancelReason ?? undefined });
+  }
+  for (const f of followUps) {
+    events.push({ at: f.createdAt, kind: 'follow_up', title: `Follow-up: ${f.followUpType.replace(/_/g, ' ')}${f.assignee ? ` for ${f.assignee.name}` : ''}`,
+      status: f.status, detail: f.note ?? undefined });
+    if (f.closedAt) events.push({ at: f.closedAt, kind: 'follow_up_closed', title: `Follow-up ${f.status}: ${f.followUpType.replace(/_/g, ' ')}`, detail: f.outcomeNote ?? undefined });
+  }
+  for (const c of dueDateChanges) {
+    events.push({ at: c.changedAt, kind: 'due_date_changed',
+      title: `Due date of ${c.sale.referenceNo} #${c.installment.installmentNo} changed from ${c.oldDueDate.toISOString().slice(0, 10)} to ${c.newDueDate.toISOString().slice(0, 10)} by ${c.changer.name}`,
+      detail: c.reason });
   }
   return events.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, TIMELINE_MAX);
 }

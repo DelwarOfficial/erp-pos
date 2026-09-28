@@ -1686,5 +1686,133 @@
       "sale.post"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/collections/promises/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/promises/route.ts",
+    "method": "POST",
+    "permissions": [
+      "collection.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/promises/[id]/cancel/route.ts",
+    "method": "POST",
+    "permissions": [
+      "collection.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/follow-ups/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/follow-ups/route.ts",
+    "method": "POST",
+    "permissions": [
+      "collection.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/follow-ups/[id]/close/route.ts",
+    "method": "POST",
+    "permissions": [
+      "collection.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/installments/[id]/due-date/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/installments/[id]/due-date/route.ts",
+    "method": "POST",
+    "permissions": [
+      "collection.reschedule.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/bulk-reminders/preview/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.bulk_send.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/bulk-reminders/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.bulk_send.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/reports/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/collections/calendar/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.view.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/templates/route.ts",
+    "method": "GET",
+    "permissions": [
+      "communication.template.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/templates/[code]/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "communication.template.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/templates/[code]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "communication.template.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/templates/preview/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.template.manage.company"
+    ],
+    "exception": null
   }
 ]

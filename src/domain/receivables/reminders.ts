@@ -254,7 +254,9 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
     const { policy, timezone, companyName } = await setup(tx, companyId);
     const today = localDate(timezone, now);
     let text = message.renderedBody;
-    if (message.reminderOccurrenceId || (message.triggerSource === 'manual' && message.installmentId)) {
+    if (message.reminderOccurrenceId || ((message.triggerSource === 'manual' || message.triggerSource === 'bulk') && message.installmentId)) {
+      // Manual and bulk reminders are chosen by staff: no stage or policy
+      // switch applies, but the rest of the checks do.
       const manual = !message.reminderOccurrenceId;
       const target: Target = manual
         ? await manualTarget(tx, companyId, message.installmentId!, today)
@@ -267,11 +269,12 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
       const [balance] = await installmentBalances(tx, companyId, { installmentIds: [target.installmentId] });
       text = (await renderFor(tx, target, balance.outstanding, (message.locale as ReminderLocale) ?? effective.locale, companyName, today)).text;
       // Daily limits, counted from the start of the company's day. A manual
-      // reminder is a deliberate decision and is not held to the per-customer
-      // limit; the company's daily cap applies to every message.
+      // reminder is a deliberate decision about one customer and is not held
+      // to the per-customer limit; bulk and automatic ones are. The company's
+      // daily cap applies to every message.
       const since = zonedMidnight(timezone, today);
       const [toCustomer, total] = await Promise.all([
-        manual ? Promise.resolve(0) : tx.outboundMessage.count({ where: { companyId, destinationHash: message.destinationHash, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
+        message.triggerSource === 'manual' ? Promise.resolve(0) : tx.outboundMessage.count({ where: { companyId, destinationHash: message.destinationHash, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
         tx.outboundMessage.count({ where: { companyId, status: { in: COUNTED }, claimedAt: { gte: since }, NOT: { id: messageId } } }),
       ]);
       if (toCustomer >= effective.maxPerCustomerPerDay) return { stop: { status: 'skipped', reason: 'customer_daily_limit' } } as const;
@@ -433,6 +436,105 @@ export async function resolveUnknownMessage(tx: Prisma.TransactionClient, compan
   await tx.auditLog.create({ data: { companyId, userId: resolvedBy, correlationId: randomUUID(),
     action: 'sms_message.resolve_unknown', entityType: 'outbound_message', entityId: messageId,
     afterValue: JSON.stringify({ outcome, note: note ?? null }) } });
+}
+
+// ── bulk reminders ──────────────────────────────────────────────────────────
+
+export const BULK_MAX = 500;
+
+export interface BulkReminderPreview {
+  selected: number; eligible: number; missing_phone: number; invalid_phone: number; already_paid: number;
+  opted_out: number; duplicate_suppressed: number; not_sendable: number; not_found: number;
+  segments_total: number; daily_limit_remaining: number; sample: { customer_name: string; text: string; segments: number } | null;
+  confirmation_token: string;
+}
+
+async function bulkPlan(tx: Prisma.TransactionClient, companyId: string, installmentIds: string[], now: Date, locale?: ReminderLocale) {
+  const ids = [...new Set(installmentIds)];
+  if (ids.length === 0) throw new DomainError('VALIDATION_FAILED', 'Select at least one installment', {}, 400);
+  if (ids.length > BULK_MAX) throw new DomainError('VALIDATION_FAILED', `At most ${BULK_MAX} installments per batch`, {}, 400);
+  const { policy, timezone } = await setup(tx, companyId);
+  const effective = policy ?? DEFAULT_POLICY;
+  const today = localDate(timezone, now);
+  const since = zonedMidnight(timezone, today);
+  const counts = { missing_phone: 0, invalid_phone: 0, already_paid: 0, opted_out: 0, duplicate_suppressed: 0, not_sendable: 0, not_found: 0 };
+
+  const candidates: Array<ManualReminderPreview & { customerId: string; saleId: string }> = [];
+  for (const id of ids) {
+    let preview: ManualReminderPreview;
+    try { preview = await previewManualReminder(tx, companyId, id, now, locale); }
+    catch (error) {
+      if (error instanceof DomainError && error.code === 'RESOURCE_NOT_FOUND') { counts.not_found++; continue; }
+      throw error;
+    }
+    if (preview.blocked) {
+      if (preview.blocked === 'paid') counts.already_paid++;
+      else if (preview.blocked === 'missing_phone') counts.missing_phone++;
+      else if (preview.blocked === 'invalid_phone') counts.invalid_phone++;
+      else if (preview.blocked === 'opted_out') counts.opted_out++;
+      else counts.not_sendable++;
+      continue;
+    }
+    const installment = await tx.installment.findFirstOrThrow({ where: { id, companyId }, select: { saleId: true, sale: { select: { customerId: true } } } });
+    candidates.push({ ...preview, customerId: installment.sale.customerId!, saleId: installment.saleId });
+  }
+  // One message per customer per batch, for their oldest due installment, and
+  // none to a customer already sent or queued a reminder today by any route.
+  candidates.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.installmentId.localeCompare(b.installmentId));
+  const seen = new Set((await tx.outboundMessage.findMany({
+    where: { companyId, customerId: { in: [...new Set(candidates.map(c => c.customerId))] }, createdAt: { gte: since },
+      status: { notIn: ['cancelled', 'skipped', 'failed'] } },
+    select: { customerId: true },
+  })).map(m => m.customerId!));
+  const eligible = candidates.filter(c => {
+    if (seen.has(c.customerId)) { counts.duplicate_suppressed++; return false; }
+    seen.add(c.customerId);
+    return true;
+  });
+  const usedToday = await tx.outboundMessage.count({ where: { companyId, status: { in: [...COUNTED, 'queued'] }, createdAt: { gte: since } } });
+  const remaining = Math.max(0, effective.dailyCompanyLimit - usedToday);
+  const chosen = locale ?? effective.locale;
+  const token = sha256(JSON.stringify([companyId, today, chosen, eligible.map(e => e.installmentId).sort()]));
+  const preview: BulkReminderPreview = {
+    selected: ids.length, eligible: eligible.length, ...counts,
+    segments_total: eligible.reduce((sum, e) => sum + e.segments, 0), daily_limit_remaining: remaining,
+    sample: eligible[0] ? { customer_name: eligible[0].customerName, text: eligible[0].text!, segments: eligible[0].segments } : null,
+    confirmation_token: token,
+  };
+  return { preview, eligible, locale: chosen };
+}
+
+/** Who a bulk reminder would reach, and why the others would not. Sends nothing. */
+export async function previewBulkReminders(tx: Prisma.TransactionClient, companyId: string, installmentIds: string[], now = new Date(), locale?: ReminderLocale) {
+  return (await bulkPlan(tx, companyId, installmentIds, now, locale)).preview;
+}
+
+/**
+ * Queue the batch the user confirmed. The eligible set is computed again and
+ * must match the preview's token: if anything changed (a payment, a number,
+ * another reminder), the user previews again rather than sending to a set
+ * they did not see. Each message is still re-checked just before sending.
+ */
+export async function queueBulkReminders(tx: Prisma.TransactionClient, companyId: string, installmentIds: string[], confirmationToken: string, requestedBy: string, now = new Date(), locale?: ReminderLocale) {
+  const { preview, eligible, locale: chosen } = await bulkPlan(tx, companyId, installmentIds, now, locale);
+  if (preview.confirmation_token !== confirmationToken) {
+    throw new DomainError('VALIDATION_FAILED', 'The selection changed since the preview; preview again', { preview }, 409);
+  }
+  if (eligible.length === 0) throw new DomainError('VALIDATION_FAILED', 'Nobody in the selection can be reminded now', { preview }, 409);
+  if (eligible.length > preview.daily_limit_remaining) {
+    throw new DomainError('VALIDATION_FAILED', `Only ${preview.daily_limit_remaining} more SMS may be sent today (daily limit)`, { preview }, 409);
+  }
+  const batchId = randomUUID();
+  await tx.outboundMessage.createMany({ data: eligible.map(e => ({
+    companyId, channel: 'sms', purpose: 'transactional', triggerSource: 'bulk',
+    installmentId: e.installmentId, saleId: e.saleId, customerId: e.customerId, createdBy: requestedBy,
+    locale: chosen, destinationHash: sha256(e.phone!), destinationEncrypted: encryptString(e.phone!).ciphertext.toString('base64'),
+    renderedBody: e.text!, encoding: e.encoding, segments: e.segments, status: 'queued',
+  })) });
+  await tx.auditLog.create({ data: { companyId, userId: requestedBy, correlationId: batchId,
+    action: 'sms_message.bulk_reminder', entityType: 'outbound_message_batch', entityId: batchId,
+    afterValue: JSON.stringify({ ...preview, sample: undefined, installment_ids: eligible.map(e => e.installmentId) }) } });
+  return { batchId, queued: eligible.length, preview };
 }
 
 // ── recover / poll ──────────────────────────────────────────────────────────

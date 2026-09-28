@@ -247,6 +247,9 @@ model Company {
   riskThresholdChanges  RiskThresholdChange[]
   reminderPolicy        ReminderPolicy?
   reminderOccurrences   ReminderOccurrence[]
+  collectionPromises    CollectionPromise[]
+  collectionFollowUps   CollectionFollowUp[]
+  dueDateChanges        InstallmentDueDateChange[]
 
   @@index([status])
   @@map("companies")
@@ -457,6 +460,12 @@ model User {
   supportTicketAssigned SupportTicket[]    @relation("SupportTicketAssignee")
   supportTicketAuthored SupportTicketMessage[] @relation("SupportTicketAuthor")
   commTemplateApproved CommunicationTemplate[] @relation("CommTemplateApprovedBy")
+  collectionPromisesRecorded CollectionPromise[] @relation("PromiseRecordedBy")
+  collectionPromisesCancelled CollectionPromise[] @relation("PromiseCancelledBy")
+  collectionFollowUpsAssigned CollectionFollowUp[] @relation("FollowUpAssignedTo")
+  collectionFollowUpsCreated CollectionFollowUp[] @relation("FollowUpCreatedBy")
+  collectionFollowUpsClosed CollectionFollowUp[] @relation("FollowUpClosedBy")
+  dueDateChangesMade InstallmentDueDateChange[] @relation("DueDateChangedBy")
   dashboardPreference DashboardPreference?
   // Step 3 — WebAuthn
   webauthnCredentials WebAuthnCredential[]
@@ -2334,6 +2343,8 @@ model Customer {
   withholdingTransactions WithholdingTransaction[] @relation("WithholdingCustomer")
   dataSubjectRequests DataSubjectRequest[] @relation("DSRCustomer")
   reminderOccurrences ReminderOccurrence[]
+  collectionPromises  CollectionPromise[]
+  collectionFollowUps CollectionFollowUp[]
   outboundMessages OutboundMessage[]
 
   @@index([companyId, isActive, updatedAt], map: "customers_company_active_updated_idx")
@@ -2885,6 +2896,9 @@ model Sale {
   couponRedemptions CouponRedemption[]
   rewardPointTransactions RewardPointTransaction[]
   reminderOccurrences ReminderOccurrence[]
+  collectionPromises  CollectionPromise[]
+  collectionFollowUps CollectionFollowUp[]
+  dueDateChanges      InstallmentDueDateChange[]
   outboundMessages OutboundMessage[]
 
   @@unique([companyId, referenceNo])
@@ -3244,6 +3258,9 @@ model Installment {
   sale    Sale       @relation(fields: [saleId], references: [id])
   allocations InstallmentAllocation[]
   reminderOccurrences ReminderOccurrence[]
+  promises            CollectionPromise[]
+  followUps           CollectionFollowUp[]
+  dueDateChanges      InstallmentDueDateChange[]
   outboundMessages    OutboundMessage[]
 
   @@unique([saleId, installmentNo])
@@ -5284,4 +5301,99 @@ model ReminderOccurrence {
   @@index([saleId])
   @@index([customerId])
   @@map("reminder_occurrences")
+}
+
+// A customer's promise to pay part of a sale by a date (blueprint §5.11A).
+// It never changes the installment's contractual due date: both are kept.
+// Kept / broken is derived from posted collections, never stored.
+model CollectionPromise {
+  id               String    @id @default(uuid())
+  companyId        String    @map("company_id")
+  customerId       String    @map("customer_id")
+  saleId           String    @map("sale_id")
+  installmentId    String?   @map("installment_id")
+  originalDueDate  DateTime? @map("original_due_date")
+  promisedDate     DateTime  @map("promised_date")
+  deadlineAt       DateTime  @map("deadline_at") // end of the promised date in company time
+  promisedAmount   Decimal   @map("promised_amount")
+  note             String?   @db.Text
+  recordedBy       String    @map("recorded_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  cancelledBy      String?   @map("cancelled_by")
+  cancelReason     String?   @map("cancel_reason")
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sale        Sale         @relation(fields: [saleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  installment Installment? @relation(fields: [installmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  recorder    User         @relation("PromiseRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  canceller   User?        @relation("PromiseCancelledBy", fields: [cancelledBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  followUps   CollectionFollowUp[]
+
+  @@index([companyId, deadlineAt], map: "collection_promises_company_deadline_idx")
+  @@index([customerId])
+  @@index([saleId])
+  @@index([installmentId])
+  @@map("collection_promises")
+}
+
+// A collection task: call, visit, reminder, escalation.
+model CollectionFollowUp {
+  id             String    @id @default(uuid())
+  companyId      String    @map("company_id")
+  customerId     String    @map("customer_id")
+  saleId         String?   @map("sale_id")
+  installmentId  String?   @map("installment_id")
+  promiseId      String?   @map("promise_id")
+  followUpType   String    @map("follow_up_type") // call/visit/send_reminder/call_later/payment_promised/escalate/other
+  status         String    @default("open") // open/done/cancelled
+  assignedTo     String?   @map("assigned_to")
+  dueAt          DateTime  @map("due_at")
+  note           String?   @db.Text
+  outcomeNote    String?   @map("outcome_note") @db.Text
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  closedAt       DateTime? @map("closed_at")
+  closedBy       String?   @map("closed_by")
+
+  company     Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer    Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sale        Sale?              @relation(fields: [saleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  installment Installment?       @relation(fields: [installmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  promise     CollectionPromise? @relation(fields: [promiseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  assignee    User?              @relation("FollowUpAssignedTo", fields: [assignedTo], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator     User               @relation("FollowUpCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  closer      User?              @relation("FollowUpClosedBy", fields: [closedBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([companyId, status, dueAt], map: "collection_follow_ups_company_status_due_idx")
+  @@index([customerId])
+  @@index([saleId])
+  @@index([installmentId])
+  @@index([promiseId])
+  @@index([assignedTo])
+  @@map("collection_follow_ups")
+}
+
+// Append-only history of contractual due-date changes.
+model InstallmentDueDateChange {
+  id             String   @id @default(uuid())
+  companyId      String   @map("company_id")
+  installmentId  String   @map("installment_id")
+  saleId         String   @map("sale_id")
+  oldDueDate     DateTime @map("old_due_date")
+  newDueDate     DateTime @map("new_due_date")
+  reason         String   @db.Text
+  changedBy      String   @map("changed_by")
+  changedAt      DateTime @default(now()) @map("changed_at")
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sale        Sale        @relation(fields: [saleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  changer     User        @relation("DueDateChangedBy", fields: [changedBy], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([companyId])
+  @@index([installmentId])
+  @@index([saleId])
+  @@map("installment_due_date_changes")
 }

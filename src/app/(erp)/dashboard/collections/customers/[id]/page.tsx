@@ -24,6 +24,7 @@ import { ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import { InstallmentStatusBadge, newIdempotencyKey, readError, SmsStatusBadge, Taka, useCan } from '@/components/collections/common';
 import { ReminderDialog } from '@/components/collections/ReminderDialog';
+import { FollowUpsCard, PromisesCard, RescheduleDialog, type OpenInstallment } from '@/components/collections/FollowThrough';
 
 interface Receivable {
   customer: { id: string; name: string }; as_of: string; outstanding: string; overdue: string;
@@ -45,6 +46,7 @@ export default function CustomerCollectionPage() {
   const [timeline, setTimeline] = useState<TimelineEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [remindFor, setRemindFor] = useState<string | null>(null);
+  const [rescheduleFor, setRescheduleFor] = useState<OpenInstallment | null>(null);
 
   const [branches, setBranches] = useState<Option[]>([]);
   const [accounts, setAccounts] = useState<Option[]>([]);
@@ -146,7 +148,12 @@ export default function CustomerCollectionPage() {
                       <TableCell className="text-right font-medium"><Taka value={i.outstanding} /></TableCell>
                       <TableCell><InstallmentStatusBadge status={i.status} />{!i.reminders_enabled && <Badge variant="outline" className="ml-2">Reminders off</Badge>}</TableCell>
                       <TableCell className="text-right">
-                        {i.status !== 'paid' && <Button size="sm" variant="outline" onClick={() => setRemindFor(i.installment_id)}><Send className="mr-1 h-3.5 w-3.5" />Remind</Button>}
+                        {i.status !== 'paid' && (
+                          <span className="flex justify-end gap-1">
+                            <Button size="sm" variant="outline" onClick={() => setRemindFor(i.installment_id)}><Send className="mr-1 h-3.5 w-3.5" />Remind</Button>
+                            {can('collection.reschedule.branch') && <Button size="sm" variant="ghost" onClick={() => setRescheduleFor(i)}>Change date</Button>}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -223,8 +230,13 @@ export default function CustomerCollectionPage() {
         </Card>
       )}
 
+      <div className="grid gap-6 xl:grid-cols-2">
+        <PromisesCard customerId={data.customer.id} installments={data.installments} onChange={load} />
+        <FollowUpsCard customerId={data.customer.id} installments={data.installments} onChange={load} />
+      </div>
+
       <Card>
-        <CardHeader><CardTitle>History</CardTitle><CardDescription>Credit sales, payments, reversals and reminders, newest first.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>History</CardTitle><CardDescription>Credit sales, payments, promises, follow-ups, due-date changes and reminders, newest first.</CardDescription></CardHeader>
         <CardContent>
           {!timeline ? <Skeleton className="h-24" /> : timeline.length === 0 ? <EmptyState message="Nothing yet." /> : (
             <ol className="space-y-3">
@@ -242,6 +254,7 @@ export default function CustomerCollectionPage() {
         </CardContent>
       </Card>
 
+      <RescheduleDialog installment={rescheduleFor} onClose={() => setRescheduleFor(null)} onDone={load} />
       <ReminderDialog installmentId={remindFor} open={remindFor !== null} onOpenChange={open => { if (!open) setRemindFor(null); }} onSent={load} />
     </div>
   );
