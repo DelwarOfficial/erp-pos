@@ -1,7 +1,8 @@
 // src/app/(erp)/dashboard/collections/page.tsx
 // Collection control centre: who owes what, when, and what happens next.
 // Consumes: GET /api/v1/collections/overview, GET /api/v1/collections/worklist,
-//           GET|POST /api/v1/collections/installments/{id}/reminder (via ReminderDialog).
+//           GET|POST /api/v1/collections/installments/{id}/reminder (via ReminderDialog),
+//           follow-ups and missed promises (via FollowUpQueue).
 // Every figure comes from the server; nothing is computed here.
 
 'use client';
@@ -21,6 +22,7 @@ import { ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import { PhoneStatus, readError, SmsStatusBadge, Taka, useCan } from '@/components/collections/common';
 import { ReminderDialog } from '@/components/collections/ReminderDialog';
+import { FollowUpQueue } from '@/components/collections/FollowUpQueue';
 
 interface Overview {
   as_of: string; ledger_receivable: string | null; scheduled_outstanding: string;
@@ -233,6 +235,8 @@ export default function CollectionsPage() {
           )}
         </CardContent>
       </Card>
+
+      <FollowUpQueue />
 
       <ReminderDialog installmentId={remindFor} open={remindFor !== null} onOpenChange={open => { if (!open) setRemindFor(null); }} onSent={refresh} />
     </div>
