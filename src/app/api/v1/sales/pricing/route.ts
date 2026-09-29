@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
+import { requireIdempotencyKey } from '@/lib/idempotency';
 import { PostSaleSchema } from '@/lib/sales/saleRequest';
 import { priceSaleItem } from '@/domain/tax/priceSaleItem';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -14,6 +15,7 @@ const PricingSchema = PostSaleSchema.pick({ items: true });
 export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest(); await requirePermission(auth, 'sale.post');
+    requireIdempotencyKey(req); // required on every POST; a preview stores nothing, so it is not recorded
     const body = PricingSchema.parse(await req.json());
     const products = await runInTenantContext(auth.ctx, async () => db.product.findMany({
       where: { companyId: auth.companyId, id: { in: [...new Set(body.items.map(item => item.product_id))] }, isActive: true, deletedAt: null },

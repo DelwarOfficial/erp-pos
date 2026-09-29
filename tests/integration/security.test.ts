@@ -87,9 +87,12 @@ describe('Security: CSRF Protection', () => {
 describe('Security: CSP Headers', () => {
   it('CSP does not allow unsafe-eval in script-src (unsafe-inline required by Next.js hydration)', () => {
     const config = readFileSync('next.config.ts', 'utf8');
-    const cspMatch = config.match(/Content-Security-Policy.*value: "([^"]+)"/);
+    const cspMatch = config.match(/Content-Security-Policy.*value: (["`])(.+?)\1/);
     expect(cspMatch).not.toBeNull();
-    const csp = cspMatch![1];
+    // The production policy: drop the development-only addition (Next's dev
+    // tooling needs eval; production builds never get it).
+    const csp = cspMatch![2].replace(/\$\{process\.env\.NODE_ENV === 'development' \? " 'unsafe-eval'" : ''\}/, '');
+    expect(csp).not.toContain('${'); // nothing else computed at runtime
     const scriptSrcMatch = csp.match(/script-src ([^;]+)/);
     if (scriptSrcMatch) {
       // unsafe-inline is required for Next.js 16 Turbopack client hydration

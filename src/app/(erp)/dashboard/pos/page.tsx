@@ -113,7 +113,7 @@ export default function POSPage() {
     setPricingError('');
     const timer = setTimeout(async () => {
       try {
-        const response = await apiFetch('/api/v1/sales/pricing', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: cartPayload, signal: controller.signal });
+        const response = await apiFetch('/api/v1/sales/pricing', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `pricing-${crypto.randomUUID()}` }, body: cartPayload, signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error?.message ?? 'Unable to price cart');
         if (active) setPricing({ ...data, signature: cartPayload });

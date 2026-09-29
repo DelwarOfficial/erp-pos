@@ -494,7 +494,8 @@
     "file": "v1/payments/route.ts",
     "method": "POST",
     "permissions": [
-      "payment.pay.branch"
+      "payment.pay.branch",
+      "sale.refund.branch"
     ],
     "exception": null
   },
@@ -1812,6 +1813,30 @@
     "method": "POST",
     "permissions": [
       "communication.template.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/expense-categories/route.ts",
+    "method": "GET",
+    "permissions": [
+      "expense.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/transfers/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/sales/pricing/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
     ],
     "exception": null
   }
