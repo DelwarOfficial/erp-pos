@@ -12,6 +12,7 @@ import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 
 const PaymentMethodEnum = z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'gift_card', 'store_credit', 'other']);
 
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
     await requirePermission(auth, 'payment.pay.branch');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreatePaymentSchema.parse(await req.json());
+    await requirePermission(auth, 'payment.pay.branch', body.branch_id);
+    if (body.payment_type === 'sale_refund') await requirePermission(auth, 'sale.refund.branch', body.branch_id);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/payments', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
@@ -95,6 +98,21 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'payment.create', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
+            let refundReturn: { id: string; totalCredit: Prisma.Decimal } | null = null;
+            let refundedBefore = new Prisma.Decimal(0);
+            if (body.payment_type === 'sale_refund') {
+              if (!body.sale_return_id || body.direction !== 'outgoing') throw new DomainError('VALIDATION_FAILED', 'A refund requires a posted sale return and outgoing payment', {}, 400);
+              const returned = await tx.saleReturn.findFirst({ where: { id: body.sale_return_id, companyId: auth.companyId, branchId: body.branch_id, status: 'posted' },
+                include: { sale: { include: { payments: { include: { payment: true } }, returns: { include: { refundPayments: true } } } }, refundPayments: true } });
+              if (!returned) throw new DomainError('RESOURCE_NOT_FOUND', 'Posted return not found in this branch', {}, 404);
+              if (returned.sale.currencyCode !== body.currency_code || !returned.sale.exchangeRate.equals(body.exchange_rate)) throw new DomainError('VALIDATION_FAILED', 'Refund currency and exchange rate must match the sale', {}, 400);
+              if ((body.customer_id ?? null) !== returned.sale.customerId) throw new DomainError('VALIDATION_FAILED', 'Refund customer must match the sale', {}, 400);
+              refundedBefore = returned.refundPayments.filter(payment => payment.paymentStatus === 'posted').reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+              const paid = returned.sale.payments.filter(row => row.payment.paymentStatus === 'posted').reduce((sum, row) => sum.plus(row.allocatedAmount), new Prisma.Decimal(0));
+              const allRefunded = returned.sale.returns.flatMap(row => row.refundPayments).filter(payment => payment.paymentStatus === 'posted').reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+              if (new Prisma.Decimal(body.amount).gt(returned.totalCredit.minus(refundedBefore)) || new Prisma.Decimal(body.amount).gt(paid.minus(allRefunded))) throw new DomainError('VALIDATION_FAILED', 'Refund exceeds remaining return credit or collected payment', {}, 409);
+              refundReturn = returned;
+            }
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
             const baseAmount = body.amount * body.exchange_rate;
             const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
@@ -107,6 +125,8 @@ export async function POST(req: NextRequest) {
               include: { chartOfAccount: true },
             });
             if (!fa) throw new DomainError('VALIDATION_FAILED', 'Financial account not found', {}, 404);
+            if (fa.branchId && fa.branchId !== body.branch_id) throw new DomainError('VALIDATION_FAILED', 'Financial account belongs to another branch', {}, 400);
+            if (fa.currencyCode !== body.currency_code) throw new DomainError('VALIDATION_FAILED', 'Financial account currency must match payment', {}, 400);
 
             const payment = await tx.payment.create({
               data: {
@@ -133,14 +153,15 @@ export async function POST(req: NextRequest) {
             // AR; purchase payments against AP; customer advances against the
             // customer-advance liability account.
             const policies = await tx.accountingPolicy.findUnique({ where: { companyId: auth.companyId } });
+            if (refundReturn && !policies) throw new DomainError('VALIDATION_FAILED', 'Accounting policies are required before refunding', {}, 409);
             if (policies) {
               let counterAccountId = policies.arAccountId;
               if (body.payment_type === 'purchase_payment') counterAccountId = policies.apAccountId;
               else if (body.payment_type === 'customer_advance') counterAccountId = policies.customerAdvanceAccountId;
               else if (body.payment_type === 'sale_refund') counterAccountId = policies.arAccountId;
 
-              const cashDebit = body.direction === 'incoming' ? baseAmount : 0;
-              const cashCredit = body.direction === 'outgoing' ? baseAmount : 0;
+              const cashDebit = body.direction === 'incoming' ? body.amount : 0;
+              const cashCredit = body.direction === 'outgoing' ? body.amount : 0;
               await postJournalEntry(tx, {
                 companyId: auth.companyId, entryDate: businessDate,
                 postingKind: body.payment_type, sourceType: 'payment', sourceId: payment.id,
@@ -153,6 +174,7 @@ export async function POST(req: NextRequest) {
                 ],
               }, correlationId);
             }
+            if (refundReturn) await tx.saleReturn.update({ where: { id: refundReturn.id }, data: { refundStatus: refundedBefore.plus(body.amount).gte(refundReturn.totalCredit) ? 'refunded' : 'partial' } });
 
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,

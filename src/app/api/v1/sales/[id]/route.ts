@@ -36,10 +36,12 @@ export async function GET(
         currency: { select: { code: true, name: true, decimalPlaces: true } },
         cashierShift: { select: { id: true, status: true, openedAt: true, closedAt: true } },
         voidedByUser: { select: { id: true, name: true, email: true } },
+        returns: { where: { status: { in: ['posted', 'approved'] } }, include: { items: true } },
         items: {
           orderBy: { lineNo: 'asc' },
           include: {
-            product: { select: { id: true, name: true, code: true } },
+            product: { select: { id: true, name: true, code: true, isSerialized: true } },
+            serials: { include: { serial: { select: { serialNumber: true, status: true } } } },
           },
         },
         payments: {
@@ -119,6 +121,8 @@ export async function GET(
         product_code_snapshot: i.productCodeSnapshot,
         unit_code_snapshot: i.unitCodeSnapshot,
         qty: i.qty.toString(),
+        qty_returned: sale.returns.flatMap(row => row.items).filter(row => row.saleItemId === i.id).reduce((sum, row) => sum + Number(row.qtyReturned), 0),
+        returnable_serials: i.serials.filter(row => row.serial.status === 'sold').map(row => row.serial.serialNumber),
         unit_cost_snapshot: i.unitCostSnapshot.toString(),
         unit_price_snapshot: i.unitPriceSnapshot.toString(),
         gross_amount: i.grossAmount.toString(),

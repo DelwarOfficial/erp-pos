@@ -56,6 +56,18 @@ export async function postSaleReturn(
   if (sale.saleStatus === 'voided') {
     throw new DomainError('VALIDATION_FAILED', 'Cannot return a voided sale', {}, 409);
   }
+  if (!['completed', 'partially_returned'].includes(sale.saleStatus)) throw new DomainError('VALIDATION_FAILED', 'Sale has no returnable items', {}, 409);
+  const warehouse = await tx.warehouse.findFirst({ where: { id: input.warehouseId, companyId: input.companyId, branchId: input.branchId } });
+  if (!warehouse || input.branchId !== sale.branchId) throw new DomainError('VALIDATION_FAILED', 'Return warehouse must belong to the sale branch', {}, 400);
+  const requestedLines = new Set<string>(); const requestedSerials = new Set<string>();
+  for (const item of input.items) {
+    if (!Number.isFinite(item.qtyReturned) || item.qtyReturned <= 0 || requestedLines.has(item.saleItemId)) throw new DomainError('VALIDATION_FAILED', 'Return lines must be unique with positive quantities', {}, 400);
+    requestedLines.add(item.saleItemId);
+    for (const serial of item.serials ?? []) {
+      if (requestedSerials.has(serial)) throw new DomainError('VALIDATION_FAILED', 'A serial can only be returned once', {}, 400);
+      requestedSerials.add(serial);
+    }
+  }
 
   // 2. Generate reference number
   const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
@@ -190,7 +202,7 @@ export async function postSaleReturn(
   // discount they never paid.
   const netCredit = subtotalCredit.minus(discountCreditTotal);
   const totalCredit = netCredit.plus(taxCredit);
-  const baseTotalCredit = totalCredit;  // same currency
+  const baseTotalCredit = totalCredit.mul(sale.exchangeRate);
 
   // 5. Create the sale_return header
   const saleReturn = await tx.saleReturn.create({

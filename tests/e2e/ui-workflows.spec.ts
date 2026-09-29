@@ -11,12 +11,13 @@ let warehouse: { id: string; name: string };
 let destination: { id: string; name: string };
 let product: { id: string; name: string };
 let supplier: { id: string; name: string };
+let customer: { id: string; name: string };
 test.beforeAll(async () => {
   const target = new URL(process.env.DATABASE_URL ?? 'invalid:');
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'sale.read']) {
+  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -26,6 +27,7 @@ test.beforeAll(async () => {
   const unit = await db.unit.create({ data: { companyId, name: 'Piece', code: 'pc' } });
   product = await db.product.create({ data: { companyId, name: 'Browser receiving product', code: 'UI-PRODUCT', categoryId: category.id, unitId: unit.id, defaultPrice: 100, referenceCost: 50 } });
   supplier = await db.supplier.create({ data: { companyId, name: 'Browser supplier' } });
+  customer = await db.customer.create({ data: { companyId, name: 'Browser customer' } });
   const familyId = randomUUID(); const sessionId = randomUUID();
   await db.refreshToken.create({ data: { companyId, userId: fixture.user.id, familyId, sessionId, mfaVerified: true, tokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
   token = await new SignJWT({ company_id: companyId, scope: 'multi_branch', is_global: false, branch_ids: fixture.branches.map(branch => branch.id), session_id: sessionId, family_id: familyId, mfa_verified: true })
@@ -87,4 +89,34 @@ test('transfer create → dispatch → receive updates both warehouses', async (
   const source = await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id } } });
   const target = await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: destination.id, productId: product.id } } });
   expect(source.qtyOnHand.toString()).toBe('8'); expect(source.qtyReserved.toString()).toBe('0'); expect(source.qtyInTransitOut.toString()).toBe('0'); expect(target.qtyOnHand.toString()).toBe('2');
+});
+
+test('POS customer and split payment use authoritative pricing; receipt/invoice enforce permissions', async ({ page, request }) => {
+  await db.warehouseStock.upsert({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id } },
+    create: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id, qtyOnHand: 10, movingAverageCost: 50 }, update: { qtyOnHand: 10 } });
+  await login(page); await page.goto('/dashboard/pos');
+  await page.getByPlaceholder(/Scan barcode or search/).fill('Browser receiving');
+  await page.getByRole('button', { name: new RegExp(product.name) }).click();
+  await pick(page, 'Customer (optional)', customer.name);
+  await pick(page, 'Warehouse *', warehouse.name);
+  await pick(page, 'Financial Account *', fixture.cash.name);
+  await page.getByLabel('Applied payment amount', { exact: true }).fill('60');
+  await page.getByRole('button', { name: 'Add split payment', exact: true }).click();
+  await page.getByLabel('Method', { exact: true }).selectOption('cash');
+  await pick(page, 'Account for payment 1', fixture.cash.name);
+  await page.getByLabel('Amount', { exact: true }).fill('40');
+  const posting = page.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: /Complete Sale/ }).click();
+  const posted = await posting; expect(posted.status(), await posted.text()).toBe(201);
+  const sale = await posted.json();
+  await expect(page.getByRole('heading', { name: `Sale posted: ${sale.referenceNo}` })).toBeVisible();
+  const persisted = await db.sale.findUniqueOrThrow({ where: { id: sale.saleId }, include: { payments: { include: { payment: true } } } });
+  expect(persisted.customerId).toBe(customer.id); expect(persisted.grandTotal.toString()).toBe('100');
+  expect(persisted.payments.map(row => row.allocatedAmount.toString()).sort()).toEqual(['40', '60']);
+  for (const kind of ['invoice', 'receipt']) {
+    const document = await page.request.get(`/print/${kind}/${sale.saleId}`);
+    expect(document.status()).toBe(200); expect(await document.text()).toContain(sale.referenceNo);
+    expect((await request.get(`/print/${kind}/${sale.saleId}`)).status()).toBe(401);
+  }
+  expect((await page.request.get(`/print/receipt/${sale.saleId}?format=escpos&printer=127.0.0.1`)).status()).toBe(400);
 });
