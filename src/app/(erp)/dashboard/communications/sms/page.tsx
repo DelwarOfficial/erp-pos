@@ -2,7 +2,7 @@
 // SMS workspace: today's reminders, message history, the MiMSMS account and the reminder policy.
 // Consumes: GET /api/v1/collections/overview, GET /api/v1/communications/messages,
 //           POST /api/v1/communications/messages/{id}/resolve, GET|PUT /api/v1/communications/sms-account,
-//           GET|PUT /api/v1/communications/reminder-policy.
+//           GET|PUT /api/v1/communications/reminder-policy, reminder texts (via TemplateEditor).
 
 'use client';
 
@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import { newIdempotencyKey, readError, SKIP_REASONS, SmsStatusBadge, useCan } from '@/components/collections/common';
+import { TemplateEditor } from '@/components/collections/TemplateEditor';
 
 interface Message {
   id: string; status: string; triggerSource: string; renderedBody: string; encoding: string | null; segments: number | null;
@@ -269,6 +270,7 @@ function Workspace() {
   }, []);
   const manage = can('communication.sms_provider.manage.company');
   const policy = can('communication.reminder_policy.manage.company');
+  const texts = can('communication.template.manage.company');
 
   return (
     <div className="space-y-6">
@@ -280,6 +282,7 @@ function Workspace() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          {texts && <TabsTrigger value="texts">Texts</TabsTrigger>}
           {(manage || policy) && <TabsTrigger value="settings">Settings</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="space-y-4">
@@ -297,6 +300,7 @@ function Workspace() {
           )}
         </TabsContent>
         <TabsContent value="history"><History initialStatus={params.get('status') ?? 'all'} /></TabsContent>
+        {texts && <TabsContent value="texts"><TemplateEditor /></TabsContent>}
         {(manage || policy) && (
           <TabsContent value="settings" className="space-y-6">
             {manage && <Account />}
