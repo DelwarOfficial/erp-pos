@@ -56,13 +56,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     customerAddress: sale.customer?.address ?? undefined,
     customerPhone: sale.customer?.phone ?? undefined,
     customerTaxId: sale.customer?.taxIdentifier ?? undefined,
-    items: sale.items.map((item: any) => ({
+    items: sale.items.map(item => ({
       name: `${item.product.code} — ${item.product.name}`,
       description: item.product.description ?? undefined,
       qty: parseFloat(String(item.qty)),
       unitPrice: parseFloat(String(item.unitPriceSnapshot)),
       lineTotal: parseFloat(String(item.lineTotal)),
-      taxRate: parseFloat(String(item.taxRateSnapshot || '0')),
+      taxRate: item.taxes.reduce((sum, tax) => sum + Number(tax.rateSnapshot), 0),
     })),
     subtotal: parseFloat(String(sale.subtotal)),
     taxTotal: parseFloat(String(sale.taxTotal)),

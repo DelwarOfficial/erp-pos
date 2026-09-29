@@ -23,6 +23,8 @@ import { apiFetch } from '@/lib/api/client';
 import { PhoneStatus, readError, SmsStatusBadge, Taka, useCan } from '@/components/collections/common';
 import { ReminderDialog } from '@/components/collections/ReminderDialog';
 import { FollowUpQueue } from '@/components/collections/FollowUpQueue';
+import { BulkReminderDialog } from '@/components/collections/BulkReminderDialog';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Overview {
   as_of: string; ledger_receivable: string | null; scheduled_outstanding: string;
@@ -76,6 +78,9 @@ export default function CollectionsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [remindFor, setRemindFor] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const canBulk = can('communication.bulk_send.company');
 
   const loadOverview = useCallback(async () => {
     setOverviewError(null);
@@ -91,7 +96,7 @@ export default function CollectionsPage() {
     if (view === 'upcoming') params.set('days', days);
     if (search) params.set('q', search);
     if (after) params.set('cursor', after);
-    if (after) setLoadingMore(true); else { setLoading(true); setListError(null); }
+    if (after) setLoadingMore(true); else { setLoading(true); setListError(null); setSelected([]); }
     try {
       const r = await apiFetch(`/api/v1/collections/worklist?${params}`);
       if (!r.ok) throw new Error(await readError(r));
@@ -183,6 +188,13 @@ export default function CollectionsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {canBulk && selected.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span>{selected.length} selected</span>
+              <Button size="sm" onClick={() => setBulkOpen(true)}><Send className="mr-1 h-3.5 w-3.5" />Send reminders</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelected([])}>Clear</Button>
+            </div>
+          )}
           {listError ? <ErrorState message={listError} onRetry={() => loadRows(null)} /> : loading ? (
             <div className="space-y-2">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div>
           ) : rows.length === 0 ? (
@@ -192,6 +204,12 @@ export default function CollectionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {canBulk && (
+                      <TableHead className="w-8">
+                        <Checkbox aria-label="Select all shown" checked={rows.length > 0 && selected.length === Math.min(rows.length, 500)}
+                          onCheckedChange={v => setSelected(v ? rows.slice(0, 500).map(r => r.installment_id) : [])} />
+                      </TableHead>
+                    )}
                     <TableHead>Customer</TableHead><TableHead>Mobile</TableHead><TableHead>Invoice</TableHead><TableHead>Due</TableHead>
                     <TableHead className="text-right">Owed</TableHead><TableHead>Last payment</TableHead><TableHead>Last SMS</TableHead>
                     <TableHead>Salesperson</TableHead><TableHead className="text-right">Actions</TableHead>
@@ -200,6 +218,12 @@ export default function CollectionsPage() {
                 <TableBody>
                   {rows.map(r => (
                     <TableRow key={r.installment_id}>
+                      {canBulk && (
+                        <TableCell>
+                          <Checkbox aria-label={`Select ${r.customer.name} ${r.invoice_no}`} checked={selected.includes(r.installment_id)}
+                            onCheckedChange={v => setSelected(prev => (v ? (prev.length < 500 ? [...prev, r.installment_id] : prev) : prev.filter(id => id !== r.installment_id)))} />
+                        </TableCell>
+                      )}
                       <TableCell><Link className="font-medium hover:underline" href={`/dashboard/collections/customers/${r.customer.id}`}>{r.customer.name}</Link></TableCell>
                       <TableCell><PhoneStatus masked={r.phone_masked} status={r.phone_status} /></TableCell>
                       <TableCell className="whitespace-nowrap">{r.invoice_no} <span className="text-muted-foreground">#{r.installment_no}</span></TableCell>
@@ -237,6 +261,8 @@ export default function CollectionsPage() {
       </Card>
 
       <FollowUpQueue />
+
+      <BulkReminderDialog installmentIds={selected} open={bulkOpen} onOpenChange={setBulkOpen} onSent={refresh} />
 
       <ReminderDialog installmentId={remindFor} open={remindFor !== null} onOpenChange={open => { if (!open) setRemindFor(null); }} onSent={refresh} />
     </div>

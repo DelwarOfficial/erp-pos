@@ -13,6 +13,7 @@ import { Loader2, Clock, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 
 interface Shift {
   id: string;
@@ -37,6 +38,8 @@ export default function CashierPage() {
   const [openForm, setOpenForm] = useState({ branchId: '', warehouseId: '', cashAccountId: '', openingFloat: '0' });
   const [closeForm, setCloseForm] = useState<Record<string, string>>({});
   const [opening, setOpening] = useState(false);
+  const [warehouse, setWarehouse] = useState<BusinessEntity | null>(null);
+  const [account, setAccount] = useState<BusinessEntity | null>(null);
 
   const loadShifts = useCallback(async () => {
     setLoading(true);
@@ -59,6 +62,7 @@ export default function CashierPage() {
 
   async function handleOpen(e: React.FormEvent) {
     e.preventDefault();
+    if (!warehouse?.branch || !account) { toast.error('Select a warehouse and cash account.'); return; }
     setOpening(true);
     try {
       const idempotencyKey = `shift-open-${Date.now()}`;
@@ -66,9 +70,9 @@ export default function CashierPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
-          branch_id: openForm.branchId,
-          warehouse_id: openForm.warehouseId,
-          cash_account_id: openForm.cashAccountId,
+          branch_id: warehouse.branch.id,
+          warehouse_id: warehouse.id,
+          cash_account_id: account.id,
           opening_float: Number(openForm.openingFloat),
         }),
       });
@@ -76,8 +80,10 @@ export default function CashierPage() {
       if (!res.ok) { toast.error(data?.error?.message ?? 'Failed'); return; }
       toast.success('Shift opened');
       setOpenForm({ branchId: '', warehouseId: '', cashAccountId: '', openingFloat: '0' });
+      setWarehouse(null); setAccount(null);
       await loadShifts();
-    } finally { setOpening(false); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to open shift'); }
+    finally { setOpening(false); }
   }
 
   async function handleClose(shiftId: string) {
@@ -111,18 +117,8 @@ export default function CashierPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleOpen} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="field-app-erp-dashboard-cashier-page-1" className="text-xs">Branch ID</Label>
-              <Input id="field-app-erp-dashboard-cashier-page-1" placeholder="UUID" value={openForm.branchId} onChange={e => setOpenForm({ ...openForm, branchId: e.target.value })} required className="min-h-[40px]" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="field-app-erp-dashboard-cashier-page-2" className="text-xs">Warehouse ID</Label>
-              <Input id="field-app-erp-dashboard-cashier-page-2" placeholder="UUID" value={openForm.warehouseId} onChange={e => setOpenForm({ ...openForm, warehouseId: e.target.value })} required className="min-h-[40px]" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="field-app-erp-dashboard-cashier-page-3" className="text-xs">Cash Account ID</Label>
-              <Input id="field-app-erp-dashboard-cashier-page-3" placeholder="UUID" value={openForm.cashAccountId} onChange={e => setOpenForm({ ...openForm, cashAccountId: e.target.value })} required className="min-h-[40px]" />
-            </div>
+            <div><EntityPicker label="Warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={warehouse} disabled={opening} onChange={value => { setWarehouse(value); setAccount(null); }} />{warehouse?.branch && <p className="mt-1 text-xs text-muted-foreground">Branch: {warehouse.branch.name}</p>}</div>
+            <EntityPicker key={warehouse?.id ?? 'none'} label="Cash account" endpoint={`/api/v1/financial-accounts?is_active=true&account_type=cash${warehouse?.branch ? `&branch_id=${warehouse.branch.id}` : ''}`} serverSearch={false} value={account} onChange={setAccount} disabled={opening || !warehouse} />
             <div className="space-y-1.5">
               <Label htmlFor="field-app-erp-dashboard-cashier-page-4" className="text-xs">Opening Float (BDT)</Label>
               <Input id="field-app-erp-dashboard-cashier-page-4" type="number" step="0.01" value={openForm.openingFloat} onChange={e => setOpenForm({ ...openForm, openingFloat: e.target.value })} required className="min-h-[40px]" />

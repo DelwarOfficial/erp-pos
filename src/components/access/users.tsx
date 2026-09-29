@@ -33,7 +33,7 @@ export function UsersList() {
     return () => controller.abort();
   }, [allowed, access.company, rolePage]);
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading title="Users" /><CompanyPicker access={access} />
+  return <div className="space-y-5"><AccessHeading company={access.company} title="Users" /><CompanyPicker access={access} />
     {access.error && <p role="alert">{access.error}</p>}
     {access.can('user.create') && access.can('role.assign') && access.can('user.deactivate') && <Link className={control} href={`/dashboard/access/users/new?company_id=${access.company}`}>Add User</Link>}
     <div className="flex flex-wrap gap-3"><Input aria-label="Search users" placeholder="Search name or email" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
@@ -104,7 +104,7 @@ export function UserEditor({ id, companyId }: { id: string; companyId?: string }
     } catch (error) { setError(error instanceof Error ? error.message : 'Reset failed.'); } finally { setBusy(false); }
   }
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading title={creating ? 'Add User' : 'User details'} /><CompanyPicker access={access} disabled={!creating} />
+  return <div className="space-y-5"><AccessHeading company={access.company} title={creating ? 'Add User' : 'User details'} /><CompanyPicker access={access} disabled={!creating} />
     {!access.assured && <p role="alert">Verified MFA session required to change access.</p>}{error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {loading ? <p role="status">Loading user…</p> : <Card><CardContent><form className="grid gap-4 pt-5" onSubmit={save}>
       <label>Full name<Input value={name} onChange={event => setName(event.target.value)} required maxLength={150} disabled={!editable} /></label>
@@ -119,6 +119,7 @@ export function UserEditor({ id, companyId }: { id: string; companyId?: string }
       <label><input type="checkbox" checked={active} onChange={event => setActive(event.target.checked)} disabled={!editable} /> Active account (uncheck to suspend)</label>
       {user && <p>MFA: {user.mfaEnabled ? 'Enabled' : 'Not enrolled'} · Account locked: {user.lockedUntil && new Date(user.lockedUntil) > new Date() ? 'Yes' : 'No'} · Last login: {date(user.lastLoginAt)}</p>}
       {editable && <Button type="submit" disabled={busy || roleLoading || Boolean(roleError) || Boolean(error && !user && !creating)}>{busy ? 'Saving…' : 'Save User'}</Button>}
+      <Button type="button" variant="outline" disabled={busy} asChild><Link href={`/dashboard/access/users?company_id=${encodeURIComponent(access.company)}`}>Cancel</Link></Button>
     </form></CardContent></Card>}
     {!creating && access.can('user.reset_password') && access.assured && <Button disabled={busy || !user?.isActive} onClick={reset}>Issue password reset link</Button>}
     {resetLink && <div role="status" className="space-y-2"><p>Shown once. Expires in 15 minutes. Share securely; never paste into public messages.</p><textarea aria-label="One-time reset link" className={`${control} w-full`} readOnly value={resetLink} /><Button onClick={() => setResetLink('')}>Dismiss reset link</Button></div>}

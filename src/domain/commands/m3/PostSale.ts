@@ -18,7 +18,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
 import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
-import { computeLineTax } from '@/domain/tax/computeLineTax';
+import { priceSaleItem } from '@/domain/tax/priceSaleItem';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/schedule';
@@ -213,27 +213,8 @@ export async function postSale(
     const stock = stockByProductId.get(item.productId);
     const unitCost = new Prisma.Decimal(stock?.movingAverageCost.toString() ?? '0');
 
-    const grossAmount = new Prisma.Decimal(item.qty).mul(item.unitPrice);
-    const discountAmount = new Prisma.Decimal(item.discountAmount ?? 0);
-
-    // Honours priceIncludesTax, calculationOrder, compoundOnPrevious and the
-    // component effective window, all resolved as of the business date.
-    const lineTax = computeLineTax({
-      grossAmount,
-      discountAmount,
-      components: (product.defaultTaxCode?.components ?? []).map(tc => ({
-        taxComponentId: tc.taxComponentId,
-        componentCode: tc.taxComponent.componentCode,
-        rate: tc.taxComponent.rate,
-        calculationOrder: tc.taxComponent.calculationOrder,
-        compoundOnPrevious: tc.taxComponent.compoundOnPrevious,
-        effectiveFrom: tc.taxComponent.effectiveFrom,
-        effectiveTo: tc.taxComponent.effectiveTo,
-        outputAccountId: tc.taxComponent.outputAccountId,
-      })),
-      priceIncludesTax: product.defaultTaxCode?.priceIncludesTax ?? false,
-      asOf: input.businessDate,
-    });
+    const lineTax = priceSaleItem(product, item, input.businessDate);
+    const { grossAmount, discountAmount } = lineTax;
 
     const taxableAmount = lineTax.taxableAmount;
     const lineTaxAmount = lineTax.taxAmount;

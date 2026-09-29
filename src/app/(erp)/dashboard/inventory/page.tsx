@@ -64,6 +64,7 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Warehouse stock projections with moving-average cost.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" asChild><Link href="/dashboard/inventory/transfers">Transfers</Link></Button>
           <Button variant="outline" className="min-h-[44px]" asChild><Link href="/dashboard/inventory/opening-stock">Post Opening Stock</Link></Button>
           <Button variant={lowStockOnly ? 'default' : 'outline'} onClick={() => setLowStockOnly(!lowStockOnly)} className="min-h-[44px]">
             <AlertTriangle className="h-4 w-4 mr-2" />

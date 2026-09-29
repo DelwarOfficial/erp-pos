@@ -483,7 +483,7 @@ export default function PaymentsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <a
-                            href={`/api/v1/payments/${p.id}`}
+                            href={`/dashboard/payments/${p.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-primary hover:underline"

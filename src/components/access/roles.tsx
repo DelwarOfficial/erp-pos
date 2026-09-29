@@ -17,7 +17,7 @@ export function RolesList() {
     return () => controller.abort();
   }, [allowed, access.company, page, search]);
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading title="Roles" /><CompanyPicker access={access} />
+  return <div className="space-y-5"><AccessHeading company={access.company} title="Roles" /><CompanyPicker access={access} />
     {access.can('role.create') && <Link className={control} href={`/dashboard/access/roles/new?company_id=${access.company}`}>Create Role</Link>}
     <Input aria-label="Search roles" placeholder="Search roles" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
     {loading ? <p role="status">Loading roles…</p> : error ? <p role="alert">{error}</p> : !roles.length ? <p>No roles found.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Role', 'Scope', 'Users', 'Permissions', 'Protection', 'Created'].map(label => <th className="p-2" key={label}>{label}</th>)}</tr></thead><tbody>{roles.map(role => <tr className="border-t" key={role.id}>
@@ -55,11 +55,11 @@ export function RoleEditor({ id, companyId }: { id: string; companyId?: string }
   async function remove() {
     if (!window.confirm('Delete this unassigned custom role? This action cannot be undone.')) return;
     setBusy(true); setError('');
-    try { await request(`/api/v1/admin/roles/${id}?company_id=${access.company}`, { method: 'DELETE' }); window.location.assign('/dashboard/access/roles'); }
+    try { await request(`/api/v1/admin/roles/${id}?company_id=${access.company}`, { method: 'DELETE' }); window.location.assign(`/dashboard/access/roles?company_id=${encodeURIComponent(access.company)}`); }
     catch (error) { setError(error instanceof Error ? error.message : 'Delete failed.'); } finally { setBusy(false); }
   }
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading title={creating ? 'Create Role' : 'Role details'} /><CompanyPicker access={access} disabled={!creating} />
+  return <div className="space-y-5"><AccessHeading company={access.company} title={creating ? 'Create Role' : 'Role details'} /><CompanyPicker access={access} disabled={!creating} />
     {!access.assured && <p role="alert">Verified MFA session required to change access.</p>}{role?.isSystemRole && <p>This system role is protected and cannot be changed or deleted.</p>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {loading ? <p role="status">Loading role…</p> : <form onSubmit={save} className="space-y-4"><label className="block">Role name<Input required maxLength={100} value={name} onChange={event => setName(event.target.value)} disabled={!editable} /></label>
@@ -67,7 +67,8 @@ export function RoleEditor({ id, companyId }: { id: string; companyId?: string }
       <p>Assign only permissions needed for this role. Server checks your granting authority.</p>
       {[...new Set(permissions.map(permission => permission.module))].map(module => <fieldset className="border rounded p-3" disabled={!editable} key={module}><legend className="font-semibold">{module}</legend>
         {permissions.filter(permission => permission.module === module).map(permission => <label className="block py-1" key={permission.id}><input type="checkbox" checked={selected.includes(permission.id)} onChange={() => setSelected(selected.includes(permission.id) ? selected.filter(item => item !== permission.id) : [...selected, permission.id])} /> {permission.description} <span className="text-xs text-muted-foreground">({permission.code})</span></label>)}</fieldset>)}
-      {editable && <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save Role'}</Button>}</form>}
+      {editable && <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save Role'}</Button>}
+      <Button type="button" variant="outline" disabled={busy} asChild><Link href={`/dashboard/access/roles?company_id=${encodeURIComponent(access.company)}`}>Cancel</Link></Button></form>}
     {!creating && <section><h2 className="font-semibold">Assigned users</h2>{users.length ? <ul>{users.map(user => <li key={user.id}><Link href={`/dashboard/access/users/${user.id}?company_id=${access.company}`}>{user.name}</Link></li>)}</ul> : <p>No visible assigned users.</p>}
       {role && role._count.users > users.length && <p>Additional assignments exist. Use the Users role filter to paginate.</p>}</section>}
     {!creating && editable && <Button variant="destructive" disabled={busy || Boolean(role?._count.users)} onClick={remove}>Delete custom role</Button>}
@@ -82,7 +83,7 @@ export function PermissionsPage() {
       .catch(() => { if (!controller.signal.aborted) setError('Permission catalogue unavailable.'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort(); }, [allowed]);
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading title="Permissions" /><p>Permissions are assigned through roles, not directly to users.</p>
+  return <div className="space-y-5"><AccessHeading company={access.company} title="Permissions" /><p>Permissions are assigned through roles, not directly to users.</p>
     {loading ? <p role="status">Loading permissions…</p> : error ? <p role="alert">{error}</p> : !rows.length ? <p>No permissions available.</p> : [...new Set(rows.map(item => item.module))].map(module => <section key={module}><h2 className="font-semibold">{module}</h2><ul>{rows.filter(item => item.module === module).map(item => <li className="border-b py-2" key={item.id}>{item.description} <code className="text-xs">{item.code}</code></li>)}</ul></section>)}
   </div>;
 }

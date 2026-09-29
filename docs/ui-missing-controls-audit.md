@@ -14,6 +14,21 @@ Date: 2026-09-28. Scope: all 41 dashboard route entrypoints, shared navigation, 
 
 ## High-priority missing workflows
 
+### Implementation progress — 2026-09-29
+
+The following changes are **implemented, verification pending** unless explicitly stated otherwise. They are not yet a completed audit. Remaining rows below remain authoritative; none is waived by this progress note.
+
+| Work item | Current evidence / next gate |
+|---|---|
+| Purchase branch/warehouse identity | Form now uses selected warehouse's `branch.id` and warehouse `id`; searchable supplier/warehouse/product controls. Real browser creation still pending. |
+| Purchase detail / receiving | Detail quantities, partial receiving, serial/batch/date fields, confirmation, retry-stable idempotency key and history implemented. Serialized-product and duplicate-line domain validation added. Disposable MariaDB ledger suite **5/5 passed**, including partial serialized receipt; browser UAT pending. |
+| Purchase history access | Server cursor pagination, reference/supplier search and validated date range; UI filters and Load older purchases implemented. Browser pagination checks pending. |
+| Print authorization | Invoice/receipt now use normal session authentication, `sale.read`, tenant context and branch authorization. Arbitrary network-printer target disabled; download/browser printing retained. Receipt allocation/method mapping corrected. Permission and document browser tests pending. |
+| Transfer workflow | Create/detail/dispatch/receive/cancel UI and tenant-scoped detail API implemented. Existing commands reused. Serialized transfer handling and populated browser lifecycle still require verification/remediation. |
+| Cashier / opening stock entity fields | Warehouse picker added; cashier branch derived from warehouse and cash-account picker filtered by branch/type/active status. Browser transactions pending. |
+
+Shared additions: searchable `EntityPicker` with paginated options/error recovery; `useWorkflowMutation` retains idempotency keys across ambiguous failures. Stock count save/review/post endpoints and service state-transition endpoint were confirmed absent and remain implementation work, not external blockers.
+
 P1 means a core operating task is blocked or error-prone. P2 means important usability or coverage is missing. No P0 outage was established by this review.
 
 | Priority | Missing control / element | Evidence and impact | Required completion |

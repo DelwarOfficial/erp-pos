@@ -29,7 +29,11 @@ export async function GET(req: NextRequest) {
     const accountsPage = await runInTenantContext(auth.ctx, async () => {
       return db.financialAccount.findMany({
         ...listPageArgs(page),
-        where: { companyId: auth.companyId },
+        where: { companyId: auth.companyId,
+          ...(req.nextUrl.searchParams.get('is_active') === 'true' ? { isActive: true } : {}),
+          ...(req.nextUrl.searchParams.get('account_type') ? { accountType: req.nextUrl.searchParams.get('account_type')! } : {}),
+          ...(req.nextUrl.searchParams.get('branch_id') ? { OR: [{ branchId: req.nextUrl.searchParams.get('branch_id')! }, { branchId: null }] } : {}),
+        },
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
         include: {
           chartOfAccount: { select: { id: true, code: true, name: true, accountClass: true } },

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 import { ErrorState, LoadingState } from '@/components/shared/StateList';
 
 interface Product { id: string; name: string; code: string; isSerialized: boolean }
@@ -23,7 +24,7 @@ export default function OpeningStockPage() {
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [warehouseId, setWarehouseId] = useState('');
+  const [warehouse, setWarehouse] = useState<BusinessEntity | null>(null);
   const [referenceNo, setReferenceNo] = useState(`OS-${Date.now()}`);
   const [businessDate, setBusinessDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState<Array<{ productId: string; quantity: string; unitCost: string; serials: string }>>([
@@ -57,6 +58,7 @@ export default function OpeningStockPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!warehouse) { toast.error('Select a warehouse.'); return; }
     setLoading(true);
     try {
       const idempotencyKey = `opening-stock-${Date.now()}`;
@@ -64,7 +66,7 @@ export default function OpeningStockPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
-          warehouse_id: warehouseId,
+          warehouse_id: warehouse.id,
           business_date: new Date(businessDate).toISOString(),
           reference_no: referenceNo,
           items: items.filter(i => i.productId && i.quantity).map(i => ({
@@ -109,10 +111,7 @@ export default function OpeningStockPage() {
             {productsError && <ErrorState message={productsError} onRetry={loadProducts} />}
             {!productsLoading && !productsError && products.length === 0 && <p role="status" className="text-sm text-muted-foreground">No products are available for selection.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <Label htmlFor="field-app-erp-dashboard-inventory-opening-stock-page-1">Warehouse *</Label>
-                <Input id="field-app-erp-dashboard-inventory-opening-stock-page-1" placeholder="Warehouse UUID" value={warehouseId} onChange={e => setWarehouseId(e.target.value)} required />
-              </div>
+              <EntityPicker label="Warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={warehouse} onChange={setWarehouse} disabled={loading} />
               <div>
                 <Label htmlFor="field-app-erp-dashboard-inventory-opening-stock-page-2">Reference No *</Label>
                 <Input id="field-app-erp-dashboard-inventory-opening-stock-page-2" value={referenceNo} onChange={e => setReferenceNo(e.target.value)} required />
@@ -164,7 +163,7 @@ export default function OpeningStockPage() {
           </CardContent>
           <CardFooter className="flex flex-wrap gap-3 justify-between">
             <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/inventory')}>Cancel</Button>
-            <Button type="submit" disabled={loading || !warehouseId}>
+            <Button type="submit" disabled={loading || !warehouse}>
               {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Post Opening Stock
             </Button>

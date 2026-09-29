@@ -55,8 +55,8 @@ export default function AccountingPage() {
             <CardDescription>Open/soft-locked/locked periods. Prevents backdated posting.</CardDescription>
           </CardHeader>
           <CardContent>
-            <a href="/api/v1/fiscal-periods" target="_blank" className="text-primary hover:underline text-sm">
-              View Fiscal Periods API →
+            <a href="/dashboard/accounting/fiscal-periods" className="text-primary hover:underline text-sm">
+              View Fiscal Periods →
             </a>
           </CardContent>
         </Card>

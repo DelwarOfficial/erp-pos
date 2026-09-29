@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         items: { include: { product: { select: { name: true, code: true } } } },
         branch: { select: { name: true, phone: true, address: true } },
         company: { select: { displayName: true, bin: true, tin: true } },
-        payments: true,
+        payments: { include: { payment: { select: { paymentMethod: true, paymentStatus: true } } } },
         biller: { select: { name: true } },
         customer: { select: { name: true, phone: true } },
       },
@@ -40,23 +40,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     referenceNo: sale.referenceNo,
     businessDate: new Date(sale.businessDate),
     cashierName: sale.biller?.name ?? '—',
-    items: sale.items.map((item: any) => ({
+    items: sale.items.map(item => ({
       name: item.product.name,
       qty: parseFloat(String(item.qty)),
       unitPrice: parseFloat(String(item.unitPriceSnapshot)),
       lineTotal: parseFloat(String(item.lineTotal)),
-      discount: parseFloat(String(item.discountAmountSnapshot || '0')),
+      discount: parseFloat(String(item.discountAmount)),
     })),
     subtotal: parseFloat(String(sale.subtotal)),
     discountTotal: parseFloat(String(sale.discountTotal)),
     taxTotal: parseFloat(String(sale.taxTotal)),
     grandTotal: parseFloat(String(sale.grandTotal)),
-    paidAmount: sale.payments.reduce((sum: number, p: any) => sum + parseFloat(String(p.amount)), 0),
+    paidAmount: sale.payments.filter(p => p.payment.paymentStatus === 'posted').reduce((sum, p) => sum + Number(p.allocatedAmount), 0),
     changeAmount: 0, // computed below
-    paymentMethod: sale.payments.map((p: any) => p.method).join(', ') || 'cash',
+    paymentMethod: sale.payments.filter(p => p.payment.paymentStatus === 'posted').map(p => p.payment.paymentMethod).join(', ') || 'Unpaid',
     customerName: sale.customer?.name,
     customerPhone: sale.customer?.phone ?? undefined,
-    isReturn: (sale as any).saleType === 'return',
+    isReturn: false,
   };
   data.changeAmount = Math.max(0, data.paidAmount - data.grandTotal);
 

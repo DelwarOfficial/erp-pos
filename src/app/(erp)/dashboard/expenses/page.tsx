@@ -19,6 +19,7 @@ import { Loader2, Wallet, Plus, CheckCircle2, ExternalLink, RefreshCw } from 'lu
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 
 interface Expense {
   id: string;
@@ -31,6 +32,7 @@ interface Expense {
 }
 
 interface ExpenseItem {
+  category?: BusinessEntity;
   expense_category_id: string;
   description?: string;
   amount: number;
@@ -85,6 +87,8 @@ export default function ExpensesPage() {
   const [createForm, setCreateForm] = useState<CreateExpenseForm>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [branch, setBranch] = useState<BusinessEntity | null>(null);
+  const [account, setAccount] = useState<BusinessEntity | null>(null);
 
   const loadExpenses = useCallback(async () => {
     setLoading(true);
@@ -112,6 +116,7 @@ export default function ExpensesPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!branch || !account || createForm.items.some(item => !item.expense_category_id)) { toast.error('Select a branch, financial account and category for every line.'); return; }
     if (createForm.items.length === 0) {
       toast.error('Add at least one line item');
       return;
@@ -123,13 +128,13 @@ export default function ExpensesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({
-          branch_id: createForm.branch_id,
+          branch_id: branch.id,
           expense_date: createForm.expense_date,
           currency_code: 'BDT',
           exchange_rate: 1.0,
           description: createForm.description,
           payee_name: createForm.payee_name || undefined,
-          financial_account_id: createForm.financial_account_id,
+          financial_account_id: account.id,
           items: createForm.items.map(i => ({
             expense_category_id: i.expense_category_id,
             description: i.description || undefined,
@@ -216,26 +221,8 @@ export default function ExpensesPage() {
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="field-app-erp-dashboard-expenses-page-1" className="text-xs">Branch ID</Label>
-                  <Input id="field-app-erp-dashboard-expenses-page-1"
-                    placeholder="UUID"
-                    value={createForm.branch_id}
-                    onChange={e => setCreateForm({ ...createForm, branch_id: e.target.value })}
-                    required
-                    className="min-h-[40px]"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="field-app-erp-dashboard-expenses-page-2" className="text-xs">Financial Account ID</Label>
-                  <Input id="field-app-erp-dashboard-expenses-page-2"
-                    placeholder="UUID"
-                    value={createForm.financial_account_id}
-                    onChange={e => setCreateForm({ ...createForm, financial_account_id: e.target.value })}
-                    required
-                    className="min-h-[40px]"
-                  />
-                </div>
+                <EntityPicker label="Branch" endpoint="/api/v1/branches" serverSearch={false} value={branch} onChange={value => { setBranch(value); setAccount(null); }} disabled={creating} />
+                <EntityPicker key={branch?.id ?? 'none'} label="Financial account" endpoint={`/api/v1/financial-accounts?is_active=true${branch ? `&branch_id=${branch.id}` : ''}`} serverSearch={false} value={account} onChange={setAccount} disabled={creating || !branch} />
                 <div className="space-y-1.5">
                   <Label htmlFor="field-app-erp-dashboard-expenses-page-3" className="text-xs">Expense Date</Label>
                   <Input id="field-app-erp-dashboard-expenses-page-3"
@@ -276,14 +263,7 @@ export default function ExpensesPage() {
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {createForm.items.map((item, idx) => (
                     <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 border rounded p-2">
-                      <Input
-                        placeholder="Category ID (UUID)"
-                        aria-label={`Category ID for line ${idx + 1}`}
-                        value={item.expense_category_id}
-                        onChange={e => updateItem(idx, { expense_category_id: e.target.value })}
-                        required
-                        className="sm:col-span-5 min-h-[40px]"
-                      />
+                      <div className="sm:col-span-5"><EntityPicker label={`Category ${idx + 1}`} endpoint="/api/v1/expense-categories" value={item.category ?? null} onChange={category => updateItem(idx, { category, expense_category_id: category.id })} disabled={creating} /></div>
                       <Input
                         type="number"
                         step="0.01"
@@ -400,7 +380,7 @@ export default function ExpensesPage() {
                       </TableCell>
                       <TableCell>
                         <a
-                          href={`/api/v1/expenses/${exp.id}`}
+                          href={`/dashboard/expenses/${exp.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline inline-flex items-center gap-1"

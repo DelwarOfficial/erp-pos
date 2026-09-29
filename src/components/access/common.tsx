@@ -27,7 +27,7 @@ export function useAccess(companyOverride?: string) {
   const [error, setError] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const can = (permission: string) => Boolean(user && (user.is_global || user.permissions.includes(permission)));
-  useEffect(() => { if (!company && user) setCompany(companyOverride || user.company_id); }, [company, companyOverride, user]);
+  useEffect(() => { if (!company && user) setCompany(companyOverride || (user.is_global ? new URLSearchParams(window.location.search).get('company_id') : null) || user.company_id); }, [company, companyOverride, user]);
   useEffect(() => {
     if (!user?.is_global) return;
     const controller = new AbortController();
@@ -38,12 +38,12 @@ export function useAccess(companyOverride?: string) {
   }, [user?.is_global, companySearch]);
   return { user, company, setCompany, companies, companySearch, setCompanySearch, error, can, assured: Boolean(user?.mfa_enabled && user.mfa_verified) };
 }
-export function AccessHeading({ title }: { title: string }) {
+export function AccessHeading({ title, company }: { title: string; company?: string }) {
   const user = useDashboardSession();
   const can = (permission: string) => user?.is_global || user?.permissions.includes(permission);
   return <header className="space-y-3"><h1 className="text-2xl font-bold">{title}</h1><nav aria-label="Access Control" className="flex flex-wrap gap-2 border-b pb-3 [&>a]:rounded-md [&>a]:px-3 [&>a]:py-2 [&>a]:text-sm [&>a]:font-medium [&>a:hover]:bg-accent">
-    {can('user.read') && <Link href="/dashboard/access/users">Users</Link>}
-    {can('role.read') && <><Link href="/dashboard/access/roles">Roles</Link><Link href="/dashboard/access/permissions">Permissions</Link></>}
+    {can('user.read') && <Link href={`/dashboard/access/users${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Users</Link>}
+    {can('role.read') && <><Link href={`/dashboard/access/roles${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Roles</Link><Link href={`/dashboard/access/permissions${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Permissions</Link></>}
   </nav></header>;
 }
 export function CompanyPicker({ access, disabled = false }: { access: ReturnType<typeof useAccess>; disabled?: boolean }) {
