@@ -1839,5 +1839,13 @@
       "sale.post"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/collections/assignees/route.ts",
+    "method": "GET",
+    "permissions": [
+      "collection.manage.branch"
+    ],
+    "exception": null
   }
 ]

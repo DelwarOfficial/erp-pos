@@ -148,8 +148,8 @@ export function FollowUpsCard({ customerId, installments, onChange }: { customer
   }, [customerId]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!can('user.read')) return;
-    void apiFetch('/api/v1/admin/users?status=active&size=100').then(async r => { if (r.ok) setUsers((await r.json()).data ?? []); });
+    if (!can('collection.manage.branch')) return;
+    void apiFetch('/api/v1/collections/assignees').then(async r => { if (r.ok) setUsers((await r.json()).items ?? []); });
   }, []);
 
   async function create(e: React.FormEvent) {

@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { House, ArrowLeft } from 'lucide-react';
-import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote, HandCoins, CalendarClock } from 'lucide-react';
+import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote, HandCoins, CalendarClock, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,8 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/payments', icon: Banknote, label: 'Payments' },
   { href: '/dashboard/sales/credit', icon: CalendarClock, label: 'Credit Sale' },
   { href: '/dashboard/collections', icon: HandCoins, label: 'Collections' },
+  { href: '/dashboard/collections/calendar', icon: CalendarDays, label: 'Due Calendar' },
+  { href: '/dashboard/collections/reports', icon: FileBarChart, label: 'Collection Reports' },
   { href: '/dashboard/products', icon: Package, label: 'Products' },
   { href: '/dashboard/catalogue', icon: FolderTree, label: 'Catalogue' },
   { href: '/dashboard/inventory', icon: Boxes, label: 'Inventory' },
@@ -73,12 +75,13 @@ const NAV_PERMISSIONS: Record<string, string> = {
   '/dashboard/expenses': 'expense.read', '/dashboard/communications': 'communication.campaign.manage.company',
   '/dashboard/reports': 'report.execute',
   '/dashboard/sales/credit': 'sale.post', '/dashboard/collections': 'collection.view.branch',
+  '/dashboard/collections/calendar': 'collection.view.branch', '/dashboard/collections/reports': 'collection.view.branch',
   '/dashboard/communications/sms': 'collection.view.branch',
 };
 
 const NAV_GROUPS = [
   { label: 'Overview', routes: [''] },
-  { label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'gift-cards'] },
+  { label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
   { label: 'Catalogue & stock', routes: ['products', 'catalogue', 'inventory'] },
   { label: 'Procurement & contacts', routes: ['purchases', 'parties'] },
   { label: 'Finance', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
