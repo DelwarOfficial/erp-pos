@@ -102,6 +102,33 @@ async function makeWarehouse(tx: Prisma.TransactionClient) {
 }
 
 describe('every money and stock movement reaches the general ledger', () => {
+  it('receiving rejects duplicate lines and missing serials before creating any stock event', async () => {
+    await probe(async tx => {
+      const warehouse = await makeWarehouse(tx);
+      const product = await makeProduct(tx);
+      await tx.product.update({ where: { id: product.id }, data: { isSerialized: true } });
+      const supplier = await tx.supplier.create({ data: { companyId: COMPANY_ID, name: 'Receiving validation supplier' } });
+      const purchase = await tx.purchase.create({ data: {
+        companyId: COMPANY_ID, branchId: warehouse.branchId, warehouseId: warehouse.id,
+        supplierId: supplier.id, referenceNo: `PO-${randomUUID()}`, orderStatus: 'ordered',
+        orderDate: new Date(), currencyCode: 'BDT', exchangeRate: 1, createdBy: fixture.user.id,
+        items: { create: [{ companyId: COMPANY_ID, lineNo: 1, productId: product.id,
+          productNameSnapshot: product.name, productCodeSnapshot: product.code, qtyOrdered: 2, unitCost: 60 }] },
+      }, include: { items: true } });
+      const base = { purchaseId: purchase.id, companyId: COMPANY_ID, branchId: warehouse.branchId,
+        warehouseId: warehouse.id, receivedBy: fixture.user.id, businessDate: new Date() };
+      const item = { purchaseItemId: purchase.items[0].id, qtyReceivedNow: 1 };
+      await expect(receivePurchase(tx, { ...base, items: [item] }, randomUUID())).rejects.toThrow('one serial number');
+      await expect(receivePurchase(tx, { ...base, items: [{ ...item, serials: ['A'] }, { ...item, serials: ['B'] }] }, randomUUID())).rejects.toThrow('only once');
+      expect(await tx.purchaseReceiving.count({ where: { purchaseId: purchase.id } })).toBe(0);
+      const result = await receivePurchase(tx, { ...base, items: [{ ...item, serials: [`SER-${randomUUID()}`] }] }, randomUUID());
+      expect(result.purchaseNewStatus).toBe('partially_received');
+      expect((await tx.purchaseItem.findUniqueOrThrow({ where: { id: item.purchaseItemId } })).qtyReceived.toString()).toBe('1');
+      expect(await tx.productSerial.count({ where: { originatingPurchaseItemId: item.purchaseItemId } })).toBe(1);
+      expect((await netMovement(tx, inventoryAccountId, 'purchase_receiving', [result.receivingId])).toFixed(2)).toBe('60.00');
+    });
+  });
+
   it('F-19: receiving a purchase DEBITS inventory', async () => {
     await probe(async tx => {
       const warehouse = await makeWarehouse(tx);
