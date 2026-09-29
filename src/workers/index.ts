@@ -11,7 +11,6 @@ import { getRedisConnection, getQueue, QUEUE_NAMES } from '@/lib/queue';
 import { processOutboxBatch } from '@/workers/outboxWorker';
 import { runScheduledReconciliation } from '@/lib/reconciliation/scheduler';
 import { expireStaleReservations } from '@/lib/inventory/reservationExpiry';
-import { processCommunicationCampaign } from '@/lib/communication/campaignProcessor';
 import { runRetentionJob } from '@/lib/retention/job';
 import { sendOutboundMessage } from '@/domain/receivables/reminders';
 import { reminderContext, runDueReminderTick, SEND_CONCURRENCY, TICK_MS } from '@/workers/dueReminders';
@@ -50,16 +49,8 @@ export async function startWorkers(): Promise<void> {
     captureJobFailure(QUEUE_NAMES.OUTBOX, job?.id, err);
   });
 
-  // ── Communication worker — sends SMS/email/notification batches ──
-  const communicationWorker = new Worker(
-    QUEUE_NAMES.COMMUNICATION,
-    async (job: Job) => processCommunicationCampaign(job.data.campaignId),
-    { connection: getRedisConnection() as any, concurrency: CONCURRENCY },
-  );
-  communicationWorker.on('failed', (job, err) => {
-    log('error', 'communication campaign failed', { jobId: job?.id, err: err.message });
-    captureJobFailure(QUEUE_NAMES.COMMUNICATION, job?.id, err);
-  });
+  // Marketing SMS campaigns are outbound_messages sent by the SMS send worker
+  // below (src/domain/communication/campaigns.ts); they have no worker of their own.
 
   // ── Reconciliation worker — periodic reconciliation runs ──
   const reconciliationWorker = new Worker(
@@ -130,7 +121,7 @@ export async function startWorkers(): Promise<void> {
   // ── Heartbeat for /api/v1/health (src/lib/health/workerHeartbeat.ts) ──
   // Beats only while every worker is running; a crashed, hung or stopped
   // process stops beating and the key expires, which degrades health.
-  const workers = [outboxWorker, communicationWorker, reconciliationWorker, reservationWorker, retentionWorker, dueReminderWorker, smsSendWorker];
+  const workers = [outboxWorker, reconciliationWorker, reservationWorker, retentionWorker, dueReminderWorker, smsSendWorker];
   const beat = async () => {
     try {
       const alive = await writeWorkerHeartbeat(getRedisConnection(), workers.every(w => w.isRunning()));
@@ -187,7 +178,6 @@ export async function startWorkers(): Promise<void> {
     await clearWorkerHeartbeat(getRedisConnection()).catch(() => undefined);
     await Promise.allSettled([
       outboxWorker.close(),
-      communicationWorker.close(),
       reconciliationWorker.close(),
       reservationWorker.close(),
       retentionWorker.close(),

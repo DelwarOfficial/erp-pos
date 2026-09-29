@@ -33,6 +33,7 @@ import {
   DEFAULT_REMINDER_TEMPLATES, formatDueDate, formatTaka, reminderKind, renderReminder, templateCode, type ReminderLocale,
 } from './reminderTemplates';
 import { smsSegments } from './smsSegments';
+import { latestSmsConsent } from '@/domain/communication/campaigns';
 
 const PAGE = 200;
 /** Retry delays for a message the provider refused temporarily. */
@@ -280,8 +281,26 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
       if (toCustomer >= effective.maxPerCustomerPerDay) return { stop: { status: 'skipped', reason: 'customer_daily_limit' } } as const;
       if (total >= effective.dailyCompanyLimit) return { stop: { status: 'skipped', reason: 'company_daily_limit' } } as const;
     }
+    let campaignName: string | undefined;
+    if (message.triggerSource === 'campaign') {
+      // A marketing message: the campaign must still be running and the
+      // customer's latest marketing consent still 'granted'. The text is sent
+      // as queued; the sending window and the company's daily cap apply.
+      const recipient = await tx.communicationCampaignRecipient.findFirst({
+        where: { id: message.campaignRecipientId ?? '', companyId }, select: { campaign: { select: { status: true, name: true } } },
+      });
+      if (recipient?.campaign.status !== 'running') return { stop: { status: 'cancelled', reason: 'campaign_cancelled' } } as const;
+      const consent = message.customerId ? (await latestSmsConsent(tx, companyId, [message.customerId], 'marketing')).get(message.customerId) : undefined;
+      if (consent !== 'granted') return { stop: { status: 'skipped', reason: 'opted_out' } } as const;
+      const effective = policy ?? DEFAULT_POLICY;
+      const minute = localMinuteOfDay(timezone, now);
+      if (minute < effective.sendWindowStartMinute || minute >= effective.sendWindowEndMinute) return { defer: true } as const;
+      const total = await tx.outboundMessage.count({ where: { companyId, status: { in: COUNTED }, claimedAt: { gte: zonedMidnight(timezone, today) }, NOT: { id: messageId } } });
+      if (total >= effective.dailyCompanyLimit) return { stop: { status: 'skipped', reason: 'company_daily_limit' } } as const;
+      campaignName = recipient.campaign.name;
+    }
     const gateway = await loadSmsGateway(tx, companyId, fetchImpl);
-    return { message, text, gateway } as const;
+    return { message, text, gateway, campaignName } as const;
   });
 
   if ('defer' in prepared) {
@@ -296,7 +315,7 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
     return status;
   }
   if (!('message' in prepared)) throw new Error('unreachable');
-  const { message, text, gateway } = prepared;
+  const { message, text, gateway, campaignName } = prepared;
   const segments = smsSegments(text);
   if (!gateway) {
     await finish('failed', { lastErrorCode: 'sms_account_not_configured', failureCategory: 'permanent', renderedBody: text });
@@ -304,7 +323,7 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
   }
   const to = decryptString(Buffer.from(message.destinationEncrypted, 'base64'));
 
-  const outcome = await gateway.send({ to, text });
+  const outcome = await gateway.send(message.triggerSource === 'campaign' ? { to, text, kind: 'promotional', campaignName } : { to, text });
 
   const base = { renderedBody: text, encoding: segments.encoding, segments: segments.segments, providerCode: gateway.providerCode };
   switch (outcome.kind) {

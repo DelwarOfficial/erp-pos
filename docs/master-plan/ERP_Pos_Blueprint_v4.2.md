@@ -2398,9 +2398,24 @@ All three are branch-scoped through their sale.
 
 Every write takes an idempotency key. Branch managers get `collection.manage.branch` and `collection.reschedule.branch`; bulk sending and texts are company-level. Screens: the collections page (worklist with bulk select, follow-ups due, missed promises), the customer profile (promises, follow-ups, change due date), `/dashboard/collections/reports`, `/dashboard/collections/calendar`, and the Texts tab of `/dashboard/communications/sms`.
 
+### Marketing SMS campaigns and customer SMS preferences — IMPLEMENTED
+
+Migration `20260930000100_marketing_campaigns` (additive): `communication_campaigns` gains `locale`, `started_at`, `completed_at`, `cancelled_at` and a status CHECK; `outbound_messages.campaign_recipient_id` becomes unique with a tenant composite FK; `trigger_source` accepts `campaign`, and a CHECK requires a campaign message to name its recipient (and only campaign messages to).
+
+- **Audience:** active customers of the company (optionally one customer group, at most 5,000) whose latest `communication_consents` row for sms/marketing is `granted`, with a valid mobile, one message per number. Everyone else is recorded as a skipped recipient with the reason.
+- **Flow:** draft (the text is a `communication_templates` row, purpose `marketing`, placeholders `{{customer_name}}`, `{{company_name}}` only) → preview (counts, SMS parts, today's limit left, sample, confirmation token) → send (`communication.campaign.send`; refused if the audience changed or exceeds today's company limit) → running → completed when nothing is left to send; cancel stops unsent messages. All audited.
+- **Sending:** campaign messages are `outbound_messages` (purpose `marketing`) sent by the same SMS send worker. Just before sending: the campaign must still be running and the customer's marketing consent still granted; the sending window and company daily limit apply. They go to MiMSMS as promotional (`transactionType: "P"`, with the campaign name), so the network applies Do Not Disturb. The old campaign processor and `PostCommunicationCampaign` (never reachable) are removed.
+- **Preferences:** `GET/PUT /api/v1/customers/{id}/sms-preferences` (`customer.read` / `customer.update`) append consent rows: due reminders are sent unless withdrawn; marketing needs an explicit grant. Shown on the customer's collection profile.
+
+| Route | Permission |
+|---|---|
+| `GET/POST /api/v1/communications/campaigns`, `POST …/{id}/preview`, `POST …/{id}/cancel` | `communication.campaign.manage.company` |
+| `POST /api/v1/communications/campaigns/{id}/send` | `communication.campaign.send` |
+
+Screen: `/dashboard/communications/campaigns`.
+
 ### PLANNED
 
-- Rebuilding the marketing campaign processor on `SmsGateway` (campaigns still use the old adapter layer).
 - A promise-to-pay SMS reminder, if wanted: not built, as nothing required it yet.
 
 ## 5.12 Expenses

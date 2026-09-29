@@ -25,6 +25,7 @@ import { apiFetch } from '@/lib/api/client';
 import { InstallmentStatusBadge, newIdempotencyKey, readError, SmsStatusBadge, Taka, useCan } from '@/components/collections/common';
 import { ReminderDialog } from '@/components/collections/ReminderDialog';
 import { FollowUpsCard, PromisesCard, RescheduleDialog, type OpenInstallment } from '@/components/collections/FollowThrough';
+import { SmsPreferences } from '@/components/collections/SmsPreferences';
 
 interface Receivable {
   customer: { id: string; name: string }; as_of: string; outstanding: string; overdue: string;
@@ -229,6 +230,8 @@ export default function CustomerCollectionPage() {
           </CardContent>
         </Card>
       )}
+
+      <SmsPreferences customerId={data.customer.id} />
 
       <div className="grid gap-6 xl:grid-cols-2">
         <PromisesCard customerId={data.customer.id} installments={data.installments} onChange={load} />

@@ -4797,6 +4797,10 @@ model CommunicationCampaign {
   createdBy           String   @map("created_by")
   approvedBy          String?  @map("approved_by")
   createdAt           DateTime @default(now()) @map("created_at")
+  locale              String   @default("bn") // bn/en: the language of the text
+  startedAt           DateTime? @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  cancelledAt         DateTime? @map("cancelled_at")
 
   company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
   template  CommunicationTemplate @relation(fields: [templateId], references: [id])
@@ -4825,6 +4829,7 @@ model CommunicationCampaignRecipient {
   company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
   campaign  CommunicationCampaign @relation(fields: [campaignId], references: [id])
   customer  Customer?            @relation("CampaignRecipientCustomer", fields: [customerId], references: [id])
+  message   OutboundMessage?
 
   @@unique([campaignId, destination])
   @@index([companyId])
@@ -4837,7 +4842,7 @@ model OutboundMessage {
   id                  String   @id @default(uuid())
   companyId           String   @map("company_id")
   templateId          String?  @map("template_id")
-  campaignRecipientId String?  @map("campaign_recipient_id")
+  campaignRecipientId String?  @unique @map("campaign_recipient_id") // at most one message per campaign recipient
   channel             String   @default("sms") // sms/email/push/whatsapp
   purpose             String   @default("transactional") // transactional/marketing/internal
   destinationHash     String   @map("destination_hash")
@@ -4856,7 +4861,7 @@ model OutboundMessage {
   saleId              String?  @map("sale_id")
   installmentId       String?  @map("installment_id")
   reminderOccurrenceId String? @unique @map("reminder_occurrence_id") // at most one message per reminder
-  triggerSource       String   @default("manual") @map("trigger_source") // reminder/manual/bulk
+  triggerSource       String   @default("manual") @map("trigger_source") // reminder/manual/bulk/campaign
   locale              String?
   encoding            String?  // gsm7/ucs2
   segments            Int?
@@ -4876,6 +4881,7 @@ model OutboundMessage {
   // (outbound_messages_reminder_link_chk), and ids never change.
   installment Installment? @relation(fields: [installmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reminderOccurrence ReminderOccurrence? @relation(fields: [reminderOccurrenceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  campaignRecipient CommunicationCampaignRecipient? @relation(fields: [campaignRecipientId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([companyId])
   @@index([templateId])

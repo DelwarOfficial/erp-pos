@@ -1847,5 +1847,61 @@
       "collection.manage.branch"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/communications/campaigns/route.ts",
+    "method": "GET",
+    "permissions": [
+      "communication.campaign.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/campaigns/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.campaign.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/campaigns/[id]/preview/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.campaign.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/campaigns/[id]/send/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.campaign.send"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/communications/campaigns/[id]/cancel/route.ts",
+    "method": "POST",
+    "permissions": [
+      "communication.campaign.manage.company"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/sms-preferences/route.ts",
+    "method": "GET",
+    "permissions": [
+      "customer.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/sms-preferences/route.ts",
+    "method": "PUT",
+    "permissions": [
+      "customer.update"
+    ],
+    "exception": null
   }
 ]

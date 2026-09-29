@@ -9,6 +9,10 @@ export interface SmsSendRequest {
   /** Canonical 8801XXXXXXXXX (src/domain/receivables/phone.ts). */
   to: string;
   text: string;
+  /** Marketing messages are promotional: providers apply DND to them. Default transactional. */
+  kind?: 'transactional' | 'promotional';
+  /** Shown in the provider's own reports for promotional sends. */
+  campaignName?: string;
 }
 
 /**

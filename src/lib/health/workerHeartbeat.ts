@@ -1,7 +1,8 @@
 // Worker liveness for the health check.
 //
 // The worker process (src/workers/index.ts) runs outbox delivery,
-// reconciliation, retention, reservation expiry and campaigns. The health
+// reconciliation, retention, reservation expiry, due reminders and SMS sends
+// (reminders and marketing campaigns). The health
 // check probed the database, Redis and storage but reported the worker as
 // 'skipped' unconditionally, so the worker could be dead for days while
 // /api/v1/health returned 200.

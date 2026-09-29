@@ -147,7 +147,7 @@ describe('F-65: worker failures reach Sentry', () => {
 
   it('wires captureJobFailure into every worker failure handler', () => {
     const source = readFileSync('src/workers/index.ts', 'utf8');
-    for (const queue of ['OUTBOX', 'COMMUNICATION', 'RECONCILIATION', 'EXPIRE_RESERVATIONS', 'RETENTION']) {
+    for (const queue of ['OUTBOX', 'RECONCILIATION', 'EXPIRE_RESERVATIONS', 'RETENTION']) {
       expect(source, `${queue} failure handler does not report`)
         .toMatch(new RegExp(`captureJobFailure\\(QUEUE_NAMES\\.${queue}`));
     }

@@ -3217,6 +3217,34 @@
      "default": "current_timestamp(3)",
      "extra": null,
      "collation": null
+    },
+    "cancelled_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "completed_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "locale": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": "'bn'",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "started_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
     }
    },
    "indexes": {
@@ -3309,7 +3337,10 @@
      "onDelete": "RESTRICT"
     }
    },
-   "checks": {}
+   "checks": {
+    "communication_campaigns_locale_chk": "locale in ('bn','en')",
+    "communication_campaigns_status_chk": "status in ('draft','scheduled','running','completed','cancelled','failed')"
+   }
   },
   "communication_campaign_recipients": {
    "engine": "InnoDB",
@@ -3418,6 +3449,10 @@
     "PRIMARY": {
      "unique": true,
      "columns": "id"
+    },
+    "uq_tenant_communication_campaign_recipients_id": {
+     "unique": true,
+     "columns": "company_id,id"
     }
    },
    "foreignKeys": {
@@ -3452,7 +3487,9 @@
      "onDelete": "RESTRICT"
     }
    },
-   "checks": {}
+   "checks": {
+    "communication_campaign_recipients_status_chk": "status in ('queued','sent','delivered','failed','skipped')"
+   }
   },
   "communication_consents": {
    "engine": "InnoDB",
@@ -13516,6 +13553,10 @@
     }
    },
    "indexes": {
+    "fk_tenant_outbound_messages_campaign_recipient": {
+     "unique": false,
+     "columns": "company_id,campaign_recipient_id"
+    },
     "fk_tenant_outbound_messages_installment": {
      "unique": false,
      "columns": "company_id,installment_id"
@@ -13531,6 +13572,10 @@
     "idx_tenant_fk_outbound_messages_template": {
      "unique": false,
      "columns": "company_id,template_id"
+    },
+    "outbound_messages_campaign_recipient_id_key": {
+     "unique": true,
+     "columns": "campaign_recipient_id"
     },
     "outbound_messages_company_customer_created_idx": {
      "unique": false,
@@ -13582,6 +13627,12 @@
     }
    },
    "foreignKeys": {
+    "fk_tenant_outbound_messages_campaign_recipient": {
+     "columns": "company_id,campaign_recipient_id",
+     "references": "communication_campaign_recipients(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
     "fk_tenant_outbound_messages_customer": {
      "columns": "company_id,customer_id",
      "references": "customers(company_id,id)",
@@ -13609,6 +13660,12 @@
     "fk_tenant_outbound_messages_template": {
      "columns": "company_id,template_id",
      "references": "communication_templates(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "outbound_messages_campaign_recipient_id_fkey": {
+     "columns": "campaign_recipient_id",
+     "references": "communication_campaign_recipients(id)",
      "onUpdate": "RESTRICT",
      "onDelete": "RESTRICT"
     },
@@ -13650,9 +13707,10 @@
     }
    },
    "checks": {
+    "outbound_messages_campaign_link_chk": "trigger_source = 'campaign' = (campaign_recipient_id is not null)",
     "outbound_messages_reminder_link_chk": "reminder_occurrence_id is null or installment_id is not null and trigger_source = 'reminder'",
     "outbound_messages_status_chk": "status in ('queued','sending','sent','delivered','failed','unknown','skipped','cancelled','dead_letter')",
-    "outbound_messages_trigger_chk": "trigger_source in ('reminder','manual','bulk')"
+    "outbound_messages_trigger_chk": "trigger_source in ('reminder','manual','bulk','campaign')"
    }
   },
   "outbox_events": {

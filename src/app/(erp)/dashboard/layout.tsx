@@ -58,6 +58,7 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/expenses', icon: Wallet, label: 'Expenses' },
   { href: '/dashboard/communications', icon: MessageSquare, label: 'Communications' },
   { href: '/dashboard/communications/sms', icon: MessageSquare, label: 'SMS & Reminders' },
+  { href: '/dashboard/communications/campaigns', icon: Megaphone, label: 'SMS Campaigns' },
   { href: '/dashboard/reports', icon: FileBarChart, label: 'Reports' },
   { href: '/dashboard/support', icon: LifeBuoy, label: 'Support' },
 ];
@@ -76,7 +77,7 @@ const NAV_PERMISSIONS: Record<string, string> = {
   '/dashboard/reports': 'report.execute',
   '/dashboard/sales/credit': 'sale.post', '/dashboard/collections': 'collection.view.branch',
   '/dashboard/collections/calendar': 'collection.view.branch', '/dashboard/collections/reports': 'collection.view.branch',
-  '/dashboard/communications/sms': 'collection.view.branch',
+  '/dashboard/communications/sms': 'collection.view.branch', '/dashboard/communications/campaigns': 'communication.campaign.manage.company',
 };
 
 const NAV_GROUPS = [
@@ -85,7 +86,7 @@ const NAV_GROUPS = [
   { label: 'Catalogue & stock', routes: ['products', 'catalogue', 'inventory'] },
   { label: 'Procurement & contacts', routes: ['purchases', 'parties'] },
   { label: 'Finance', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
-  { label: 'Operations', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'reports'] },
+  { label: 'Operations', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'communications/campaigns', 'reports'] },
   { label: 'Access control', routes: ['access/users', 'access/roles', 'access/permissions'] },
   { label: 'Administration', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
 ];

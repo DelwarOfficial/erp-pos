@@ -17,6 +17,8 @@ import {
   planDueReminders, pollDeliveryReports, queueDueReminderMessages, recoverInterruptedSends, sendableMessageIds,
 } from '@/domain/receivables/reminders';
 import { SMS_PROVIDER } from '@/lib/sms/credentials';
+import { withTenant } from '@/lib/db/transaction';
+import { completeFinishedCampaigns } from '@/domain/communication/campaigns';
 
 export const TICK_MS = 5 * 60_000;
 export const SEND_CONCURRENCY = 4;
@@ -54,6 +56,7 @@ export async function runDueReminderTick(
       const { delivered, failed } = await pollDeliveryReports(ctx, now);
       const ids = await sendableMessageIds(ctx, now);
       for (const id of ids) await enqueueSend(companyId, id);
+      await withTenant(ctx, tx => completeFinishedCampaigns(tx, companyId, now));
       results.push({ companyId, planned, queued, skipped, recovered, delivered, failed, enqueued: ids.length });
     } catch (error) {
       onCompanyError(companyId, error);

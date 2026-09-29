@@ -8,7 +8,10 @@
 //             success_Data: [{ mobNumber, trackingId, sms_Count, lang_Type }],
 //             error_Data: [{ res_Code, error, failedNumbers, errorParm }] }
 //        Transactional ("T") allows one recipient per request and is
-//        delivered regardless of DND.
+//        delivered regardless of DND. Promotional ("P", marketing; optional
+//        campaignName) is subject to DND and allows up to 1000 comma-separated
+//        numbers; we still send one number per request so each message has
+//        its own tracking ID and outcome.
 //   POST https://api.mimsms.com/api/V2/DlrApi       delivery report
 //        { userName, apiKey, mobileNumber, trackingId }
 //        -> { statusCode, status, trackingId, dlrCode, operatorStatus, mobileNumber }
@@ -71,8 +74,9 @@ export class MimSmsGateway implements SmsGateway {
     let response: Response;
     try {
       response = await this.post('SMS', {
-        senderName: this.credentials.senderName, transactionType: 'T',
+        senderName: this.credentials.senderName, transactionType: request.kind === 'promotional' ? 'P' : 'T',
         mobileNumber: request.to, message: request.text,
+        ...(request.kind === 'promotional' && request.campaignName ? { campaignName: request.campaignName.slice(0, 100) } : {}),
       });
     } catch (error) {
       const code = causeCode(error);

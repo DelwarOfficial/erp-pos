@@ -49,6 +49,13 @@ To resolve one: find the destination number and the `claimed_at` time, check the
 - **Nothing queued:** the policy is off, it is outside the sending window (company local time), or no installment is at a stage today. Occurrences with `skip_reason` say why a specific one was skipped.
 - **A customer got no reminder:** check `reminder_occurrences` for the installment: `missing_phone` / `invalid_phone` (fix the customer's number or the sale's reminder number), `opted_out`, `paid`, `below_minimum`.
 
+## Marketing campaigns
+
+- Campaign SMS share the company's MiMSMS account, sending window and daily limit with reminders: a large campaign can use up the day's limit. Send campaigns after the day's reminders, or raise the limit.
+- They are promotional: numbers on Do Not Disturb do not receive them (the provider decides; it may still report them sent).
+- A customer who asks to stop offers: turn off "Marketing SMS" on their profile. Queued messages to them are then skipped (`opted_out`).
+- To stop a campaign: Cancel on the campaigns page. Messages already handed to the provider cannot be recalled.
+
 ## Collection follow-through
 
 - **A bulk send returns 409 "selection changed":** something changed between preview and send (a payment, another reminder, a number). The screen previews again; send from the new preview.
