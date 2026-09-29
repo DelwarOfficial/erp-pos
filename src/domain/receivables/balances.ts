@@ -78,7 +78,7 @@ export async function installmentBalances(
     FROM installments i
     JOIN sales s ON s.id = i.sale_id AND s.company_id = i.company_id
     WHERE i.company_id = ${scope.companyId} AND i.status = 'scheduled'
-      ${Prisma.join(filters, ' ')}
+      ${filters.length ? Prisma.join(filters, ' ') : Prisma.empty}
       ${scope.branch('s.branch_id')}
     ORDER BY i.due_date, s.business_date, s.id, i.installment_no`;
   if (rows.length === 0) return [];

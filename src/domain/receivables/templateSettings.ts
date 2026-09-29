@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
 import {
-  DEFAULT_REMINDER_TEMPLATES, REMINDER_PLACEHOLDERS, renderReminder, templateCode, unknownPlaceholders,
+  DEFAULT_REMINDER_TEMPLATES, formatDueDate, REMINDER_PLACEHOLDERS, renderReminder, templateCode, unknownPlaceholders,
   type ReminderKind, type ReminderLocale, type ReminderValues,
 } from './reminderTemplates';
 import { smsSegments } from './smsSegments';
@@ -26,9 +26,9 @@ const LANGUAGE: Record<ReminderLocale, { locale: string; name: string; nativeNam
 
 const SAMPLE: Record<ReminderLocale, ReminderValues> = {
   bn: { customer_name: 'রহিম উদ্দিন', company_name: 'আপনার দোকান', invoice_no: 'INV-MAIN-000123', installment_no: '2',
-    due_amount: '5,000.00', outstanding_amount: '5,000.00', due_date: '15/10/2026', days_overdue: '3' },
+    due_amount: '5,000.00', outstanding_amount: '5,000.00', due_date: formatDueDate('2026-10-15', 'bn'), days_overdue: '3' },
   en: { customer_name: 'Rahim Uddin', company_name: 'Your Shop', invoice_no: 'INV-MAIN-000123', installment_no: '2',
-    due_amount: '5,000.00', outstanding_amount: '5,000.00', due_date: '15/10/2026', days_overdue: '3' },
+    due_amount: '5,000.00', outstanding_amount: '5,000.00', due_date: formatDueDate('2026-10-15', 'en'), days_overdue: '3' },
 };
 
 export function parseTemplateCode(code: string): { kind: ReminderKind; locale: ReminderLocale } {

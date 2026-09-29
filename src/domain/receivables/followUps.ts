@@ -93,7 +93,7 @@ export async function listPromises(tx: Tx, companyId: string, query: PromiseQuer
         LEFT JOIN installments i ON i.id = cp.installment_id AND i.company_id = cp.company_id
        WHERE cp.company_id = ${scope.companyId}
          ${scope.branch('s.branch_id')}
-         ${Prisma.join(filters, ' ')}
+         ${filters.length ? Prisma.join(filters, ' ') : Prisma.empty}
     ) t
     WHERE ${query.status === 'cancelled' ? Prisma.sql`t.cancelled_at IS NOT NULL`
       : query.status === 'kept' ? Prisma.sql`t.cancelled_at IS NULL AND COALESCE(t.collected, 0) >= t.promised_amount`

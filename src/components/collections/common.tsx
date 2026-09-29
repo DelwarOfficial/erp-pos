@@ -65,7 +65,8 @@ export const SKIP_REASONS: Record<string, string> = {
   missing_phone: 'No mobile number', invalid_phone: 'Invalid mobile number', customer_daily_limit: 'Customer already reminded today',
   company_daily_limit: 'Daily SMS limit reached', stage_passed: 'Reminder day passed', due_date_changed: 'Due date changed',
   installment_cancelled: 'Installment cancelled', sale_not_open: 'Sale voided or returned', reminders_off_for_sale: 'Reminders off for this sale',
-  policy_disabled: 'Automatic reminders are off', sms_account_not_configured: 'No SMS account configured', interrupted_during_send: 'Interrupted while sending',
+  policy_disabled: 'Automatic reminders are off', sms_account_not_configured: 'No SMS account configured', sms_account_unreadable: 'SMS account must be entered again',
+  campaign_cancelled: 'Campaign cancelled', interrupted_during_send: 'Interrupted while sending',
 };
 
 export async function readError(response: Response): Promise<string> {

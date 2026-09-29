@@ -98,7 +98,7 @@ export default function CreditSalePage() {
   const branchWarehouses = warehouses.filter(w => !branchId || !w.branch || w.branch.id === branchId);
   const branchAccounts = accounts.filter(a => !a.branch || a.branch.id === branchId);
   const canonical = normalizeBdMobile(phone);
-  const phoneProblem = reminders && (phone.trim() === '' ? 'Enter the mobile number reminders go to, or turn reminders off.' : canonical ? null : 'Not a valid Bangladeshi mobile number (01XXXXXXXXX).');
+  const phoneProblem = reminders && customer !== null && (phone.trim() === '' ? 'Enter the mobile number reminders go to, or turn reminders off.' : canonical ? null : 'Not a valid Bangladeshi mobile number (01XXXXXXXXX).');
 
   const body = useMemo(() => {
     const paid = paidNow.trim();

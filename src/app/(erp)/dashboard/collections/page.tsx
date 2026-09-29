@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CalendarClock, CircleDollarSign, HandCoins, MessageSquare, PhoneOff, RefreshCw, Search, Send, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,7 +91,11 @@ export default function CollectionsPage() {
     } catch (e) { setOverviewError(e instanceof Error ? e.message : 'Could not load the overview'); }
   }, []);
 
+  // Only the latest request may fill the table: a slower earlier response
+  // (another tab, an older search) must not overwrite it.
+  const latestRequest = useRef(0);
   const loadRows = useCallback(async (after: string | null) => {
+    const request = ++latestRequest.current;
     const params = new URLSearchParams({ view, limit: '50' });
     if (view === 'upcoming') params.set('days', days);
     if (search) params.set('q', search);
@@ -101,10 +105,11 @@ export default function CollectionsPage() {
       const r = await apiFetch(`/api/v1/collections/worklist?${params}`);
       if (!r.ok) throw new Error(await readError(r));
       const data = await r.json();
+      if (request !== latestRequest.current) return;
       setRows(prev => (after ? [...prev, ...data.items] : data.items));
       setCursor(data.next_cursor);
-    } catch (e) { setListError(e instanceof Error ? e.message : 'Could not load the worklist'); }
-    finally { setLoading(false); setLoadingMore(false); }
+    } catch (e) { if (request === latestRequest.current) setListError(e instanceof Error ? e.message : 'Could not load the worklist'); }
+    finally { if (request === latestRequest.current) { setLoading(false); setLoadingMore(false); } }
   }, [view, days, search]);
 
   // The calendar links here with ?view=...

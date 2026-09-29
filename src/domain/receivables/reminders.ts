@@ -24,7 +24,7 @@ import { DomainError } from '@/lib/errors/codes';
 import { db } from '@/lib/db';
 import { withTenant, runInTenantContext, type TenantContext } from '@/lib/db/transaction';
 import { encryptString, decryptString, sha256 } from '@/lib/crypto';
-import { loadSmsGateway } from '@/lib/sms/credentials';
+import { describeSmsAccount, loadSmsGateway } from '@/lib/sms/credentials';
 import { installmentBalances, OPEN_SALE_STATUSES } from './balances';
 import { addDays, dateFromIso, daysBetween, isoFromDate, localDate, localMinuteOfDay, zonedMidnight } from './calendar';
 import { normalizeBdMobile } from './phone';
@@ -318,7 +318,9 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
   const { message, text, gateway, campaignName } = prepared;
   const segments = smsSegments(text);
   if (!gateway) {
-    await finish('failed', { lastErrorCode: 'sms_account_not_configured', failureCategory: 'permanent', renderedBody: text });
+    const account = await withTenant(ctx, tx => describeSmsAccount(tx, companyId));
+    const code = account.configured && account.unreadable ? 'sms_account_unreadable' : 'sms_account_not_configured';
+    await finish('failed', { lastErrorCode: code, failureCategory: 'permanent', renderedBody: text });
     return 'failed';
   }
   const to = decryptString(Buffer.from(message.destinationEncrypted, 'base64'));

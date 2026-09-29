@@ -137,7 +137,7 @@ function History({ initialStatus }: { initialStatus: string }) {
 }
 
 function Account() {
-  const [account, setAccount] = useState<{ configured: boolean; senderName?: string; active?: boolean } | null>(null);
+  const [account, setAccount] = useState<{ configured: boolean; senderName?: string | null; active?: boolean; unreadable?: boolean } | null>(null);
   const [userName, setUserName] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [sender, setSender] = useState('');
@@ -169,7 +169,7 @@ function Account() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5" />MiMSMS account</CardTitle>
         <CardDescription>
-          {account?.configured ? <>Configured. Sender ID <strong>{account.senderName}</strong>. The API key is stored encrypted and cannot be shown; enter it again to change it.</> : 'Not configured. Reminders cannot be sent until it is.'}
+          {account?.unreadable ? <strong className="text-destructive">The saved account cannot be read on this server (the encryption key changed). Enter it again; nothing is sent until you do.</strong> : account?.configured ? <>Configured. Sender ID <strong>{account.senderName}</strong>. The API key is stored encrypted and cannot be shown; enter it again to change it.</> : 'Not configured. Reminders cannot be sent until it is.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

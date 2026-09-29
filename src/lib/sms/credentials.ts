@@ -46,17 +46,25 @@ export async function describeSmsAccount(tx: Client, companyId: string) {
     select: { status: true, credentialCiphertext: true, keyVersion: true, lastRotatedAt: true },
   });
   if (!row) return { configured: false as const };
-  const { senderName } = JSON.parse(decryptString(Buffer.from(row.credentialCiphertext), row.keyVersion)) as MimSmsCredentials;
-  return { configured: true as const, active: row.status === 'active', provider: SMS_PROVIDER, senderName, updatedAt: row.lastRotatedAt };
+  const credentials = readCredentials(row);
+  // Stored under an encryption key this server no longer has (a key rotation
+  // or a restore): say so, so the account can be entered again.
+  if (!credentials) return { configured: true as const, active: row.status === 'active', provider: SMS_PROVIDER, senderName: null, unreadable: true as const, updatedAt: row.lastRotatedAt };
+  return { configured: true as const, active: row.status === 'active', provider: SMS_PROVIDER, senderName: credentials.senderName, unreadable: false as const, updatedAt: row.lastRotatedAt };
 }
 
-/** The company's gateway, or null when it has no active account. */
+function readCredentials(row: { credentialCiphertext: Uint8Array; keyVersion: number }): MimSmsCredentials | null {
+  try { return JSON.parse(decryptString(Buffer.from(row.credentialCiphertext), row.keyVersion)) as MimSmsCredentials; }
+  catch { return null; }
+}
+
+/** The company's gateway, or null when it has no active account or it cannot be read (see describeSmsAccount). */
 export async function loadSmsGateway(tx: Client, companyId: string, fetchImpl?: typeof fetch): Promise<SmsGateway | null> {
   const row = await tx.integrationCredential.findFirst({
     where: { companyId, provider: SMS_PROVIDER, label: LABEL, status: 'active' },
     select: { credentialCiphertext: true, keyVersion: true },
   });
   if (!row) return null;
-  const credentials = JSON.parse(decryptString(Buffer.from(row.credentialCiphertext), row.keyVersion)) as MimSmsCredentials;
-  return new MimSmsGateway(credentials, fetchImpl);
+  const credentials = readCredentials(row);
+  return credentials ? new MimSmsGateway(credentials, fetchImpl) : null;
 }

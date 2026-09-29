@@ -96,6 +96,9 @@ describe('promises to pay', () => {
     const tomorrow = new Date(zonedMidnight(TZ, addDays(today(), 1)).getTime() + 3_600_000);
     const broken = await runInTenantContext(ctx(), () => listPromises(tx, A, { saleId: s.saleId, status: 'broken' }, tomorrow));
     expect(broken.items.map(p => p.id)).toEqual([promise.id]);
+    // Unfiltered, as the collections page asks for every missed promise.
+    const everyBroken = await runInTenantContext(ctx(), () => listPromises(tx, A, { status: 'broken' }, tomorrow));
+    expect(everyBroken.items.map(p => p.id)).toContain(promise.id);
     await expect(withTenant(ctx(), t => cancelPromise(t, A, promise.id, 'x', fx.user.id, tomorrow))).rejects.toThrow(/Only an open promise/);
     await withTenant(ctx(), t => cancelPromise(t, A, promise.id, 'customer disputes the amount', fx.user.id));
     expect((await runInTenantContext(ctx(), () => listPromises(tx, A, { ids: [promise.id] }))).items[0].status).toBe('cancelled');
