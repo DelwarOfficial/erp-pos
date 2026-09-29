@@ -107,6 +107,11 @@ export default function CollectionsPage() {
     finally { setLoading(false); setLoadingMore(false); }
   }, [view, days, search]);
 
+  // The calendar links here with ?view=...
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('view') as View | null;
+    if (requested && ['due_today', 'overdue', 'upcoming', 'all_open'].includes(requested)) setView(requested);
+  }, []);
   useEffect(() => { void loadOverview(); }, [loadOverview]);
   useEffect(() => { void loadRows(null); }, [loadRows]);
 
@@ -121,6 +126,8 @@ export default function CollectionsPage() {
           <p className="text-sm text-muted-foreground">Who owes money, how much, when it is due, and what to do next.{overview ? ` As of ${overview.as_of}.` : ''}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" asChild><Link href="/dashboard/collections/calendar">Calendar</Link></Button>
+          <Button variant="outline" asChild><Link href="/dashboard/collections/reports">Reports</Link></Button>
           {can('sale.post') && <Button variant="outline" asChild><Link href="/dashboard/sales/credit"><CalendarClock className="mr-2 h-4 w-4" />New credit sale</Link></Button>}
           <Button variant="outline" onClick={refresh}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
         </div>
