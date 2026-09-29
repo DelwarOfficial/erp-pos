@@ -47,8 +47,14 @@ The worker lists company ids (the one read outside a tenant context) and does al
 ### 10. Dates are company-local calendar dates
 A due date is a calendar date in the company's time zone, stored as that date at 00:00 UTC. "Today", stage days, sending windows and daily limits use the company's time zone, never the server's.
 
+### 11. Promises are kept beside the contract, not written over it (Phase 3)
+A promise to pay is its own record with its own date; the installment keeps its contractual due date, so aging, overdue blocks and reminders are unchanged by it. Whether a promise was kept is derived from posted collections received before the end of the promised day, not stored, so reversals and late postings are always reflected. Changing the contractual date is a different, deliberate act with its own permission, an append-only history table and an audit entry.
+
+### 12. Bulk sends are confirmed against exactly what was previewed (Phase 3)
+The preview returns a token over the eligible installment set; the send recomputes the set and refuses if it differs. Staff never send to a set they did not see, and a batch reaches each customer at most once per day, whatever else was sent to them.
+
 ## Consequences
 
 - Credit exposure and overdue checks in `PostSale` now come from installment balances. The previous check refused credit to any customer with any sale older than 30 days, including sales paid in full.
-- An `unknown` message needs a person: check the MiMSMS panel's send history for the number and time, then mark the message accordingly (Phase 2 UI). Never replay it blindly.
+- An `unknown` message needs a person: check the MiMSMS panel's send history for the number and time, then mark the message accordingly (SMS & Reminders → History). Never replay it blindly.
 - A reminder stage missed because the worker was down all day is not sent late; it is cancelled as `stage_passed`.

@@ -49,8 +49,15 @@ To resolve one: find the destination number and the `claimed_at` time, check the
 - **Nothing queued:** the policy is off, it is outside the sending window (company local time), or no installment is at a stage today. Occurrences with `skip_reason` say why a specific one was skipped.
 - **A customer got no reminder:** check `reminder_occurrences` for the installment: `missing_phone` / `invalid_phone` (fix the customer's number or the sale's reminder number), `opted_out`, `paid`, `below_minimum`.
 
+## Collection follow-through
+
+- **A bulk send returns 409 "selection changed":** something changed between preview and send (a payment, another reminder, a number). The screen previews again; send from the new preview.
+- **A customer says they were promised a new date:** record a promise to pay. Only change the due date itself when the agreement changed; that is audited and moves the reminders.
+- **Reminder text looks wrong:** SMS & Reminders → Texts shows which text is in use (built-in or custom, with version). "Use built-in text" reverts it.
+
 ## Failure and rollback
 
 - The migration `20260928000100_receivables_reminders` is additive. If the application must be rolled back, leave the schema; the older code ignores the new tables and columns.
 - Worker down: nothing is sent; stages missed on the days it was down are cancelled, not sent late. Health (`/api/v1/health`) reports the worker as failed.
-- To stop all sending for a company immediately: set its policy `enabled: false`. Queued messages are then cancelled at their next send attempt (`policy_disabled`).
+- To stop automatic reminders for a company immediately: set its policy `enabled: false`. Queued automatic messages are then cancelled at their next send attempt (`policy_disabled`). Manual and bulk reminders are staff decisions and do not depend on the policy switch; to stop those too, set the daily company limit to 0 (queued ones are then skipped with `company_daily_limit`) or deactivate the SMS account.
+- The migration `20260929000100_collection_follow_ups` (promises, follow-ups, due-date history) is additive; older code ignores the tables. Due-date history rows cannot be updated or deleted (`IMMUTABLE_LEDGER`); a wrong change is corrected by changing the date again, with a reason.

@@ -2369,9 +2369,39 @@ The earlier guessed `MimSmsProvider` in `src/adapters/providers.ts` (Bearer toke
 
 Open balances in SQL (`openInstallmentsCte`) use the same oldest-first cap to the sale's owed amount as the JS `installmentBalances`, tested equal. `reminder_occurrences` and `outbound_messages` are branch-scoped through their sale. Screens: `/dashboard/collections` (control centre and worklist), `/dashboard/collections/customers/{id}` (profile, installments, collect, timeline), `/dashboard/communications/sms` (overview, history with resolve, MiMSMS account and policy settings), `/dashboard/sales/credit`. New permissions: `collection.view.branch`, `communication.transactional.send.branch` (branch managers get both).
 
+### Follow-through, bulk reminders, texts and reports — IMPLEMENTED (Phase 3)
+
+Migration `20260929000100_collection_follow_ups` (additive):
+
+| Table | Role | Key constraints |
+|---|---|---|
+| `collection_promises` | a customer's promise to pay `promised_amount` on a sale (optionally one installment) by `promised_date`; `original_due_date` copies the installment's contractual date; `deadline_at` is the end of the promised day in company time | tenant composite FKs to customer, sale, installment, users; CHECK amount > 0; cancel fields all-or-nothing |
+| `collection_follow_ups` | a collection task: `call / visit / send_reminder / call_later / payment_promised / escalate / other`, `open → done / cancelled`, assignee, due time, notes | tenant composite FKs; CHECK type, status, and closed fields set exactly when not open |
+| `installment_due_date_changes` | every change to an installment's contractual due date: old, new, reason, who, when | tenant composite FKs; CHECK old ≠ new; append-only (update/delete triggers raise `IMMUTABLE_LEDGER`) |
+
+All three are branch-scoped through their sale.
+
+- **A promise never changes the due date.** Aging, overdue blocks and reminders keep using the contractual date. Status is derived, never stored: `cancelled`; else `kept` when posted collections on the promised sale (or installment), received between recording the promise and `deadline_at`, reach the promised amount; else `broken` once `deadline_at` has passed; else `open`. A reversed payment therefore turns a kept promise back. One open promise per sale/installment; the amount may not exceed what is owed; the date is today to 180 days ahead.
+- **Changing a due date** (`collection.reschedule.branch`) is a separate, audited act: the installment must be scheduled, unpaid and on an open sale; the new date is today or later and stays strictly between its neighbours' dates; the change is written to `installment_due_date_changes` and the audit log; pending reminder stages for the old date are cancelled (`due_date_changed`) and the planner schedules the new ones.
+- **Bulk reminders** (`communication.bulk_send.company`, at most 500 installments): the preview reports selected, eligible, missing/invalid mobile, already paid, opted out, duplicates (one message per customer per batch, for their oldest due installment, and none to a customer already sent or queued a reminder today by any route), not sendable, SMS parts, the company's remaining daily limit and a sample, plus a confirmation token over the eligible set. Queueing recomputes the set and refuses (409) if the token no longer matches or the daily limit would be exceeded. Messages are `trigger_source = 'bulk'` and go through the same claim-and-revalidate send path; bulk is held to the per-customer daily limit, manual is not. Audited as `sms_message.bulk_reminder` with the batch id.
+- **Reminder texts** (`communication.template.manage.company`): the company's text for each stage and language is an SMS row in `communication_templates` coded `due_reminder.<upcoming|due_today|overdue>.<bn|en>`; only the fixed placeholders are accepted; saving bumps `version` and is audited (`communication_template.update`, before/after); resetting deactivates the row (kept for the record) and the built-in text applies again.
+- **Reports**: aging of scheduled outstanding (not due, 1–30, 31–60, 61–90, 90+ days late), due vs collected per company-local day, collections by the sale's biller, SMS per day by status, and "collected within 3 days after a reminder": collections on an installment that had an SMS sent or delivered for it in the 3 days before. The screen states this is a correlation, not proof the reminder caused the payment. Range at most 92 days. Calendar: per day of a month, amount still owed and customers, promises, open follow-ups.
+
+| Route | Permission |
+|---|---|
+| `GET/POST /api/v1/collections/promises`, `POST …/promises/{id}/cancel` | view: `collection.view.branch`; write: `collection.manage.branch` |
+| `GET/POST /api/v1/collections/follow-ups`, `POST …/follow-ups/{id}/close` | view: `collection.view.branch`; write: `collection.manage.branch` |
+| `GET/POST /api/v1/collections/installments/{id}/due-date` | history: `collection.view.branch`; change: `collection.reschedule.branch` |
+| `POST /api/v1/collections/bulk-reminders/preview`, `POST /api/v1/collections/bulk-reminders` | `communication.bulk_send.company` |
+| `GET /api/v1/communications/templates`, `PUT/DELETE …/templates/{code}`, `POST …/templates/preview` | `communication.template.manage.company` |
+| `GET /api/v1/collections/reports`, `GET /api/v1/collections/calendar` | `collection.view.branch` |
+
+Every write takes an idempotency key. Branch managers get `collection.manage.branch` and `collection.reschedule.branch`; bulk sending and texts are company-level. Screens: the collections page (worklist with bulk select, follow-ups due, missed promises), the customer profile (promises, follow-ups, change due date), `/dashboard/collections/reports`, `/dashboard/collections/calendar`, and the Texts tab of `/dashboard/communications/sms`.
+
 ### PLANNED
 
-- **Phase 3:** template editor, bulk SMS with preview and eligibility summary, promise-to-pay (separate record; never rewrites the due date), collection follow-ups, collection reports, calendar view, due-date rescheduling with audit, rebuilding the campaign processor on the gateway.
+- Rebuilding the marketing campaign processor on `SmsGateway` (campaigns still use the old adapter layer).
+- A promise-to-pay SMS reminder, if wanted: not built, as nothing required it yet.
 
 ## 5.12 Expenses
 
