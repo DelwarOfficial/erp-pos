@@ -21,7 +21,7 @@ const POLICY_FIELDS = [
   'repairWipAccountId', 'chequeClearingAccountId',
   'roundingAccountId', 'grniAccountId',
   'openingBalanceEquityAccountId', 'impairmentAllowanceAccountId',
-  'chequeBounceFeeAccountId',
+  'chequeBounceFeeAccountId', 'cashOverShortAccountId',
 ] as const;
 
 const UpdatePolicySchema = z.object({
@@ -43,6 +43,7 @@ const UpdatePolicySchema = z.object({
   opening_balance_equity_account_id: z.string().uuid().optional(),
   impairment_allowance_account_id: z.string().uuid().optional(),
   cheque_bounce_fee_account_id: z.string().uuid().optional(),
+  cash_over_short_account_id: z.string().uuid().optional(),
 });
 
 const FIELD_MAP: Record<string, string> = {
@@ -64,6 +65,7 @@ const FIELD_MAP: Record<string, string> = {
   opening_balance_equity_account_id: 'openingBalanceEquityAccountId',
   impairment_allowance_account_id: 'impairmentAllowanceAccountId',
   cheque_bounce_fee_account_id: 'chequeBounceFeeAccountId',
+  cash_over_short_account_id: 'cashOverShortAccountId',
 };
 
 export async function GET(req: NextRequest) {

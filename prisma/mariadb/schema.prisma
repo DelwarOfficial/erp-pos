@@ -3317,6 +3317,7 @@ model ChartOfAccount {
   policyCogs          AccountingPolicy[] @relation("PolCOGS")
   policyRevenue       AccountingPolicy[] @relation("PolRevenue")
   policyAR            AccountingPolicy[] @relation("PolAR")
+  policyCashOverShort AccountingPolicy[] @relation("PolCashOverShort")
   policyAP            AccountingPolicy[] @relation("PolAP")
   policyCustAdv       AccountingPolicy[] @relation("PolCustAdv")
   policySupAdv        AccountingPolicy[] @relation("PolSupAdv")
@@ -3520,6 +3521,7 @@ model AccountingPolicy {
   openingBalanceEquityAccountId String? @map("opening_balance_equity_account_id")
   impairmentAllowanceAccountId String? @map("impairment_allowance_account_id")
   chequeBounceFeeAccountId    String? @map("cheque_bounce_fee_account_id")
+  cashOverShortAccountId      String? @map("cash_over_short_account_id") // drawer shortages and overages at shift close
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   inventoryAccount          ChartOfAccount @relation("PolInventory", fields: [inventoryAccountId], references: [id])
@@ -3531,6 +3533,7 @@ model AccountingPolicy {
   supplierAdvanceAccount    ChartOfAccount @relation("PolSupAdv", fields: [supplierAdvanceAccountId], references: [id])
   purchaseVarianceAccount   ChartOfAccount @relation("PolPurchVar", fields: [purchaseVarianceAccountId], references: [id])
   giftCardLiabilityAccount  ChartOfAccount @relation("PolGiftCard", fields: [giftCardLiabilityAccountId], references: [id])
+  cashOverShortAccount      ChartOfAccount? @relation("PolCashOverShort", fields: [cashOverShortAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@map("accounting_policies")
 }

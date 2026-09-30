@@ -69,6 +69,7 @@ const DEFAULT_COA: CoaSpec[] = [
   { code: '5310', name: 'Failed Delivery Fee', accountClass: 'expense', accountSubtype: 'failed_delivery', normalBalance: 'D' },
   { code: '5400', name: 'Gateway Fee Expense', accountClass: 'expense', accountSubtype: 'gateway_fee', normalBalance: 'D' },
   { code: '5500', name: 'Cheque Bounce Fee', accountClass: 'expense', accountSubtype: 'cheque_bounce', normalBalance: 'D' },
+  { code: '5600', name: 'Cash Over/Short', accountClass: 'expense', accountSubtype: 'cash_over_short', normalBalance: 'D' },
   { code: '6000', name: 'Salaries & Wages', accountClass: 'expense', accountSubtype: 'payroll', normalBalance: 'D' },
   { code: '6100', name: 'Rent Expense', accountClass: 'expense', accountSubtype: 'rent', normalBalance: 'D' },
   { code: '6200', name: 'Utilities', accountClass: 'expense', accountSubtype: 'utilities', normalBalance: 'D' },
@@ -137,6 +138,7 @@ export async function seedDefaultCoa(
       openingBalanceEquityAccountId: coaMap.get('3100')!,
       impairmentAllowanceAccountId: coaMap.get('5120')!,
       chequeBounceFeeAccountId: coaMap.get('5500')!,
+      cashOverShortAccountId: coaMap.get('5600')!,
     },
   });
 

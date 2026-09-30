@@ -178,6 +178,13 @@
      "default": "null",
      "extra": null,
      "collation": "utf8mb4_unicode_ci"
+    },
+    "cash_over_short_account_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
     }
    },
    "indexes": {
@@ -188,6 +195,10 @@
     "accounting_policies_ar_account_id_fkey": {
      "unique": false,
      "columns": "ar_account_id"
+    },
+    "accounting_policies_cash_over_short_account_id_fkey": {
+     "unique": false,
+     "columns": "cash_over_short_account_id"
     },
     "accounting_policies_cogs_account_id_fkey": {
      "unique": false,
@@ -228,6 +239,10 @@
     "idx_tenant_fk_accounting_policies_araccount": {
      "unique": false,
      "columns": "company_id,ar_account_id"
+    },
+    "idx_tenant_fk_accounting_policies_cashovershort": {
+     "unique": false,
+     "columns": "company_id,cash_over_short_account_id"
     },
     "idx_tenant_fk_accounting_policies_cogsaccount": {
      "unique": false,
@@ -273,6 +288,12 @@
      "columns": "ar_account_id",
      "references": "chart_of_accounts(id)",
      "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "accounting_policies_cash_over_short_account_id_fkey": {
+     "columns": "cash_over_short_account_id",
+     "references": "chart_of_accounts(id)",
+     "onUpdate": "RESTRICT",
      "onDelete": "RESTRICT"
     },
     "accounting_policies_cogs_account_id_fkey": {
@@ -331,6 +352,12 @@
     },
     "fk_tenant_accounting_policies_araccount": {
      "columns": "company_id,ar_account_id",
+     "references": "chart_of_accounts(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_accounting_policies_cashovershort": {
+     "columns": "company_id,cash_over_short_account_id",
      "references": "chart_of_accounts(company_id,id)",
      "onUpdate": "RESTRICT",
      "onDelete": "RESTRICT"

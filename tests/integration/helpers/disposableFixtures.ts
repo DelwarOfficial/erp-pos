@@ -70,6 +70,7 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
   const receivable = await coa('ar', 'Synthetic receivable', 'asset', 'current_asset', 'D');
   const payable = await coa('ap', 'Synthetic payable', 'liability', 'current_liability', 'C');
   const cogs = await coa('cogs', 'Synthetic cost of sales', 'expense', 'operating_expense', 'D');
+  const cashOverShort = await coa('cashOverShort', 'Synthetic cash over/short', 'expense', 'operating_expense', 'D');
   let financialAccount: FinancialAccount | null = await db.financialAccount.findFirst({ where: {
     companyId: company.id, branchId: branches[0].id, accountType: 'cash',
   } });
@@ -85,6 +86,7 @@ export async function ensureSyntheticIssuerTenant(db: Db, opts: {
     salesRevenueAccountId: revenue.id, arAccountId: receivable.id, apAccountId: payable.id,
     customerAdvanceAccountId: liability.id, supplierAdvanceAccountId: cash.id,
     purchaseVarianceAccountId: expense.id, giftCardLiabilityAccountId: liability.id,
+    cashOverShortAccountId: cashOverShort.id,
   };
   await db.accountingPolicy.upsert({
     where: { companyId: company.id },
