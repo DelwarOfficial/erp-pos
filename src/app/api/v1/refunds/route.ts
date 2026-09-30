@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       items: items.map(r => {
-        const totalRefunded = r.refundPayments.reduce((s, p) => s + parseFloat(p.amount.toString()), 0);
+        const totalRefunded = r.refundPayments.filter(p => p.paymentStatus === 'posted').reduce((s, p) => s + parseFloat(p.amount.toString()), 0);
         const totalAllocated = r.refundAllocations.reduce((s, a) => s + parseFloat(a.allocatedAmount.toString()), 0);
         return {
           id: r.id, reference_no: r.referenceNo, status: r.status,

@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { runInTenantContext, type TransactionClient } from '@/lib/db/transaction';
 import { withAccessTransaction } from './transaction';
 import { hashPassword } from '@/lib/auth/password';
+import { withIdempotency } from '@/lib/idempotency';
 import { DomainError } from '@/lib/errors/codes';
 import { ADMIN_GRANTS, assertBranchAssignment, assertCompanyScope, assertGrantAuthority, forbidden, platformOnly } from './policy';
 
@@ -38,7 +39,10 @@ export async function accessAudit(tx: TransactionClient, auth: AuthResult, compa
   } });
 }
 
-export async function accessMutation<T>(auth: AuthResult, companyId: string, grants: string[], work: (tx: TransactionClient, authority: Set<string>) => Promise<T>): Promise<T> {
+/** An Idempotency-Key for an access change: a retry replays the first result instead of repeating it (F-12). */
+export interface AccessIdempotency { key: string; operation: string; requestHash: string }
+
+export async function accessMutation<T>(auth: AuthResult, companyId: string, grants: string[], work: (tx: TransactionClient, authority: Set<string>) => Promise<T>, idempotency?: AccessIdempotency): Promise<T> {
   assertCompanyScope(auth, companyId);
   if (!auth.mfaVerified) forbidden('Complete MFA verification before changing access');
   return withAccessTransaction(auth.ctx, async tx => {
@@ -63,7 +67,10 @@ export async function accessMutation<T>(auth: AuthResult, companyId: string, gra
       } } } })) }),
     };
     const before = await tx.user.count({ where: usableWhere });
-    const result = await work(tx, authority);
+    const result = idempotency
+      ? (await withIdempotency({ idempotencyKey: idempotency.key, operation: idempotency.operation, requestHash: idempotency.requestHash, companyId, userId: auth.userId },
+        async () => ({ status: 200, body: await work(tx, authority) }), tx)).body as T
+      : await work(tx, authority);
     // A role edit can lock out someone other than the actor, so check every mutation.
     const usable = await tx.user.count({ where: usableWhere });
     // A platform actor may bootstrap an already-unconfigured tenant by creating
@@ -102,7 +109,7 @@ export async function readUser(auth: AuthResult, companyId: string, userId: stri
   return runInTenantContext(auth.ctx, async () => targetUser(db, auth, companyId, userId));
 }
 
-export async function saveUser(auth: AuthResult, raw: unknown, userId?: string) {
+export async function saveUser(auth: AuthResult, raw: unknown, userId?: string, idempotency?: AccessIdempotency) {
   const input = userInput.parse(raw);
   if (userId && input.password) forbidden('Use the one-time password reset flow');
   if (!userId && !input.password) throw new DomainError('VALIDATION_FAILED', 'Initial password is required', {}, 400);
@@ -152,7 +159,7 @@ export async function saveUser(auth: AuthResult, raw: unknown, userId?: string) 
         branches_removed: existing?.branchAccess.filter(item => !input.branch_ids.includes(item.branch.id)).map(item => item.branch.id) ?? [],
         previous_active: existing?.isActive ?? null, previous_scope: existing?.accessScope ?? null });
     return tx.user.findFirstOrThrow({ where: { id: saved.id, companyId: input.company_id }, select: safeUserSelect });
-  });
+  }, idempotency);
 }
 
 const safeRoleSelect = { id: true, name: true, description: true, companyId: true, isSystemRole: true, createdAt: true,
@@ -183,7 +190,7 @@ export async function listPermissions(auth: AuthResult) {
     return auth.isGlobal ? rows : rows.filter(row => !platformOnly(row.code));
   });
 }
-export async function saveRole(auth: AuthResult, raw: unknown, roleId?: string) {
+export async function saveRole(auth: AuthResult, raw: unknown, roleId?: string, idempotency?: AccessIdempotency) {
   const input = roleInput.parse(raw);
   return accessMutation(auth, input.company_id, [roleId ? 'role.update' : 'role.create'], async (tx, authority) => {
     const existing = roleId ? await tx.role.findFirst({ where: { id: roleId, companyId: input.company_id },
@@ -215,9 +222,9 @@ export async function saveRole(auth: AuthResult, raw: unknown, roleId?: string) 
       permissions_removed: previousCodes.filter(code => !currentCodes.includes(code)),
     });
     return saved;
-  });
+  }, idempotency);
 }
-export async function deleteRole(auth: AuthResult, companyId: string, roleId: string) {
+export async function deleteRole(auth: AuthResult, companyId: string, roleId: string, idempotency?: AccessIdempotency) {
   return accessMutation(auth, companyId, ['role.update'], async (tx, authority) => {
     const role = await tx.role.findFirst({ where: { id: roleId, companyId }, select: { isSystemRole: true,
       permissions: { select: { permission: { select: { code: true } } } }, _count: { select: { users: true } } } });
@@ -226,5 +233,5 @@ export async function deleteRole(auth: AuthResult, companyId: string, roleId: st
     assertGrantAuthority(role.permissions.map(item => item.permission.code), authority, auth.isGlobal);
     await tx.role.delete({ where: { id: roleId, companyId } });
     await accessAudit(tx, auth, companyId, 'access.role.deleted', roleId, {});
-  });
+  }, idempotency);
 }

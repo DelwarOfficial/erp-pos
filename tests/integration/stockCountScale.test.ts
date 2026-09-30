@@ -43,6 +43,7 @@ beforeAll(async () => {
   const fixture = await ensureSyntheticIssuerTenant(db, { companyId: COMPANY, label: 'SC', code: `SYN-SC-${COMPANY.slice(0, 8)}` });
   branchId = fixture.branches[0].id;
   userId = fixture.user.id;
+  await db.accountingPolicy.update({ where: { companyId: COMPANY }, data: { inventoryWriteOffAccountId: fixture.expense.id } });
   warehouseId = (await db.warehouse.create({ data: { companyId: COMPANY, branchId, name: 'Count WH', code: 'SCWH' } })).id;
   const category = await db.category.create({ data: { companyId: COMPANY, name: 'Count', code: 'SCCAT' } });
   const unit = await db.unit.create({ data: { companyId: COMPANY, name: 'Piece', code: 'SCPC' } });

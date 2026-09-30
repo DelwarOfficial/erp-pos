@@ -14,13 +14,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { id, companyId: auth.companyId },
       include: { fromWarehouse: { select: { id: true, name: true, code: true } },
         toWarehouse: { select: { id: true, name: true, code: true } },
-        items: { orderBy: { lineNo: 'asc' }, include: { product: { select: { id: true, name: true, code: true } } } } },
+        items: { orderBy: { lineNo: 'asc' }, include: { product: { select: { id: true, name: true, code: true } }, serials: { include: { serial: { select: { serialNumber: true, status: true } } } } } } },
     }));
     if (!transfer) throw new DomainError('RESOURCE_NOT_FOUND', 'Transfer not found', {}, 404);
     return NextResponse.json({ id: transfer.id, reference_no: transfer.referenceNo, status: transfer.status,
       from_warehouse: transfer.fromWarehouse, to_warehouse: transfer.toWarehouse, notes: transfer.notes,
       requested_at: transfer.requestedAt, dispatched_at: transfer.dispatchedAt, received_at: transfer.receivedAt,
-      items: transfer.items.map(item => ({ id: item.id, product: item.product,
+      items: transfer.items.map(item => ({ id: item.id, product: item.product, serials: item.serials.map(link => ({ serial_number: link.serial.serialNumber, status: link.serial.status })),
         qty_requested: item.qtyRequested.toString(), qty_dispatched: item.qtyDispatched.toString(), qty_received: item.qtyReceived.toString() })) });
   } catch (error) { return errorResponse(error, getCorrelationId(req)); }
 }

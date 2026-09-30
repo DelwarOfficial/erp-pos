@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read']) {
+  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -84,11 +84,81 @@ test('transfer create → dispatch → receive updates both warehouses', async (
   await page.getByLabel('Quantity', { exact: true }).fill('2'); page.on('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Create transfer', exact: true }).click();
   await page.getByRole('button', { name: 'Dispatch transfer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Receive transfer', exact: true })).toBeVisible();
+  expect((await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id } } })).qtyInTransitOut.toString()).toBe('2');
   await page.getByRole('button', { name: 'Receive transfer', exact: true }).click();
   await expect(page.getByText('completed', { exact: true }).first()).toBeVisible();
   const source = await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id } } });
   const target = await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: destination.id, productId: product.id } } });
   expect(source.qtyOnHand.toString()).toBe('8'); expect(source.qtyReserved.toString()).toBe('0'); expect(source.qtyInTransitOut.toString()).toBe('0'); expect(target.qtyOnHand.toString()).toBe('2');
+});
+
+test('serialized transfer reserves custody, dispatches, receives and cancels without losing serials', async ({ page }) => {
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const serialProduct = await db.product.create({ data: { companyId: fixture.companyId, name: 'Browser serialized transfer product', code: 'UI-SERIAL', categoryId: base.categoryId, unitId: base.unitId, isSerialized: true } });
+  await db.warehouseStock.create({ data: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: serialProduct.id, qtyOnHand: 2, movingAverageCost: 50 } });
+  const serials = await Promise.all(['UI-TRANSFER-1', 'UI-TRANSFER-2'].map(serialNumber => db.productSerial.create({ data: { companyId: fixture.companyId, productId: serialProduct.id, serialNumber, currentWarehouseId: warehouse.id } })));
+  await login(page); await page.goto('/dashboard/inventory/transfers'); page.on('dialog', dialog => dialog.accept());
+  for (const [index, serial] of serials.entries()) {
+    await page.getByRole('button', { name: 'New transfer', exact: true }).click();
+    await pick(page, 'Source warehouse', warehouse.name); await pick(page, 'Destination warehouse', destination.name); await pick(page, 'Product 1', serialProduct.name);
+    await page.getByLabel('Quantity', { exact: true }).fill('1'); await page.getByLabel(/Serial numbers 1/).fill(serial.serialNumber);
+    await page.getByRole('button', { name: 'Create transfer', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Dispatch transfer', exact: true })).toBeVisible();
+    const reserved = await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } }); expect(reserved.status).toBe('reserved'); expect(reserved.currentReservationId).toBeTruthy();
+    if (index === 0) {
+      await page.getByRole('button', { name: 'Dispatch transfer', exact: true }).click(); await expect(page.getByRole('button', { name: 'Receive transfer', exact: true })).toBeVisible();
+      expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('in_transit');
+      const received = page.waitForResponse(response => /\/transfers\/[^/]+\/receive$/.test(response.url()) && response.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Receive transfer', exact: true }).click(); expect((await received).status()).toBe(200); await expect(page.getByRole('button', { name: 'Receive transfer', exact: true })).toHaveCount(0);
+    } else {
+      await page.getByLabel('Cancellation reason').fill('Destination no longer needs item'); await page.getByRole('button', { name: 'Cancel transfer', exact: true }).click(); await expect(page.getByText('cancelled', { exact: true }).first()).toBeVisible();
+    }
+    const final = await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } }); expect(final.status).toBe('in_stock'); expect(final.currentReservationId).toBeNull(); expect(final.currentWarehouseId).toBe(index === 0 ? destination.id : warehouse.id);
+    expect(await db.serialEvent.count({ where: { serialId: serial.id } })).toBe(index === 0 ? 3 : 2);
+    await page.getByRole('button', { name: 'Close details', exact: true }).click();
+  }
+  const missingStock = await page.request.post('/api/v1/transfers', { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { from_warehouse_id: warehouse.id, to_warehouse_id: destination.id, items: [{ product_id: serialProduct.id, qty_requested: 1, serial_numbers: [serials[0].serialNumber] }] } });
+  expect(missingStock.status()).toBe(409);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('stock count snapshot → save → review → recount → post preserves blind counts, freeze and ledger', async ({ page }) => {
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const category = await db.category.create({ data: { companyId: fixture.companyId, name: 'Count test category', code: 'UI-COUNT-CAT' } });
+  const countedProduct = await db.product.create({ data: { companyId: fixture.companyId, categoryId: category.id, unitId: base.unitId, name: 'Browser counted product', code: 'UI-COUNT-PRODUCT' } });
+  await db.warehouseStock.create({ data: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: countedProduct.id, qtyOnHand: 10, movingAverageCost: 50 } });
+  const reason = await db.inventoryReasonCode.create({ data: { companyId: fixture.companyId, code: 'UI-COUNT', name: 'Count discrepancy', defaultExpenseAccountId: fixture.expense.id } });
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/inventory/counts');
+  await page.getByRole('button', { name: 'New stock count', exact: true }).click(); await pick(page, 'Count warehouse', warehouse.name);
+  await page.getByLabel('Scope', { exact: true }).selectOption('category'); await pick(page, 'Count category', category.name);
+  const creating = page.waitForResponse(response => response.url().endsWith('/api/v1/stock-counts') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create snapshot', exact: true }).click(); const created = await creating; expect(created.status(), await created.text()).toBe(201); const count = await created.json();
+  const snapshot = await db.stockCountItem.findFirstOrThrow({ where: { stockCountId: count.id } }); expect(snapshot.expectedQuantity.toString()).toBe('10');
+  const hidden = await page.request.get(`/api/v1/stock-counts/${count.id}`); expect((await hidden.json()).item.items[0].expected_quantity).toBeNull();
+  const api = async (path: string, data: unknown) => page.request.post(path, { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data });
+  expect((await api(`/api/v1/stock-counts/${count.id}/actions`, { action: 'post' })).status()).toBe(409);
+  const transfer = await api('/api/v1/transfers', { from_warehouse_id: warehouse.id, to_warehouse_id: destination.id, items: [{ product_id: countedProduct.id, qty_requested: 1 }] }); expect(transfer.status()).toBe(201);
+  const transferId = (await transfer.json()).transferId;
+  const blocked = await api(`/api/v1/transfers/${transferId}/dispatch`, {}); expect(blocked.status()).toBe(409); expect(await blocked.text()).toContain('blocked by count');
+  expect((await api(`/api/v1/transfers/${transferId}/cancel`, { reason: 'Release fixture reservation' })).status()).toBe(200);
+  await page.getByRole('button', { name: 'Start counting', exact: true }).click();
+  for (const quantity of ['8', '9']) {
+    await page.getByLabel(`Counted quantity — ${countedProduct.name}`, { exact: true }).fill(quantity);
+    await pick(page, `Reason — ${countedProduct.name}`, reason.name);
+    await page.getByLabel(`Count note — ${countedProduct.name}`, { exact: true }).fill('Physical recount confirmed discrepancy');
+    await page.getByRole('button', { name: 'Save counts', exact: true }).click(); await expect(page.getByRole('button', { name: 'Review count', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Review count', exact: true }).click(); await expect(page.getByRole('button', { name: 'Post variances', exact: true })).toBeVisible();
+    if (quantity === '8') await page.getByRole('button', { name: 'Reopen for recount', exact: true }).click();
+  }
+  const posting = page.waitForResponse(response => response.url().endsWith(`/stock-counts/${count.id}/actions`) && response.request().postDataJSON()?.action === 'post');
+  await page.getByRole('button', { name: 'Post variances', exact: true }).click(); const posted = await posting; expect(posted.status(), await posted.text()).toBe(200);
+  expect((await db.stockCount.findUniqueOrThrow({ where: { id: count.id } })).status).toBe('posted');
+  expect((await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: countedProduct.id } } })).qtyOnHand.toString()).toBe('9');
+  const journal = await db.journalEntry.findFirstOrThrow({ where: { companyId: fixture.companyId, sourceType: 'stock_count', sourceId: count.id }, include: { lines: true } });
+  expect(journal.lines.filter(line => line.debitBase.gt(0)).reduce((sum, line) => sum + line.debitBase.toNumber(), 0)).toBe(50);
+  expect((await api(`/api/v1/stock-counts/${count.id}/actions`, { action: 'post' })).status()).toBe(409);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test('POS customer and split payment use authoritative pricing; receipt/invoice enforce permissions', async ({ page, request }) => {
@@ -119,4 +189,26 @@ test('POS customer and split payment use authoritative pricing; receipt/invoice 
     expect((await request.get(`/print/${kind}/${sale.saleId}`)).status()).toBe(401);
   }
   expect((await page.request.get(`/print/receipt/${sale.saleId}?format=escpos&printer=127.0.0.1`)).status()).toBe(400);
+  await page.goto('/dashboard/sales');
+  await page.getByRole('row').filter({ hasText: sale.referenceNo }).getByRole('button', { name: 'View sale' }).click();
+  await page.getByRole('button', { name: 'Return items', exact: true }).click();
+  await page.getByLabel('Return reason', { exact: true }).fill('Browser return verification');
+  await page.getByLabel(/Return quantity/).fill('1'); page.on('dialog', dialog => dialog.accept());
+  const returning = page.waitForResponse(response => response.url().endsWith('/api/v1/sale-returns') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Post return', exact: true }).click();
+  const returned = await returning; expect(returned.status(), await returned.text()).toBe(201);
+  const returnData = await returned.json();
+  await page.getByRole('button', { name: 'Record refund', exact: true }).click();
+  await pick(page, 'Refund account', fixture.cash.name);
+  const refunding = page.waitForResponse(response => response.url().endsWith('/api/v1/payments') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Confirm refund', exact: true }).click();
+  const refunded = await refunding; expect(refunded.status(), await refunded.text()).toBe(201);
+  await expect(page.getByText('refunded', { exact: true })).toBeVisible();
+  expect((await db.sale.findUniqueOrThrow({ where: { id: sale.saleId } })).saleStatus).toBe('returned');
+  expect((await db.saleReturn.findUniqueOrThrow({ where: { id: returnData.saleReturnId } })).refundStatus).toBe('refunded');
+  const replay = await page.request.post('/api/v1/payments', { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': refunded.request().headers()['idempotency-key'] }, data: refunded.request().postDataJSON() });
+  expect(replay.status()).toBe(201); expect((await replay.json()).id).toBe((await refunded.json()).id);
+  const excess = await page.request.post('/api/v1/payments', { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { ...refunded.request().postDataJSON(), amount: 1 } });
+  expect(excess.status()).toBe(409);
+  expect(await db.payment.count({ where: { saleReturnId: returnData.saleReturnId } })).toBe(1);
 });

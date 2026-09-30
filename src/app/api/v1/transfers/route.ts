@@ -10,6 +10,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { createTransfer } from '@/domain/commands/m2/Transfer';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const CreateTransferSchema = z.object({
   from_warehouse_id: z.string().uuid(),
@@ -18,6 +19,7 @@ const CreateTransferSchema = z.object({
   items: z.array(z.object({
     product_id: z.string().uuid(),
     qty_requested: z.number().positive(),
+    serial_numbers: z.array(z.string().trim().min(1).max(255)).optional(),
   })).min(1),
 });
 
@@ -27,12 +29,13 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
     await requirePermission(auth, "inventory.read");
     const status = req.nextUrl.searchParams.get('status') ?? undefined;
+    const page = readListPage(req.nextUrl);
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
     const transfers = await runInTenantContext(auth.ctx, async () => {
       return db.transfer.findMany({
-        where, take: 50, orderBy: { requestedAt: 'desc' },
+        where, ...listPageArgs(page), orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
         include: {
           fromWarehouse: { select: { id: true, name: true, code: true } },
           toWarehouse: { select: { id: true, name: true, code: true } },
@@ -41,8 +44,9 @@ export async function GET(req: NextRequest) {
       });
     });
 
-    return NextResponse.json({
-      items: transfers.map(t => ({
+    const result = listPageResult(transfers, page);
+    return NextResponse.json({ ...result,
+      items: result.items.map(t => ({
         id: t.id, reference_no: t.referenceNo, status: t.status,
         from_warehouse: t.fromWarehouse, to_warehouse: t.toWarehouse,
         item_count: t._count.items,
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
               toWarehouseId: body.to_warehouse_id,
               requestedBy: auth.userId,
               notes: body.notes,
-              items: body.items.map(i => ({ productId: i.product_id, qtyRequested: i.qty_requested })),
+              items: body.items.map(i => ({ productId: i.product_id, qtyRequested: i.qty_requested, serialNumbers: i.serial_numbers })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'transfer', resourceId: result.transferId };
           },

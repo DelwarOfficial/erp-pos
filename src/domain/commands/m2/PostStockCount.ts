@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { planStockMovement, type StockRowState } from '@/domain/inventory/stockMovement';
 import { DomainError } from '@/lib/errors/codes';
-import { nextDocumentNumber } from '@/lib/numbering';
+import { postInventoryVarianceJournal } from '@/domain/inventory/varianceJournal';
 
 /** Stock rows per lookup, and rows per bulk write, while posting. */
 const STOCK_READ_BATCH = 1_000;
@@ -22,11 +22,17 @@ export async function postStockCount(
 ): Promise<{ status: string; adjustmentsPosted: number }> {
   const sc = await tx.stockCount.findFirst({
     where: { id: input.stockCountId, companyId: input.companyId },
-    include: { items: true, warehouse: true },
+    include: { items: { include: { product: true, serials: { include: { serial: true } }, batch: true } }, warehouse: true },
   });
   if (!sc) throw new DomainError('RESOURCE_NOT_FOUND', 'Stock count not found', {}, 404);
-  if (sc.status !== 'reviewed' && sc.status !== 'counting') {
+  if (sc.status !== 'reviewed') {
     throw new DomainError('VALIDATION_FAILED', `Stock count must be reviewed to post (current: ${sc.status})`, {}, 409);
+  }
+  if (!sc.items.length || sc.items.some(item => item.countedQuantity === null)) throw new DomainError('VALIDATION_FAILED', 'Every line must be counted and reviewed before posting', {}, 409);
+  const approvalReason = await tx.inventoryReasonCode.findFirst({ where: { companyId: input.companyId, id: { in: sc.items.flatMap(item => item.reasonCodeId && !item.varianceQuantity?.isZero() ? [item.reasonCodeId] : []) }, requiresApproval: true } });
+  if (approvalReason) {
+    const approved = await tx.approvalRequest.findFirst({ where: { companyId: input.companyId, referenceType: 'stock_count', referenceId: sc.id, status: 'approved' }, orderBy: { resolvedAt: 'desc' } });
+    if (!approved || approved.approvedBy === approved.requestedBy) throw new DomainError('APPROVAL_REQUIRED', 'An independent approver must approve these count variances before posting', {}, 409);
   }
 
   const eventId = randomUUID();
@@ -53,7 +59,7 @@ export async function postStockCount(
     for (let offset = 0; offset < ids.length; offset += STOCK_READ_BATCH) {
       const stocks = await tx.warehouseStock.findMany({
         where: { companyId: input.companyId, warehouseId: sc.warehouseId, productId: { in: ids.slice(offset, offset + STOCK_READ_BATCH) } },
-        select: { id: true, productId: true, qtyOnHand: true, qtyDamaged: true, qtyInTransitOut: true, movingAverageCost: true, version: true },
+        select: { id: true, productId: true, qtyOnHand: true, qtyReserved: true, qtyDamaged: true, qtyInTransitOut: true, movingAverageCost: true, version: true },
       });
       for (const stock of stocks) rows.set(stock.productId, stock);
     }
@@ -70,6 +76,7 @@ export async function postStockCount(
 
   // Plan every line in order against the running state of its stock row.
   const movements: Prisma.StockMovementCreateManyInput[] = [];
+  const journalValues: { value: Prisma.Decimal.Value; reasonCodeId: string | null }[] = [];
   const moved = new Set<string>();
   for (const item of counted) {
     // Decimal, exactly: a float difference of two DECIMAL(65,30) quantities
@@ -77,7 +84,21 @@ export async function postStockCount(
     const expected = new Prisma.Decimal(item.expectedQuantity);
     const countedQty = new Prisma.Decimal(item.countedQuantity!);
     const variance = countedQty.minus(expected);
+    if (item.product.isSerialized) {
+      if (item.serials.filter(serial => serial.countedPresent).length !== countedQty.toNumber()) throw new DomainError('VALIDATION_FAILED', 'Scan every counted serial before posting', {}, 409);
+      for (const entry of item.serials.filter(serial => serial.expectedPresent && !serial.countedPresent)) {
+        if (!entry.serial || entry.serial.status !== 'in_stock' || entry.serial.currentReservationId || entry.serial.currentWarehouseId !== sc.warehouseId) throw new DomainError('SERIAL_NOT_AVAILABLE', 'Missing serial is reserved or no longer in this warehouse. Resolve custody before posting.', {}, 409);
+        await tx.productSerial.update({ where: { id: entry.serial.id }, data: { status: 'scrapped', version: { increment: 1 } } });
+        await tx.serialEvent.create({ data: { companyId: input.companyId, serialId: entry.serial.id, eventId, eventLineNo: eventLineNo++, eventType: 'stock_count.loss', fromStatus: 'in_stock', toStatus: 'scrapped', fromWarehouseId: sc.warehouseId, toWarehouseId: sc.warehouseId, referenceType: 'stock_count', referenceId: sc.id, createdBy: input.postedBy } });
+      }
+    }
     if (variance.abs().lt('0.0001')) continue; // no variance
+
+    if (item.batch) {
+      const nextQuantity = item.batch.qtyOnHand.plus(variance);
+      if (nextQuantity.lt(item.batch.qtyReserved)) throw new DomainError('INVENTORY_INSUFFICIENT', 'Count would consume reserved batch stock', {}, 409);
+      await tx.productBatch.update({ where: { id: item.batch.id }, data: { qtyOnHand: nextQuantity } });
+    }
 
     const stock = rows.get(item.productId)!;
     const plan = planStockMovement(stock, {
@@ -90,6 +111,7 @@ export async function postStockCount(
       metadata: { expected: expected.toString(), counted: countedQty.toString(), variance: variance.toString() },
     });
     movements.push(plan.movementData);
+    journalValues.push({ value: plan.movementData.totalCostDelta, reasonCodeId: item.reasonCodeId });
     moved.add(item.productId);
     rows.set(item.productId, {
       ...stock,
@@ -128,6 +150,9 @@ export async function postStockCount(
       throw new DomainError('CONCURRENT_MODIFICATION', 'Stock changed during posting; retry the transaction', {}, 409);
     }
   }
+
+  await postInventoryVarianceJournal(tx, { companyId: input.companyId, branchId: sc.branchId, sourceType: 'stock_count', sourceId: sc.id,
+    referenceNo: sc.referenceNo, businessDate: now, userId: input.postedBy, values: journalValues }, correlationId);
 
   await tx.stockCount.update({
     where: { id: sc.id },

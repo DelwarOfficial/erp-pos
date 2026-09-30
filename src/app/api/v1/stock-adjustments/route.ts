@@ -9,6 +9,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { postStockAdjustment } from '@/domain/commands/m2/PostStockAdjustment';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const AdjustmentSchema = z.object({
   branch_id: z.string().uuid(),
@@ -21,6 +22,8 @@ const AdjustmentSchema = z.object({
     product_id: z.string().uuid(),
     quantity_delta: z.number().refine(n => n !== 0, 'must be non-zero'),
     unit_cost: z.number().min(0).optional(),
+    serial_numbers: z.array(z.string().trim().min(1).max(255)).optional(),
+    batch_no: z.string().trim().min(1).max(100).optional(),
   })).min(1),
 });
 
@@ -29,10 +32,11 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, "inventory.read");
+    const page = readListPage(req.nextUrl);
     const adjustments = await runInTenantContext(auth.ctx, async () => {
       return db.stockAdjustment.findMany({
         where: { companyId: auth.companyId },
-        take: 50, orderBy: { createdAt: 'desc' },
+        ...listPageArgs(page), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           warehouse: { select: { name: true, code: true } },
           reasonCode: { select: { code: true, name: true } },
@@ -40,8 +44,9 @@ export async function GET(req: NextRequest) {
         },
       });
     });
-    return NextResponse.json({
-      items: adjustments.map(a => ({
+    const result = listPageResult(adjustments, page);
+    return NextResponse.json({ ...result,
+      items: result.items.map(a => ({
         id: a.id, reference_no: a.referenceNo, status: a.status,
         adjustment_type: a.adjustmentType, reason_code: a.reasonCode,
         warehouse: a.warehouse, item_count: a._count.items,
@@ -78,6 +83,7 @@ export async function POST(req: NextRequest) {
                 productId: i.product_id,
                 quantityDelta: i.quantity_delta,
                 unitCost: i.unit_cost,
+                serialNumbers: i.serial_numbers, batchNo: i.batch_no,
               })),
             }, correlationId);
             return { status: 201, body: result, resourceType: 'stock_adjustment', resourceId: result.adjustmentId };

@@ -10,6 +10,7 @@
 import { Prisma } from '@prisma/client';
 import { nextDocumentNumber } from '@/lib/numbering';
 import { postStockCount } from './PostStockCount';
+import { DomainError } from '@/lib/errors/codes';
 
 /**
  * The route's transaction timeout. A 5,000-line count is now some twenty
@@ -48,6 +49,33 @@ export interface CreateStockCountInput {
 }
 
 export async function createStockCount(tx: Prisma.TransactionClient, input: CreateStockCountInput, correlationId: string) {
+  const warehouse = await tx.warehouse.findFirst({ where: { id: input.warehouseId, companyId: input.companyId, branchId: input.branchId, isActive: true } });
+  if (!warehouse) throw new DomainError('VALIDATION_FAILED', 'Select an active warehouse in the specified branch', {}, 400);
+  if (input.scopeType === 'category' && !input.categoryId || input.scopeType === 'brand' && !input.brandId) throw new DomainError('VALIDATION_FAILED', 'Select the category or brand to count', {}, 400);
+  const products = await tx.product.findMany({ where: { companyId: input.companyId, deletedAt: null,
+    ...(input.items.length ? { id: { in: input.items.map(item => item.productId) } } : { isActive: true }),
+    ...(input.scopeType === 'category' ? { categoryId: input.categoryId } : {}),
+    ...(input.scopeType === 'brand' ? { brandId: input.brandId } : {}),
+  }, select: { id: true, isSerialized: true, trackBatches: true } });
+  const productIds = products.map(product => product.id);
+  if (!productIds.length || input.items.some(item => !productIds.includes(item.productId))) throw new DomainError('VALIDATION_FAILED', 'No valid products in this count scope', {}, 400);
+  if (await tx.stockCount.findFirst({ where: { companyId: input.companyId, warehouseId: input.warehouseId, status: { in: ['draft', 'counting', 'reviewed'] }, items: { some: { productId: { in: productIds } } } } })) throw new DomainError('VALIDATION_FAILED', 'An open count already covers these products. Finish or cancel it first.', {}, 409);
+  const stocks = await tx.warehouseStock.findMany({ where: { companyId: input.companyId, warehouseId: input.warehouseId, productId: { in: productIds } } });
+  const batches = await tx.productBatch.findMany({ where: { companyId: input.companyId, warehouseId: input.warehouseId, productId: { in: products.filter(product => product.trackBatches).map(product => product.id) } } });
+  const stockMap = new Map(stocks.map(stock => [stock.productId, stock]));
+  const batchMap = new Map(batches.map(batch => [batch.id, batch]));
+  const supplied: StockCountLineInput[] = input.items.length ? input.items : products.flatMap<StockCountLineInput>(product => product.trackBatches
+    ? batches.filter(batch => batch.productId === product.id).map(batch => ({ productId: product.id, batchId: batch.id, expectedQuantity: batch.qtyOnHand }))
+    : [{ productId: product.id, expectedQuantity: 0 }]);
+  if (new Set(supplied.map(item => `${item.productId}:${item.batchId ?? ''}`)).size !== supplied.length) throw new DomainError('VALIDATION_FAILED', 'Duplicate count lines are not allowed', {}, 400);
+  const lines: StockCountLineInput[] = supplied.map(item => {
+    const product = products.find(product => product.id === item.productId)!;
+    const batch = item.batchId ? batchMap.get(item.batchId) : null;
+    if (item.countedQuantity !== undefined && (!new Prisma.Decimal(item.countedQuantity).isFinite() || new Prisma.Decimal(item.countedQuantity).lt(0))) throw new DomainError('VALIDATION_FAILED', 'Counted quantities must be finite and nonnegative', {}, 400);
+    if (product.trackBatches && !batch || batch && batch.productId !== product.id) throw new DomainError('VALIDATION_FAILED', 'Select a batch belonging to the counted product and warehouse', {}, 400);
+    if (product.isSerialized && input.post) throw new DomainError('VALIDATION_FAILED', 'Serialized counts require scanned serials and review before posting', {}, 400);
+    return { ...item, expectedQuantity: batch ? batch.qtyOnHand : stockMap.get(item.productId)?.qtyOnHand ?? 0 };
+  });
   const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
     companyId: input.companyId, branchId: input.branchId,
     documentType: 'STOCK_COUNT', fiscalYear: new Date().getFullYear(), prefix: 'SC-',
@@ -59,14 +87,15 @@ export async function createStockCount(tx: Prisma.TransactionClient, input: Crea
       referenceNo, scopeType: input.scopeType,
       categoryId: input.categoryId ?? null, brandId: input.brandId ?? null,
       status: input.post ? 'reviewed' : 'draft',
+      snapshotAt: new Date(),
       blindCount: input.blindCount, movementFreezePolicy: input.movementFreezePolicy,
       notes: input.notes ?? null, createdBy: input.createdBy,
     },
   });
 
-  for (let offset = 0; offset < input.items.length; offset += STOCK_COUNT_INSERT_BATCH) {
+  for (let offset = 0; offset < lines.length; offset += STOCK_COUNT_INSERT_BATCH) {
     await tx.stockCountItem.createMany({
-      data: input.items.slice(offset, offset + STOCK_COUNT_INSERT_BATCH).map(item => {
+      data: lines.slice(offset, offset + STOCK_COUNT_INSERT_BATCH).map(item => {
         const expected = new Prisma.Decimal(item.expectedQuantity);
         const counted = item.countedQuantity === undefined ? null : new Prisma.Decimal(item.countedQuantity);
         return {
@@ -82,8 +111,15 @@ export async function createStockCount(tx: Prisma.TransactionClient, input: Crea
     });
   }
 
+  const serialized = products.filter(product => product.isSerialized).map(product => product.id);
+  if (serialized.length) {
+    const countLines = await tx.stockCountItem.findMany({ where: { stockCountId: sc.id, productId: { in: serialized } } });
+    const serials = await tx.productSerial.findMany({ where: { companyId: input.companyId, currentWarehouseId: input.warehouseId, productId: { in: serialized }, status: { in: ['in_stock', 'reserved'] } } });
+    await tx.stockCountSerial.createMany({ data: serials.map(serial => ({ companyId: input.companyId, stockCountItemId: countLines.find(line => line.productId === serial.productId)!.id, serialId: serial.id, scannedSerialNumber: serial.serialNumber, expectedPresent: true, countedPresent: false, resolution: 'unconfirmed' })) });
+  }
+
   let posted: { status: string; adjustmentsPosted: number } | null = null;
-  if (input.post && input.items.length > 0) {
+  if (input.post && lines.length > 0) {
     posted = await postStockCount(tx, { companyId: input.companyId, stockCountId: sc.id, postedBy: input.createdBy }, correlationId);
   }
 
@@ -96,7 +132,7 @@ export async function createStockCount(tx: Prisma.TransactionClient, input: Crea
   return {
     id: sc.id, referenceNo,
     status: posted ? posted.status : sc.status,
-    itemsCount: input.items.length,
+    itemsCount: lines.length,
     adjustmentsPosted: posted?.adjustmentsPosted ?? 0,
   };
 }

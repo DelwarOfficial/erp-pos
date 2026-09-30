@@ -12,6 +12,7 @@ import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { providerRegistry } from '@/adapters';
 import { PostSaleSchema, postSaleInput } from '@/lib/sales/saleRequest';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     await requirePermission(auth, 'sale.read');
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
-    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
+    const page = readListPage(url);
     // Default to last 30 days if no date filters supplied — keeps the list bounded.
     const fromParam = url.searchParams.get('from');
     const toParam = url.searchParams.get('to');
@@ -29,8 +30,11 @@ export async function GET(req: NextRequest) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const from = fromParam ? new Date(fromParam) : (applyDateFilter ? thirtyDaysAgo : undefined);
     const to = toParam ? new Date(toParam) : undefined;
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime())) || (from && to && from > to)) throw new DomainError('VALIDATION_FAILED', 'Enter a valid date range', {}, 400);
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
+    const search = url.searchParams.get('search')?.trim();
+    if (search) where.OR = [{ referenceNo: { contains: search } }, { customer: { name: { contains: search } } }];
     if (status) where.saleStatus = status;
     if (from || to) {
       where.businessDate = {};
@@ -39,11 +43,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Use `select` to limit payload (no full row dump). _count avoids per-sale item queries.
-    const sales = await runInTenantContext(auth.ctx, async () => {
+    const rows = await runInTenantContext(auth.ctx, async () => {
       return db.sale.findMany({
         where,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+        ...listPageArgs(page),
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         select: {
         id: true,
         referenceNo: true,
@@ -61,7 +65,9 @@ export async function GET(req: NextRequest) {
       });
     });
 
+    const { items: sales, has_more, next_cursor } = listPageResult(rows, page);
     return NextResponse.json({
+      has_more, next_cursor,
       items: sales.map(s => ({
         id: s.id,
         reference_no: s.referenceNo,
@@ -125,13 +131,13 @@ export async function POST(req: NextRequest) {
           return;
         }
         const saleResult = result.body as { saleId: string; grandTotal: string; eventId: string; referenceNo: string };
-        await riskProvider.assessRisk({
+        await runInTenantContext(auth.ctx, async () => riskProvider.assessRisk({
           subjectType: 'sale',
           subjectId: saleResult.saleId,
           amount: parseFloat(saleResult.grandTotal),
           companyId: auth.companyId,
           requestEventId: saleResult.eventId,
-        });
+        }));
         console.log(`[risk] Assessment recorded for sale ${saleResult.referenceNo}`);
       } catch (e) {
         console.error('[risk] Assessment failed (sale still succeeded):', e instanceof Error ? `${e.message}\n${e.stack}` : JSON.stringify(e));

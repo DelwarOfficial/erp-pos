@@ -12,6 +12,8 @@ import { Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
 import { ErrorState, LoadingState } from '@/components/shared/StateList';
+import { useDashboardSession } from '@/components/dashboard/session';
+import { useWorkflowMutation } from '@/hooks/useWorkflowMutation';
 
 export interface FieldSpec {
   name: string;
@@ -38,6 +40,11 @@ interface Props {
 }
 
 export function InlineCrudList({ endpoint, label, fields, renderItem, idempotencyPrefix }: Props) {
+  const session = useDashboardSession();
+  const canManage = session?.is_global || session?.permissions.includes(endpoint === '/api/v1/tax-components' ? 'tax.manage' : 'category.manage');
+  const command = useWorkflowMutation();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
   const formId = useId();
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,15 +52,16 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<Record<string, unknown>>({});
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (next?: string) => {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await apiFetch(endpoint);
+      const res = await apiFetch(`${endpoint}?limit=100${next ? `&cursor=${next}` : ''}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load');
       if (!Array.isArray(data.items)) throw new Error('The list response could not be read. Try again.');
-      setItems(data.items);
+      setItems(current => next ? [...current, ...data.items] : data.items);
+      setCursor(data.has_more ? data.next_cursor : null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'The list could not be loaded.');
     } finally {
@@ -67,22 +75,21 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
     e.preventDefault();
     setCreating(true);
     try {
-      const idempotencyKey = `${idempotencyPrefix}-create-${Date.now()}`;
-      const res = await apiFetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-        body: JSON.stringify(createForm),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Create failed');
-      toast.success(`${label} created`);
-      setCreateForm({});
+      const result = await command.mutate(editing ? `${endpoint}/${editing}` : endpoint, createForm, editing ? 'PATCH' : 'POST');
+      if (!result) return;
+      toast.success(`${label} ${editing ? 'updated' : 'created'}`);
+      setCreateForm({}); setEditing(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Network error');
     } finally {
       setCreating(false);
     }
+  }
+  async function remove(id: string) {
+    if (!window.confirm(`Delete this ${label.toLowerCase()}? Referenced records cannot be deleted.`)) return;
+    const result = await command.mutate(`${endpoint}/${id}`, {}, 'DELETE');
+    if (result) { toast.success(`${label} deleted`); if (editing === id) { setEditing(null); setCreateForm({}); } await load(); }
   }
 
   function renderField(field: FieldSpec, value: unknown, onChange: (v: unknown) => void) {
@@ -147,15 +154,19 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
           {items.map(item => (
             <div key={item.id} className="min-w-0 break-words p-2 border rounded text-sm">
               {renderItem(item)}
+              {canManage ? <div className="mt-2 flex gap-2"><Button type="button" size="sm" variant="outline" disabled={command.pending} onClick={() => {
+                setEditing(item.id); setCreateForm(Object.fromEntries(fields.map(field => [field.name, field.type === 'number' ? Number(item[field.name] ?? 0) : field.type === 'boolean' ? Boolean(item[field.name]) : item[field.name] ?? ''])));
+              }}>Edit {label}</Button><Button type="button" size="sm" variant="outline" disabled={command.pending} onClick={() => void remove(item.id)}>Delete {label}</Button></div> : null}
             </div>
           ))}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">Editing and deletion are not available here.</p>
+      {cursor ? <Button type="button" variant="outline" disabled={loading} onClick={() => void load(cursor)}>Load more {label.toLowerCase()} records</Button> : null}
+      {command.error ? <p role="alert" className="text-sm">{command.error}</p> : null}
 
-      <form onSubmit={handleCreate} className="border-t pt-3 space-y-2">
+      {canManage ? <form onSubmit={handleCreate} className="border-t pt-3 space-y-2"><fieldset disabled={creating || command.pending} className="space-y-2">
         <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-          <Plus className="h-3 w-3" /> New {label}
+          <Plus className="h-3 w-3" /> {editing ? 'Edit' : 'New'} {label}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {fields.map(f => (
@@ -167,9 +178,10 @@ export function InlineCrudList({ endpoint, label, fields, renderItem, idempotenc
         </div>
         <Button type="submit" size="sm" disabled={creating}>
           {creating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
-          Add {label}
+          {editing ? 'Save' : 'Add'} {label}
         </Button>
-      </form>
+        {editing ? <Button type="button" variant="outline" onClick={() => { setEditing(null); setCreateForm({}); command.setError(''); }}>Cancel edit</Button> : null}
+      </fieldset></form> : null}
     </div>
   );
 }

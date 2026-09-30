@@ -128,7 +128,7 @@ describe('Security: Idempotency Coverage', () => {
     const withIdempotency = files.filter(file => readFileSync(file, 'utf8').includes('requireIdempotencyKey'));
 
     const exemptPatterns = ['auth/', 'webhooks/', 'cron/', 'health', 'webauthn', 'mfa/', 'offline/bootstrap',
-      'risk-alerts/evaluate', 'notifications/', 'admin/roles', 'admin/users'];
+      'risk-alerts/evaluate', 'notifications/', 'admin/users/[id]/password-reset'];
 
     const missingBusiness = allRoutes.filter(route =>
       route.replaceAll('\\', '/') &&

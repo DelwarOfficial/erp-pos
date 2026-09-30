@@ -13,16 +13,18 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
+interface TransferProduct extends BusinessEntity { is_serialized?: boolean }
 interface Transfer {
   id: string; reference_no: string; status: string; notes?: string;
   from_warehouse: BusinessEntity; to_warehouse: BusinessEntity;
   requested_at: string; dispatched_at?: string; received_at?: string;
-  items?: { id: string; product: BusinessEntity; qty_requested: string; qty_dispatched: string; qty_received: string }[];
+  items?: { id: string; product: BusinessEntity; qty_requested: string; qty_dispatched: string; qty_received: string; serials: { serial_number: string; status: string }[] }[];
 }
 export default function TransfersPage() {
   const session = useDashboardSession();
   const allowed = (permission: string) => !!(session?.is_global || session?.permissions.includes(permission));
   const [items, setItems] = useState<Transfer[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
   const [detail, setDetail] = useState<Transfer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -31,14 +33,14 @@ export default function TransfersPage() {
   const [to, setTo] = useState<BusinessEntity | null>(null);
   const [notes, setNotes] = useState('');
   const [reason, setReason] = useState('');
-  const [lines, setLines] = useState<{ key: string; product: BusinessEntity | null; qty: string }[]>([{ key: 'initial', product: null, qty: '' }]);
+  const [lines, setLines] = useState<{ key: string; product: TransferProduct | null; qty: string; serials?: string }[]>([{ key: 'initial', product: null, qty: '' }]);
   const command = useWorkflowMutation();
-  const load = useCallback(async () => {
+  const load = useCallback(async (next?: string) => {
     setLoading(true); setError('');
     try {
-      const response = await apiFetch('/api/v1/transfers'); const data = await response.json();
+      const response = await apiFetch(`/api/v1/transfers?limit=50${next ? `&cursor=${encodeURIComponent(next)}` : ''}`); const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? 'Unable to load transfers');
-      setItems(data.items ?? []);
+      setItems(current => next ? [...current, ...(data.items ?? [])] : data.items ?? []); setCursor(data.has_more ? data.next_cursor : null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load transfers'); }
     finally { setLoading(false); }
   }, []);
@@ -58,7 +60,7 @@ export default function TransfersPage() {
     if (!window.confirm('Create transfer and reserve these quantities at the source warehouse?')) return;
     const result = await command.mutate<{ transferId: string }>('/api/v1/transfers', {
       from_warehouse_id: from.id, to_warehouse_id: to.id, notes,
-      items: lines.map(line => ({ product_id: line.product!.id, qty_requested: Number(line.qty) })),
+      items: lines.map(line => ({ product_id: line.product!.id, qty_requested: Number(line.qty), serial_numbers: line.product?.is_serialized ? (line.serials ?? '').split(/[\s,]+/).filter(Boolean) : undefined })),
     });
     if (result) { setCreating(false); setLines([{ key: crypto.randomUUID(), product: null, qty: '' }]); setNotes(''); toast.success('Transfer created; source stock reserved.'); await load(); await view(result.transferId); }
   }
@@ -77,6 +79,7 @@ export default function TransfersPage() {
     {creating ? <Card><CardHeader><CardTitle>New transfer</CardTitle></CardHeader><CardContent><form onSubmit={create}><fieldset disabled={command.pending} className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2"><EntityPicker label="Source warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={from} onChange={setFrom} /><EntityPicker label="Destination warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={to} onChange={setTo} /></div>
       {lines.map((line, index) => <div key={line.key} className="grid items-end gap-3 rounded-md border p-3 sm:grid-cols-[1fr_8rem_auto]"><EntityPicker label={`Product ${index + 1}`} endpoint="/api/v1/products?is_active=true" value={line.product} onChange={product => setLines(current => current.map(item => item.key === line.key ? { ...item, product } : item))} /><div><Label htmlFor={`qty-${line.key}`}>Quantity</Label><Input id={`qty-${line.key}`} required type="number" min="0.0001" step="0.0001" value={line.qty} onChange={e => setLines(current => current.map(item => item.key === line.key ? { ...item, qty: e.target.value } : item))} /></div><Button type="button" variant="outline" disabled={lines.length === 1} aria-label={`Remove transfer line ${index + 1}`} onClick={() => setLines(current => current.filter(item => item.key !== line.key))}>Remove line</Button></div>)}
+      {lines.map((line, index) => line.product?.is_serialized ? <div key={`serials-${line.key}`}><Label htmlFor={`serials-${line.key}`}>Serial numbers {index + 1} — {line.product.name}</Label><Textarea id={`serials-${line.key}`} required value={line.serials ?? ''} placeholder="Scan or enter one serial per line" onChange={e => setLines(current => current.map(item => item.key === line.key ? { ...item, serials: e.target.value } : item))} /><p className="text-sm text-muted-foreground">One unique serial per unit, available at the source warehouse.</p></div> : null)}
       <Button type="button" variant="outline" onClick={() => setLines(current => [...current, { key: crypto.randomUUID(), product: null, qty: '' }])}>Add line</Button><div><Label htmlFor="transfer-notes">Notes</Label><Textarea id="transfer-notes" value={notes} onChange={e => setNotes(e.target.value)} /></div>
       <div className="flex gap-2"><Button type="submit">{command.pending ? 'Creating…' : 'Create transfer'}</Button><Button type="button" variant="outline" onClick={() => { if (window.confirm('Discard this transfer draft?')) setCreating(false); }}>Cancel</Button></div>
     </fieldset></form></CardContent></Card> : null}
@@ -84,9 +87,11 @@ export default function TransfersPage() {
       <Badge>{detail.status.replaceAll('_', ' ')}</Badge><p>{detail.from_warehouse.name} → {detail.to_warehouse.name}</p>{detail.notes ? <p className="whitespace-pre-wrap">{detail.notes}</p> : null}
       <dl className="grid gap-3 text-sm sm:grid-cols-3">{[['Requested', detail.requested_at], ['Dispatched', detail.dispatched_at], ['Received', detail.received_at]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd>{value ? new Date(value).toLocaleString() : 'Not yet'}</dd></div>)}</dl>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th>Product</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>{detail.items?.map(line => <tr key={line.id} className="border-b"><td className="py-3 pr-3">{line.product.name} ({line.product.code})</td><td>{line.qty_requested}</td><td>{line.qty_dispatched}</td><td>{line.qty_received}</td></tr>)}</tbody></table></div>
+      {detail.items?.some(line => line.serials?.length) ? <div><h3 className="font-semibold">Serial custody</h3><ul className="divide-y">{detail.items.flatMap(line => (line.serials ?? []).map(serial => <li key={serial.serial_number} className="flex flex-wrap justify-between gap-2 py-2"><span>{line.product.name} · {serial.serial_number}</span><Badge variant="secondary">{serial.status.replaceAll('_', ' ')}</Badge></li>))}</ul></div> : null}
       {detail.status === 'pending' && allowed('transfer.dispatch') ? <div className="space-y-3"><Button disabled={command.pending} onClick={() => void action('dispatch')}>Dispatch transfer</Button><div><Label htmlFor="transfer-reason">Cancellation reason</Label><Input id="transfer-reason" maxLength={500} value={reason} onChange={e => setReason(e.target.value)} /></div><Button variant="outline" disabled={command.pending || !reason.trim()} onClick={() => void action('cancel')}>Cancel transfer</Button></div> : null}
       {detail.status === 'in_transit' && allowed('transfer.receive') ? <Button disabled={command.pending} onClick={() => void action('receive')}>Receive transfer</Button> : null}
     </CardContent></Card> : null}
     <Card><CardHeader><CardTitle>Recent transfers</CardTitle></CardHeader><CardContent>{!loading && !items.length ? <p>No transfers yet.</p> : <ul className="divide-y">{items.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="font-medium">{item.reference_no}</p><p className="text-sm text-muted-foreground">{item.from_warehouse.name} → {item.to_warehouse.name}</p></div><Badge variant="secondary">{item.status.replaceAll('_', ' ')}</Badge><Button variant="outline" disabled={command.pending || loading} onClick={() => void view(item.id)}>View transfer</Button></li>)}</ul>}</CardContent></Card>
+    {cursor ? <Button variant="outline" disabled={loading || command.pending} onClick={() => void load(cursor)}>Load older transfers</Button> : null}
   </div>;
 }

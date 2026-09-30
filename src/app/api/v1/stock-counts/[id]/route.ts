@@ -24,7 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         brand: { select: { id: true, name: true } },
         items: {
           include: {
-            product: { select: { id: true, code: true, name: true } },
+            product: { select: { id: true, code: true, name: true, isSerialized: true } },
+            serials: true,
             batch: { select: { id: true, batchNo: true } },
             reasonCode: { select: { id: true, code: true, name: true } },
           },
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       });
     });
     if (!sc) throw new DomainError('RESOURCE_NOT_FOUND', 'Stock count not found', {}, 404);
+    const approval = await runInTenantContext(auth.ctx, async () => db.approvalRequest.findFirst({ where: { companyId: auth.companyId, referenceType: 'stock_count', referenceId: sc.id, status: { in: ['pending', 'approved', 'rejected'] } }, orderBy: { requestedAt: 'desc' }, select: { id: true, status: true, requestedBy: true } }));
+    const blind = sc.blindCount && ['draft', 'counting'].includes(sc.status);
 
     return NextResponse.json({
       item: {
@@ -41,15 +44,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         branch: sc.branch, warehouse: sc.warehouse,
         scope_type: sc.scopeType, category: sc.category, brand: sc.brand,
         blind_count: sc.blindCount, movement_freeze_policy: sc.movementFreezePolicy,
-        snapshot_at: sc.snapshotAt, notes: sc.notes,
+        snapshot_at: sc.snapshotAt, notes: sc.notes, approval,
         created_by: sc.createdBy, reviewed_by: sc.reviewedBy, posted_by: sc.postedBy,
         created_at: sc.createdAt, posted_at: sc.postedAt,
         items: sc.items.map((it, idx) => ({
           id: it.id, line_no: idx + 1,
           product: it.product, batch: it.batch,
-          expected_quantity: it.expectedQuantity.toString(),
+          expected_quantity: blind ? null : it.expectedQuantity.toString(),
           counted_quantity: it.countedQuantity?.toString() ?? null,
-          variance_quantity: it.varianceQuantity?.toString() ?? null,
+          variance_quantity: blind ? null : it.varianceQuantity?.toString() ?? null,
+          serials: it.serials.filter(serial => !blind || serial.countedPresent).map(serial => ({ serial_number: serial.scannedSerialNumber, counted: serial.countedPresent, resolution: blind ? undefined : serial.resolution })),
           reason_code: it.reasonCode,
           count_note: it.countNote,
         })),

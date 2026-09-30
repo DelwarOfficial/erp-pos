@@ -65,6 +65,7 @@ export interface StockMovementResult {
 export interface StockRowState {
   id: string;
   qtyOnHand: Prisma.Decimal;
+  qtyReserved?: Prisma.Decimal;
   qtyDamaged: Prisma.Decimal;
   qtyInTransitOut: Prisma.Decimal;
   movingAverageCost: Prisma.Decimal;
@@ -119,6 +120,10 @@ export function planStockMovement(stock: StockRowState, params: PostStockMovemen
       409,
     );
   }
+  if (stockBucket === 'on_hand' && qtyDelta < 0 && stock.qtyReserved && new Prisma.Decimal(newQtyOnHand).lt(stock.qtyReserved)) {
+    throw new DomainError('INVENTORY_INSUFFICIENT', 'Stock is reserved for another operation', { reserved: stock.qtyReserved.toString() }, 409);
+  }
+  if (newQtyDamaged < 0 || newQtyInTransit < 0) throw new DomainError('INVENTORY_INSUFFICIENT', 'Movement exceeds the available bucket quantity', {}, 409);
 
   let macAfter = macBefore;
   const isInbound = INBOUND_TYPES.includes(params.movementType);
@@ -178,6 +183,10 @@ export async function postStockMovement(
   tx: Prisma.TransactionClient,
   params: PostStockMovementParams,
 ): Promise<StockMovementResult> {
+  const frozen = await tx.stockCount.findFirst({ where: { companyId: params.companyId, warehouseId: params.warehouseId,
+    movementFreezePolicy: 'block', status: { in: ['draft', 'counting', 'reviewed'] }, items: { some: { productId: params.productId } },
+  }, select: { referenceNo: true } });
+  if (frozen) throw new DomainError('VALIDATION_FAILED', `Stock movement blocked by count ${frozen.referenceNo}. Post or cancel the count first.`, {}, 409);
   let stock = await tx.warehouseStock.findUnique({
     where: {
       companyId_warehouseId_productId: {
@@ -304,7 +313,7 @@ function isUniqueViolation(e: unknown): boolean {
  */
 const ALLOWED_SERIAL_TRANSITIONS: Record<string, string[]> = {
   in_stock: ['reserved', 'sold', 'in_transit', 'damaged', 'returned_to_supplier', 'scrapped'],
-  reserved: ['in_stock', 'sold', 'damaged'],
+  reserved: ['in_stock', 'sold', 'in_transit', 'damaged'],
   sold: ['in_stock', 'returned_to_supplier'],  // sold → in_stock (return) or → returned_to_supplier
   in_transit: ['in_stock', 'damaged'],  // received or damaged in transit
   damaged: ['in_stock', 'repair', 'scrapped'],

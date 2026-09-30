@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
               refundReturn = returned;
             }
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
-            const baseAmount = body.amount * body.exchange_rate;
+            const baseAmount = new Prisma.Decimal(body.amount).mul(body.exchange_rate);
             const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
               companyId: auth.companyId, branchId: body.branch_id,
               documentType: 'PAYMENT', fiscalYear: businessDate.getFullYear(), prefix: 'PMT-',
@@ -160,8 +160,8 @@ export async function POST(req: NextRequest) {
               else if (body.payment_type === 'customer_advance') counterAccountId = policies.customerAdvanceAccountId;
               else if (body.payment_type === 'sale_refund') counterAccountId = policies.arAccountId;
 
-              const cashDebit = body.direction === 'incoming' ? body.amount : 0;
-              const cashCredit = body.direction === 'outgoing' ? body.amount : 0;
+              const cashDebit = body.direction === 'incoming' ? baseAmount : 0;
+              const cashCredit = body.direction === 'outgoing' ? baseAmount : 0;
               await postJournalEntry(tx, {
                 companyId: auth.companyId, entryDate: businessDate,
                 postingKind: body.payment_type, sourceType: 'payment', sourceId: payment.id,
