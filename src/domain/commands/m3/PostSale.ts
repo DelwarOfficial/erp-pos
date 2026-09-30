@@ -108,27 +108,6 @@ export async function postSale(
     throw new DomainError('VALIDATION_FAILED', 'Warehouse not found in this branch', {}, 404);
   }
 
-  const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
-    companyId: input.companyId,
-    branchId: input.branchId,
-    documentType: 'SALE',
-    fiscalYear: new Date(input.businessDate).getFullYear(),
-    prefix: 'INV-',
-  });
-
-  const eventId = randomUUID();
-  await tx.businessEvent.create({
-    data: {
-      id: eventId,
-      companyId: input.companyId,
-      eventType: 'sale.posted',
-      sourceType: 'sale',
-      sourceId: referenceNo,
-      correlationId,
-      occurredAt: new Date(),
-    },
-  });
-
   let subtotal = new Prisma.Decimal(0);
   let discountTotal = new Prisma.Decimal(0);
   let taxTotal = new Prisma.Decimal(0);
@@ -382,6 +361,30 @@ export async function postSale(
     const customerPhone = await tx.customer.findFirst({ where: { id: input.customerId, companyId: input.companyId }, select: { phone: true } });
     reminderPhone = normalizeBdMobile(customerPhone?.phone);
   }
+
+  // F-46: the branch's sale number row stays locked until this transaction
+  // commits, so it is taken only now, after every lookup and check above;
+  // sales in the branch no longer wait on each other through them.
+  const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
+    companyId: input.companyId,
+    branchId: input.branchId,
+    documentType: 'SALE',
+    fiscalYear: new Date(input.businessDate).getFullYear(),
+    prefix: 'INV-',
+  });
+
+  const eventId = randomUUID();
+  await tx.businessEvent.create({
+    data: {
+      id: eventId,
+      companyId: input.companyId,
+      eventType: 'sale.posted',
+      sourceType: 'sale',
+      sourceId: referenceNo,
+      correlationId,
+      occurredAt: new Date(),
+    },
+  });
 
   const sale = await tx.sale.create({
     data: {
