@@ -17,6 +17,7 @@ const ConsumePartsSchema = z.object({
     unit_price: z.number().min(0),
     warranty_covered: z.boolean().default(false),
     serial_numbers: z.array(z.string().trim().min(1).max(255)).optional(),
+    batch_no: z.string().trim().min(1).max(100).optional(),
   })).min(1),
 });
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               consumedBy: auth.userId,
               items: body.items.map(i => ({
                 productId: i.product_id, quantity: i.quantity,
-                unitPrice: i.unit_price, warrantyCovered: i.warranty_covered, serialNumbers: i.serial_numbers,
+                unitPrice: i.unit_price, warrantyCovered: i.warranty_covered, serialNumbers: i.serial_numbers, batchNo: i.batch_no,
               })),
             }, correlationId);
             return { status: 200, body: result, resourceType: 'service_request', resourceId: id };

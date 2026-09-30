@@ -11,6 +11,7 @@ import { requireFeatureFlag } from '@/lib/featureFlags';
 import { createServiceRequest, postServicePartConsumption } from '@/domain/commands/m5/Service';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 const ServiceRequestSchema = z.object({
   branch_id: z.string().uuid(),
@@ -40,13 +41,14 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, "service.read");
+    const page = readListPage(req.nextUrl);
     const status = req.nextUrl.searchParams.get('status') ?? undefined;
     const where: Record<string, unknown> = { companyId: auth.companyId };
     if (status) where.status = status;
 
     const requests = await runInTenantContext(auth.ctx, async () => {
       return db.serviceRequest.findMany({
-        where, take: 50, orderBy: { receivedAt: 'desc' },
+        where, ...listPageArgs(page), orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
         include: {
           customer: { select: { id: true, name: true, phone: true } },
           serial: { select: { id: true, serialNumber: true } },
@@ -54,8 +56,9 @@ export async function GET(req: NextRequest) {
         },
       });
     });
-    return NextResponse.json({
-      items: requests.map(r => ({
+    const result = listPageResult(requests, page);
+    return NextResponse.json({ ...result,
+      items: result.items.map(r => ({
         id: r.id, reference_no: r.referenceNo, status: r.status,
         service_type: r.serviceType,
         customer: r.customer, serial: r.serial,

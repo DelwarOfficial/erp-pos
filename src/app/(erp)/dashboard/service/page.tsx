@@ -14,6 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Wrench, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
+import { ServiceDetail } from '@/components/service/ServiceDetail';
+import { useDashboardSession } from '@/components/dashboard/session';
+import { useWorkflowMutation } from '@/hooks/useWorkflowMutation';
+import { useDraftProtection } from '@/hooks/useDraftProtection';
 
 interface ServiceRequest {
   id: string;
@@ -29,7 +34,7 @@ interface ServiceRequest {
   part_count: number;
 }
 
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLORS: Record<string, 'outline' | 'secondary' | 'default' | 'destructive'> = {
   received: 'outline', diagnosing: 'secondary', awaiting_customer_approval: 'secondary',
   approved: 'secondary', in_repair: 'default', awaiting_parts: 'secondary',
   ready: 'default', delivered: 'default', unrepairable: 'destructive', cancelled: 'destructive',
@@ -39,81 +44,70 @@ export default function ServicePage() {
   const [items, setItems] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [posting, setPosting] = useState(false);
+  const command = useWorkflowMutation(); const posting = command.pending;
+  const session = useDashboardSession(); const can = (permission: string) => !!(session?.is_global || session?.permissions.includes(permission));
+  const [warehouse, setWarehouse] = useState<BusinessEntity | null>(null);
+  const [customer, setCustomer] = useState<BusinessEntity | null>(null);
+  const [serial, setSerial] = useState<BusinessEntity | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [error, setError] = useState(''); const [cursor, setCursor] = useState<string | null>(null);
   const [form, setForm] = useState({
-    branch_id: '', customer_id: '', serial_id: '',
     service_type: 'paid_repair', issue_description: '',
     intake_condition: '', accessories_received: '',
     estimated_amount: '0',
   });
+  useDraftProtection(showForm && !!(warehouse || customer || serial || form.issue_description));
 
   useEffect(() => { load(); }, []);
 
-  async function load() {
-    setLoading(true);
+  async function load(next?: string) {
+    setLoading(true); setError('');
     try {
-      const res = await apiFetch('/api/v1/service-requests?limit=50');
+      const res = await apiFetch(`/api/v1/service-requests?limit=50${next ? `&cursor=${encodeURIComponent(next)}` : ''}`);
       const data = await res.json();
-      setItems(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+      if (!res.ok) throw new Error(data.error?.message ?? 'Unable to load service requests');
+      setItems(current => next ? [...current, ...(data.items ?? [])] : data.items ?? []); setCursor(data.has_more ? data.next_cursor : null);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load service requests'); }
     finally { setLoading(false); }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setPosting(true);
-    try {
-      const idempotencyKey = `sr-${Date.now()}`;
-      const res = await apiFetch('/api/v1/service-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-        body: JSON.stringify({
-          branch_id: form.branch_id,
-          customer_id: form.customer_id || undefined,
-          serial_id: form.serial_id || undefined,
+    if (!warehouse?.branch) { command.setError('Select the repair warehouse. Its branch will be used for intake.'); return; }
+    const data = await command.mutate<{ serviceRequestId: string; referenceNo: string }>('/api/v1/service-requests', {
+          branch_id: warehouse.branch.id, repair_warehouse_id: warehouse.id,
+          customer_id: customer?.id,
+          serial_id: serial?.id,
           service_type: form.service_type,
           issue_description: form.issue_description,
           intake_condition: form.intake_condition || undefined,
           accessories_received: form.accessories_received || undefined,
           estimated_amount: Number(form.estimated_amount),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data?.error?.message ?? 'Failed'); return; }
-      toast.success(`Service request ${data.reference_no} created`);
-      setShowForm(false);
-      await load();
-    } finally { setPosting(false); }
+    });
+    if (data) { toast.success(`Service request ${data.referenceNo} created`); setShowForm(false); setSelected(data.serviceRequestId); setForm({ service_type: 'paid_repair', issue_description: '', intake_condition: '', accessories_received: '', estimated_amount: '0' }); setSerial(null); await load(); }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Wrench className="h-6 w-6" /> Service Requests</h1>
           <p className="text-muted-foreground">Manage device intake, repairs and warranty service.</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-2" /> New Intake</Button>
+        <div className="flex gap-2"><Button variant="outline" disabled={loading || posting} onClick={() => void load()}>Refresh</Button>{can('service.intake') ? <Button disabled={showForm || posting} onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" /> New Intake</Button> : null}</div>
       </div>
 
+      {error || command.error ? <div role="alert" className="rounded-md border p-3">{error || command.error}{error ? <Button variant="outline" onClick={() => void load()}>Retry</Button> : null}</div> : null}
+      {selected ? <ServiceDetail key={selected} id={selected} onClose={() => setSelected(null)} onChanged={() => void load()} /> : null}
       {showForm && (
         <Card>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit}><fieldset disabled={posting}>
             <CardHeader><CardTitle className="text-base">New Service Request</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div>
-                  <Label htmlFor="field-app-erp-dashboard-service-page-1">Branch ID *</Label>
-                  <Input id="field-app-erp-dashboard-service-page-1" value={form.branch_id} onChange={e => setForm({ ...form, branch_id: e.target.value })} required />
-                </div>
-                <div>
-                  <Label htmlFor="field-app-erp-dashboard-service-page-2">Customer ID</Label>
-                  <Input id="field-app-erp-dashboard-service-page-2" value={form.customer_id} onChange={e => setForm({ ...form, customer_id: e.target.value })} />
-                </div>
-                <div>
-                  <Label htmlFor="field-app-erp-dashboard-service-page-3">Serial ID (IMEI)</Label>
-                  <Input id="field-app-erp-dashboard-service-page-3" value={form.serial_id} onChange={e => setForm({ ...form, serial_id: e.target.value })} />
-                </div>
+                <EntityPicker label="Repair warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={warehouse} onChange={setWarehouse} />
+                {can('customer.read') ? <div><EntityPicker label="Service customer" endpoint="/api/v1/customers" value={customer} onChange={setCustomer} />{customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>Use walk-in customer</Button> : null}</div> : <p className="text-sm text-muted-foreground">Walk-in intake. Customer selection requires customer read permission.</p>}
+                {can('inventory.read') ? <div><EntityPicker label="Device serial / IMEI" endpoint="/api/v1/serials/search" searchParam="q" minimumSearch={2} value={serial} onChange={setSerial} />{serial ? <Button type="button" variant="ghost" onClick={() => setSerial(null)}>Clear device</Button> : null}</div> : null}
               </div>
               <div>
                 <Label htmlFor="field-app-erp-dashboard-service-page-4">Service Type *</Label>
@@ -147,10 +141,10 @@ export default function ServicePage() {
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button type="button" variant="ghost" onClick={() => { if (window.confirm('Discard this service intake draft?')) setShowForm(false); }}>Cancel</Button>
               <Button type="submit" disabled={posting}>{posting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Create Intake</Button>
             </CardFooter>
-          </form>
+          </fieldset></form>
         </Card>
       )}
 
@@ -163,10 +157,10 @@ export default function ServicePage() {
             <div className="space-y-2">
               {items.map(r => (
                 <div key={r.id} className="border rounded p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <code className="font-mono text-sm font-medium">{r.reference_no}</code>
-                      <Badge variant={STATUS_COLORS[r.status] as any}>{r.status}</Badge>
+                      <Badge variant={STATUS_COLORS[r.status] ?? 'outline'}>{r.status.replaceAll('_', ' ')}</Badge>
                       <Badge variant="outline" className="text-xs">{r.service_type}</Badge>
                       {r.warranty_eligible && <Badge variant="secondary" className="text-xs">warranty</Badge>}
                     </div>
@@ -178,12 +172,14 @@ export default function ServicePage() {
                     {` • ${r.part_count} parts used`}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">{r.issue_description}</div>
+                  <Button variant="outline" className="mt-3" disabled={posting} onClick={() => setSelected(r.id)}>View service request</Button>
                 </div>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+      {cursor ? <Button variant="outline" disabled={loading} onClick={() => void load(cursor)}>Load older requests</Button> : null}
     </div>
   );
 }

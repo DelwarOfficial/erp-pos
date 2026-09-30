@@ -161,6 +161,7 @@ export interface ConsumeServicePartInput {
     unitPrice: number;
     warrantyCovered?: boolean;
     serialNumbers?: string[];
+    batchNo?: string;
   }>;
 }
 
@@ -208,7 +209,8 @@ export async function postServicePartConsumption(
     });
     if (!product) throw new DomainError('VALIDATION_FAILED', `Product ${item.productId} not found`, {}, 404);
     if (!Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || product.productType !== 'standard') throw new DomainError('VALIDATION_FAILED', 'Select stock-managed parts with positive quantities and nonnegative prices', {}, 400);
-    if (product.trackBatches) throw new DomainError('VALIDATION_FAILED', 'Batch-tracked service parts require batch allocation support', {}, 409);
+    const batch = item.batchNo ? await tx.productBatch.findFirst({ where: { companyId: input.companyId, warehouseId, productId: product.id, batchNo: item.batchNo.trim(), status: 'active' } }) : null;
+    if (product.trackBatches && (!batch || batch.qtyOnHand.minus(batch.qtyReserved).lt(item.quantity))) throw new DomainError('INVENTORY_INSUFFICIENT', 'Select an available batch with sufficient unreserved quantity', {}, 409);
     const numbers = (item.serialNumbers ?? []).map(number => number.trim());
     if (new Set(numbers).size !== numbers.length || numbers.some(number => !number) || (product.isSerialized ? (!Number.isInteger(item.quantity) || numbers.length !== item.quantity) : numbers.length > 0)) throw new DomainError('VALIDATION_FAILED', 'Provide exactly one unique serial per serialized part', {}, 400);
     const serials = numbers.length ? await tx.productSerial.findMany({ where: { companyId: input.companyId, productId: product.id, currentWarehouseId: warehouseId, status: 'in_stock', currentReservationId: null, serialNumber: { in: numbers } } }) : [];
@@ -248,6 +250,10 @@ export async function postServicePartConsumption(
       metadata: { service_request_ref: sr.referenceNo, warranty_covered: item.warrantyCovered ?? false },
     });
     eventLineNo++;
+    if (batch && product.trackBatches) {
+      await tx.productBatch.update({ where: { id: batch.id }, data: { qtyOnHand: { decrement: item.quantity } } });
+      await tx.stockMovementBatch.create({ data: { companyId: input.companyId, stockMovementId: movement.movementId, productBatchId: batch.id, qty: -item.quantity } });
+    }
     for (const serial of serials) {
       validateSerialTransition(serial.status, 'sold');
       await tx.productSerial.update({ where: { id: serial.id }, data: { status: 'sold', currentWarehouseId: null, version: { increment: 1 } } });

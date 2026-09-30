@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
+  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'service.read', 'service.intake', 'service.complete', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -203,6 +203,44 @@ test('stock adjustments add, damage, recover and remove serials; approval enforc
   await page.getByRole('button', { name: 'Post approved adjustment', exact: true }).click(); const approvedResponse = await approvedPost; expect(approvedResponse.status(), await approvedResponse.text()).toBe(200);
   expect((await db.stockAdjustment.findUniqueOrThrow({ where: { id: record.id } })).status).toBe('posted');
   expect(await db.stockMovement.count({ where: { companyId: fixture.companyId, referenceId: record.id } })).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('service intake → diagnosis → approval → repeated parts → invoice → delivery settles WIP and device custody', async ({ page }) => {
+  await db.featureFlag.create({ data: { companyId: fixture.companyId, flagKey: 'service_warranty_enabled', enabled: true, updatedBy: fixture.user.id } });
+  const wip = await db.chartOfAccount.create({ data: { companyId: fixture.companyId, code: 'UI-WIP', name: 'Repair work in progress', accountClass: 'asset', accountSubtype: 'current_asset', normalBalance: 'D' } });
+  await db.accountingPolicy.update({ where: { companyId: fixture.companyId }, data: { repairWipAccountId: wip.id, serviceCogsAccountId: fixture.expense.id } });
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const device = await db.product.create({ data: { companyId: fixture.companyId, categoryId: base.categoryId, unitId: base.unitId, name: 'Service device', code: 'UI-DEVICE', isSerialized: true } });
+  const part = await db.product.create({ data: { companyId: fixture.companyId, categoryId: base.categoryId, unitId: base.unitId, name: 'Service replacement part', code: 'UI-PART' } });
+  const labour = await db.product.create({ data: { companyId: fixture.companyId, categoryId: base.categoryId, unitId: base.unitId, name: 'Complete service labour and parts', code: 'UI-LABOUR', productType: 'service', defaultPrice: 100 } });
+  const serial = await db.productSerial.create({ data: { companyId: fixture.companyId, productId: device.id, serialNumber: 'UI-SERVICE-DEVICE', currentWarehouseId: warehouse.id } });
+  await db.warehouseStock.createMany({ data: [{ companyId: fixture.companyId, warehouseId: warehouse.id, productId: device.id, qtyOnHand: 1, movingAverageCost: 100 }, { companyId: fixture.companyId, warehouseId: warehouse.id, productId: part.id, qtyOnHand: 10, movingAverageCost: 20 }] });
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/service');
+  await page.getByRole('button', { name: 'New Intake', exact: true }).click(); await pick(page, 'Repair warehouse', warehouse.name); await pick(page, 'Service customer', customer.name);
+  await page.getByRole('combobox', { name: 'Device serial / IMEI', exact: true }).click(); await page.getByRole('textbox', { name: 'Search device serial / imei', exact: true }).fill('UI-SERVICE'); await page.getByRole('option', { name: serial.serialNumber, exact: true }).click();
+  await page.getByLabel('Issue Description *', { exact: true }).fill('Device requires two repair stages'); await page.getByLabel('Estimate (BDT)', { exact: true }).fill('100');
+  const intake = page.waitForResponse(response => response.url().endsWith('/api/v1/service-requests') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create Intake', exact: true }).click(); const intakeResponse = await intake; expect(intakeResponse.status(), await intakeResponse.text()).toBe(201); const service = await intakeResponse.json();
+  expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('repair');
+  const action = async (name: string, note: string) => { await page.getByLabel('Action note / diagnosis / approval evidence', { exact: true }).fill(note); const response = page.waitForResponse(result => result.url().endsWith(`/service-requests/${service.serviceRequestId}`) && result.request().method() === 'POST'); await page.getByRole('button', { name, exact: true }).click(); const result = await response; expect(result.status(), await result.text()).toBe(200); await expect(page.getByLabel('Action note / diagnosis / approval evidence', { exact: true })).toHaveValue(''); };
+  await action('Save diagnosis', 'Fault isolated and two parts required'); await action('Request customer approval', 'Estimate sent to customer'); await action('Record customer approval', 'Customer approved total 100 by phone'); await action('Start repair', 'Customer authorization verified');
+  for (let index = 0; index < 2; index++) {
+    await page.getByRole('button', { name: 'Consume parts', exact: true }).click(); await pick(page, 'Service part 1', part.name); await page.getByLabel('Part quantity 1', { exact: true }).fill('1');
+    const consuming = page.waitForResponse(response => response.url().endsWith(`/service-requests/${service.serviceRequestId}/parts`) && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Post parts consumption', exact: true }).click(); const consumed = await consuming; expect(consumed.status(), await consumed.text()).toBe(200); await expect(page.getByRole('button', { name: 'Post parts consumption', exact: true })).toHaveCount(0);
+  }
+  await action('Mark ready', 'Repair tested successfully');
+  const blocked = await page.request.post(`/api/v1/service-requests/${service.serviceRequestId}`, { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { action: 'transition', status: 'delivered', note: 'Missing invoice must block delivery' } }); expect(blocked.status()).toBe(409);
+  const pos = await page.context().newPage(); await pos.goto('/dashboard/pos'); await pos.getByPlaceholder(/Search products/).fill(labour.name);
+  await pos.getByRole('button', { name: new RegExp(labour.name) }).click(); await pick(pos, 'Customer', customer.name);
+  await pos.getByRole('combobox', { name: 'Warehouse', exact: true }).selectOption(warehouse.id); await pos.getByRole('combobox', { name: 'Account', exact: true }).selectOption(fixture.cash.id);
+  const invoicing = pos.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
+  await pos.getByRole('button', { name: /Complete Sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close();
+  await pick(page, 'Service invoice', sale.referenceNo); await action('Link service invoice', 'Invoice covers approved service charge'); await action('Deliver device', 'Customer collected repaired device and accessories');
+  const completed = await db.serviceRequest.findUniqueOrThrow({ where: { id: service.serviceRequestId }, include: { parts: true } }); expect(completed.status).toBe('delivered'); expect(completed.serviceSaleId).toBe(sale.saleId); expect(completed.parts.map(part => part.lineNo)).toEqual([1, 2]);
+  expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('in_stock');
+  const wipLines = await db.journalLine.aggregate({ where: { companyId: fixture.companyId, chartOfAccountId: wip.id }, _sum: { debitBase: true, creditBase: true } }); expect(wipLines._sum.debitBase?.toString()).toBe('40'); expect(wipLines._sum.creditBase?.toString()).toBe('40');
   await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
