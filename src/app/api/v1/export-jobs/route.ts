@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { requireIdempotencyKey } from "@/lib/idempotency";
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
@@ -168,7 +169,7 @@ async function generateExportData(
   reportCode: string,
   filters: Record<string, unknown>,
   includeSensitive: boolean,
-): Promise<{ headers: string[]; rows: string[][]; controlTotals: Record<string, number> }> {
+): Promise<{ headers: string[]; rows: string[][]; controlTotals: Record<string, number | string> }> {
   switch (reportCode) {
     case 'inventory_valuation':
       return await exportInventoryValuation(companyId, filters, includeSensitive);
@@ -194,18 +195,17 @@ async function exportInventoryValuation(companyId: string, _filters: Record<stri
     ? ['Warehouse', 'Product Code', 'Product Name', 'Qty On Hand', 'MAC', 'Total Value']
     : ['Warehouse', 'Product Code', 'Product Name', 'Qty On Hand'];
 
-  let totalValue = 0;
+  // Exact decimals (F-13): quantities and costs as stored, values to the paisa.
+  let totalValue = new Prisma.Decimal(0);
   const rows = stocks.map(s => {
-    const qty = parseFloat(String(s.qtyOnHand));
-    const mac = parseFloat(String(s.movingAverageCost));
-    const value = qty * mac;
-    totalValue += value;
+    const value = new Prisma.Decimal(s.qtyOnHand).mul(s.movingAverageCost).toDecimalPlaces(2);
+    totalValue = totalValue.plus(value);
     return includeSensitive
-      ? [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), String(qty), String(mac), String(value)]
-      : [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), String(qty)];
+      ? [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), s.qtyOnHand.toString(), s.movingAverageCost.toString(), value.toFixed(2)]
+      : [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), s.qtyOnHand.toString()];
   });
 
-  return { headers, rows, controlTotals: { rowCount: rows.length, totalValue: includeSensitive ? totalValue : 0 } };
+  return { headers, rows, controlTotals: { rowCount: rows.length, totalValue: includeSensitive ? totalValue.toFixed(2) : '0.00' } };
 }
 
 async function exportSalesSummary(companyId: string, filters: Record<string, unknown>, _includeSensitive: boolean) {
@@ -221,14 +221,13 @@ async function exportSalesSummary(companyId: string, filters: Record<string, unk
   });
 
   const headers = ['Reference No', 'Business Date', 'Grand Total', 'Status'];
-  let totalAmount = 0;
+  let totalAmount = new Prisma.Decimal(0);
   const rows = sales.map(s => {
-    const total = parseFloat(String(s.grandTotal));
-    totalAmount += total;
-    return [s.referenceNo, new Date(s.businessDate).toISOString().split('T')[0], String(total), s.saleStatus];
+    totalAmount = totalAmount.plus(s.grandTotal);
+    return [s.referenceNo, new Date(s.businessDate).toISOString().split('T')[0], new Prisma.Decimal(s.grandTotal).toFixed(2), s.saleStatus];
   });
 
-  return { headers, rows, controlTotals: { rowCount: rows.length, totalAmount } };
+  return { headers, rows, controlTotals: { rowCount: rows.length, totalAmount: totalAmount.toFixed(2) } };
 }
 
 async function exportCustomerList(companyId: string, _filters: Record<string, unknown>, includeSensitive: boolean) {
@@ -266,12 +265,11 @@ async function exportProductList(companyId: string, _filters: Record<string, unk
     : ['Code', 'Name', 'Type', 'Serialized', 'Default Price', 'Active'];
 
   const rows = products.map(p => {
-    const cost = parseFloat(String(p.referenceCost));
-    const price = parseFloat(String(p.defaultPrice));
-    const margin = price - cost;
+    const cost = new Prisma.Decimal(p.referenceCost);
+    const price = new Prisma.Decimal(p.defaultPrice);
     return includeSensitive
-      ? [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), String(cost), String(price), String(margin), String(p.isActive)]
-      : [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), String(price), String(p.isActive)];
+      ? [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), cost.toFixed(2), price.toFixed(2), price.minus(cost).toFixed(2), String(p.isActive)]
+      : [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), price.toFixed(2), String(p.isActive)];
   });
 
   return { headers, rows, controlTotals: { rowCount: rows.length } };

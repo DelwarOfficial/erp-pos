@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
@@ -94,14 +95,11 @@ async function regenInventoryValuation(companyId: string, includeSensitive: bool
   const headers = includeSensitive
     ? ['Warehouse', 'Product Code', 'Product Name', 'Qty On Hand', 'MAC', 'Total Value']
     : ['Warehouse', 'Product Code', 'Product Name', 'Qty On Hand'];
-  const rows = stocks.map(s => {
-    const qty = parseFloat(String(s.qtyOnHand));
-    const mac = parseFloat(String(s.movingAverageCost));
-    const value = qty * mac;
-    return includeSensitive
-      ? [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), String(qty), String(mac), String(value)]
-      : [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), String(qty)];
-  });
+  // Same exact formatting as the export itself (export-jobs/route.ts).
+  const rows = stocks.map(s => includeSensitive
+    ? [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), s.qtyOnHand.toString(), s.movingAverageCost.toString(),
+      new Prisma.Decimal(s.qtyOnHand).mul(s.movingAverageCost).toDecimalPlaces(2).toFixed(2)]
+    : [s.warehouse.code, s.product.code, escapeFormulaCell(s.product.name), s.qtyOnHand.toString()]);
   return { headers, rows };
 }
 
@@ -120,7 +118,7 @@ async function regenSalesSummary(companyId: string, filters: Record<string, unkn
   const rows = sales.map(s => [
     s.referenceNo,
     new Date(s.businessDate).toISOString().split('T')[0],
-    String(parseFloat(String(s.grandTotal))),
+    new Prisma.Decimal(s.grandTotal).toFixed(2),
     s.saleStatus,
   ]);
   return { headers, rows };
@@ -153,11 +151,11 @@ async function regenProductList(companyId: string, includeSensitive: boolean) {
     ? ['Code', 'Name', 'Type', 'Serialized', 'Reference Cost', 'Default Price', 'Margin', 'Active']
     : ['Code', 'Name', 'Type', 'Serialized', 'Default Price', 'Active'];
   const rows = products.map(p => {
-    const cost = parseFloat(String(p.referenceCost));
-    const price = parseFloat(String(p.defaultPrice));
+    const cost = new Prisma.Decimal(p.referenceCost);
+    const price = new Prisma.Decimal(p.defaultPrice);
     return includeSensitive
-      ? [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), String(cost), String(price), String(price - cost), String(p.isActive)]
-      : [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), String(price), String(p.isActive)];
+      ? [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), cost.toFixed(2), price.toFixed(2), price.minus(cost).toFixed(2), String(p.isActive)]
+      : [p.code, escapeFormulaCell(p.name), p.productType, String(p.isSerialized), price.toFixed(2), String(p.isActive)];
   });
   return { headers, rows };
 }

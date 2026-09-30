@@ -1,6 +1,7 @@
 // GET /api/v1/inventory/stocks
 // List warehouse stock projections. Filter by warehouse, product, low-stock.
 
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
@@ -50,10 +51,7 @@ export async function GET(req: NextRequest) {
     });
 
     let items = stocks.map(s => {
-      const qtyOnHand = parseFloat(s.qtyOnHand.toString());
-      const qtyReserved = parseFloat(s.qtyReserved.toString());
-      const qtyAvailable = qtyOnHand - qtyReserved;
-      const alertQty = parseFloat(s.product.alertQuantity.toString());
+      const qtyAvailable = new Prisma.Decimal(s.qtyOnHand).minus(s.qtyReserved);
       return {
         id: s.id,
         warehouse: s.warehouse,
@@ -64,8 +62,8 @@ export async function GET(req: NextRequest) {
         qty_in_transit_out: s.qtyInTransitOut.toString(),
         qty_damaged: s.qtyDamaged.toString(),
         moving_average_cost: s.movingAverageCost.toString(),
-        inventory_value: (qtyOnHand * parseFloat(s.movingAverageCost.toString())).toFixed(2),
-        is_low_stock: qtyAvailable <= alertQty,
+        inventory_value: new Prisma.Decimal(s.qtyOnHand).mul(s.movingAverageCost).toFixed(2),
+        is_low_stock: qtyAvailable.lte(s.product.alertQuantity),
         version: s.version,
         updated_at: s.updatedAt,
       };

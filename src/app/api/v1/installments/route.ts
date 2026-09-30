@@ -1,5 +1,6 @@
 // GET /api/v1/installments — list installments (scheduled + allocations)
 
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
@@ -45,12 +46,12 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       items: items.map(i => {
-        const paid = i.allocations.reduce((s, a) => s + parseFloat(a.allocatedAmount.toString()), 0);
+        const paid = i.allocations.reduce((s, a) => s.plus(a.allocatedAmount), new Prisma.Decimal(0));
         return {
           id: i.id, sale: i.sale, installment_no: i.installmentNo,
           due_date: i.dueDate, amount: i.amount.toString(), status: i.status,
           paid_amount: paid.toFixed(2),
-          balance: (parseFloat(i.amount.toString()) - paid).toFixed(2),
+          balance: new Prisma.Decimal(i.amount).minus(paid).toFixed(2),
           allocations: i.allocations.map(a => ({
             id: a.id, allocated_amount: a.allocatedAmount.toString(),
             allocated_at: a.allocatedAt,

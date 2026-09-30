@@ -8,6 +8,7 @@
 // (which filter `deletedAt: null`) but historical documents retain their
 // snapshot columns.
 
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
@@ -357,7 +358,8 @@ export async function DELETE(
               const total = openSales.grandTotal.toString();
               // If allocations don't fully cover the open sale total, the
               // customer has an outstanding AR balance — block the archive.
-              if (parseFloat(allocated) < parseFloat(total) - 0.01) {
+              const outstanding = new Prisma.Decimal(total).minus(allocated);
+              if (outstanding.gt(0)) {
                 throw new DomainError(
                   'VALIDATION_FAILED',
                   'Cannot archive a customer with an outstanding AR balance — settle open sales first',
@@ -366,7 +368,7 @@ export async function DELETE(
                     open_sale_id: openSales.id,
                     grand_total: total,
                     allocated: allocated,
-                    outstanding: (parseFloat(total) - parseFloat(allocated)).toFixed(2),
+                    outstanding: outstanding.toFixed(2),
                   },
                   409,
                 );
