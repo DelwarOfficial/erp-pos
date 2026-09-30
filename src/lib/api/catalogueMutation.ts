@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import type { AuthResult } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
-import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
+import { withIdempotency, computeRequestHash } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -13,13 +13,15 @@ const brand = z.object({ name: z.string().trim().min(1).max(120) });
 const unit = z.object({ name: z.string().trim().min(1).max(80), code: z.string().trim().min(1).max(20), conversion_factor: z.number().positive(), allow_fractional: z.boolean() });
 const tax = z.object({ name: z.string().trim().min(1).max(100), component_code: z.string().trim().min(1).max(30), component_type: z.enum(['VAT', 'SD', 'RD', 'ATV', 'OTHER']), rate: z.number().min(0).max(100), calculation_order: z.number().int().min(1), compound_on_previous: z.boolean(), effective_from: z.string().datetime().or(z.string().date()) });
 
-/** Existing master-data resources: safe updates and deletion only while unreferenced. */
-export async function catalogueMutation(req: NextRequest, id: string, kind: Kind) {
+/**
+ * Existing master-data resources: safe updates and deletion only while
+ * unreferenced. The route authenticates, checks the permission
+ * (category.manage, or tax.manage for tax components) and reads the
+ * Idempotency-Key itself: the route authorization contract is per file.
+ */
+export async function catalogueMutation(req: NextRequest, id: string, kind: Kind, auth: AuthResult, idempotencyKey: string) {
   const correlationId = getCorrelationId(req);
   try {
-    const auth = await authenticateRequest();
-    await requirePermission(auth, kind === 'tax-components' ? 'tax.manage' : 'category.manage');
-    const idempotencyKey = requireIdempotencyKey(req);
     const deleting = req.method === 'DELETE';
     const body = deleting ? {} : await req.json();
     const requestHash = computeRequestHash({ method: req.method, path: `/api/v1/${kind}/${id}`, body });

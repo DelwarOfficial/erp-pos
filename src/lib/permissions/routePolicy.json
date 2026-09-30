@@ -1903,5 +1903,69 @@
       "customer.update"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/brands/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/brands/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/categories/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/categories/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/units/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/units/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "category.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-components/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/tax-components/[id]/route.ts",
+    "method": "DELETE",
+    "permissions": [
+      "tax.manage"
+    ],
+    "exception": null
   }
 ]
