@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
-vi.mock('@/lib/numbering', () => ({ nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'TEST-JOURNAL' })) }));
+vi.mock('@/lib/numbering', () => ({ nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'TEST-JOURNAL' })), nextJournalNumber: vi.fn(async () => ({ documentNumber: 'TEST-JOURNAL' })) }));
 import { postJournalEntry, type PostJournalEntryInput } from '@/domain/commands/m4/PostJournalEntry';
 import { postSale } from '@/domain/commands/m3/PostSale';
 

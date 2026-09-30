@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/numbering', () => ({
-  nextDocumentNumber: vi.fn().mockResolvedValue({ documentNumber: 'JE-000001' }),
+  nextJournalNumber: vi.fn().mockResolvedValue({ documentNumber: 'JE-000001' }),
 }));
 
 import { reverseJournalEntry } from '@/domain/commands/m4/PostJournalEntry';

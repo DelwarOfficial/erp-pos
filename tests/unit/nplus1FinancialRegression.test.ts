@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/numbering', () => ({
   nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
+  nextJournalNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
 }));
 vi.mock('@/domain/commands/m4/PostJournalEntry', () => ({
   postJournalEntry: vi.fn(async () => ({ journalEntryId: 'journal-safe', entryNo: 'JE-SAFE' })),

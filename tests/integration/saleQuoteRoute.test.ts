@@ -44,7 +44,9 @@ afterAll(() => db.$disconnect());
 
 describe('sale quote', () => {
   it('returns the exact schedule and writes nothing', async () => {
-    const before = { sales: await db.sale.count({ where: { companyId: A } }), sequences: await db.documentSequence.findMany({ where: { companyId: A } }) };
+    const before = { sales: await db.sale.count({ where: { companyId: A } }), // Journal numbers come from reserved blocks and may have gaps (F-46);
+      // every gap-free sequence must be untouched.
+      sequences: await db.documentSequence.findMany({ where: { companyId: A, documentType: { not: 'JOURNAL' } } }) };
     const response = await call('quote', body);
     expect(response.status).toBe(200);
     const quote = await response.json();
@@ -53,7 +55,7 @@ describe('sale quote', () => {
     expect(await db.sale.count({ where: { companyId: A } })).toBe(before.sales);
     expect(await db.installment.count({ where: { companyId: A } })).toBe(0);
     // No document number was consumed.
-    expect(await db.documentSequence.findMany({ where: { companyId: A } })).toEqual(before.sequences);
+    expect(await db.documentSequence.findMany({ where: { companyId: A, documentType: { not: 'JOURNAL' } } })).toEqual(before.sequences);
   });
 
   it('posting the same body produces exactly the quoted schedule', async () => {

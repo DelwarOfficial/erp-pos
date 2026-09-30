@@ -20,6 +20,7 @@ vi.mock('@/lib/idempotency', () => ({
 }));
 vi.mock('@/lib/numbering', () => ({
   nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
+  nextJournalNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
 }));
 
 import { POST as createPurchase } from '@/app/api/v1/purchases/route';

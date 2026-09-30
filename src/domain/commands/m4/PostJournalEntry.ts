@@ -13,7 +13,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
-import { nextDocumentNumber } from '@/lib/numbering';
+import { nextJournalNumber } from '@/lib/numbering';
 
 export interface JournalLineInput {
   chartOfAccountId: string;
@@ -162,9 +162,9 @@ export async function postJournalEntry(
   }
 
   // 5. Generate entry number
-  const { documentNumber: entryNo } = await nextDocumentNumber(tx, {
+  // From a reserved block, not a lock held to commit (F-46; see nextJournalNumber).
+  const { documentNumber: entryNo } = await nextJournalNumber(tx, {
     companyId: input.companyId,
-    documentType: 'JOURNAL',
     fiscalYear: new Date(input.entryDate).getFullYear(),
     prefix: 'JE-',
   });

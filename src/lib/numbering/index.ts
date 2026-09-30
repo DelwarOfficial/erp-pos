@@ -11,6 +11,7 @@
 
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { systemDb } from '@/lib/db';
 
 export interface DocumentNumberParams {
   companyId: string;
@@ -149,6 +150,57 @@ export async function nextDocumentNumber(
   const formatted = String(nextNumber).padStart(padding, '0');
   const documentNumber = `${params.prefix}${formatted}`;
   return { documentNumber, sequenceId, nextNumber };
+}
+
+// ── journal entry numbers: reserved blocks (F-46) ─────────────────────────────
+//
+// nextDocumentNumber locks its sequence row until the caller's transaction
+// commits. The journal sequence is company-wide and every posting in every
+// branch takes a number from it, so each posting waited for the previous one
+// to commit. Journal entry numbers are internal ledger references -- the
+// posting date orders the ledger, not the number -- so they are taken from
+// blocks: a process reserves JOURNAL_NUMBER_BLOCK numbers from the same
+// JOURNAL sequence row in its own short, immediately committed transaction and
+// issues them from memory. Numbers stay unique; a rolled-back posting or a
+// restarted process leaves a gap, and numbers from different processes
+// interleave. Customer-facing documents (invoices, receipts, returns) keep the
+// gap-free nextDocumentNumber.
+
+const JOURNAL_NUMBER_BLOCK = Math.max(1, parseInt(process.env.JOURNAL_NUMBER_BLOCK ?? '20', 10) || 20);
+const journalBlocks = new Map<string, { sequenceId: string; next: bigint; end: bigint }>();
+const journalRefills = new Map<string, Promise<void>>();
+
+export async function nextJournalNumber(
+  tx: Prisma.TransactionClient,
+  params: { companyId: string; fiscalYear: number; prefix: string; padding?: number },
+): Promise<DocumentNumberResult> {
+  const padding = params.padding ?? 6;
+  const sequence = { companyId: params.companyId, branchId: null, documentType: 'JOURNAL', fiscalYear: params.fiscalYear, prefix: params.prefix, padding };
+  if (!isMariaDb()) return nextDocumentNumber(tx, sequence);
+
+  const key = `${params.companyId}|${params.fiscalYear}|${params.prefix}`;
+  for (;;) {
+    const block = journalBlocks.get(key);
+    if (block && block.next <= block.end) {
+      const number = block.next;
+      block.next = number + BigInt(1);
+      return { documentNumber: formatDocumentNumber(params.prefix, null, number, padding), sequenceId: block.sequenceId, nextNumber: number };
+    }
+    // One refill per key at a time; concurrent callers wait for it.
+    let refill = journalRefills.get(key);
+    if (!refill) {
+      refill = systemDb.$transaction(own => reserveMariaDbRange(own, sequence, JOURNAL_NUMBER_BLOCK))
+        .then(range => { journalBlocks.set(key, { sequenceId: range.sequenceId, next: range.rangeStart, end: range.rangeEnd }); })
+        .finally(() => journalRefills.delete(key));
+      journalRefills.set(key, refill);
+    }
+    await refill;
+  }
+}
+
+/** Tests only: forget reserved blocks, as a process restart would. */
+export function resetJournalNumberBlocks() {
+  journalBlocks.clear();
 }
 
 /**

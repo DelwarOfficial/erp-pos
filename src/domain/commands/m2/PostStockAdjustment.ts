@@ -33,17 +33,22 @@ export async function postStockAdjustment(
   tx: Prisma.TransactionClient,
   input: PostStockAdjustmentInput,
   correlationId: string,
+  approvedAdjustmentId?: string,
 ): Promise<{ adjustmentId: string; referenceNo: string; status: string; itemCount: number }> {
   const reasonCode = await tx.inventoryReasonCode.findFirst({
     where: { id: input.reasonCodeId, companyId: input.companyId, isActive: true },
   });
   if (!reasonCode) throw new DomainError('VALIDATION_FAILED', 'Reason code not found', {}, 404);
-  if (reasonCode.requiresApproval) throw new DomainError('APPROVAL_REQUIRED', 'This reason requires independent approval; direct adjustment posting is prohibited', {}, 409);
   const warehouse = await tx.warehouse.findFirst({ where: { id: input.warehouseId, companyId: input.companyId, branchId: input.branchId, isActive: true } });
   if (!warehouse) throw new DomainError('VALIDATION_FAILED', 'Select an active warehouse in this branch', {}, 400);
   if (!input.items.length || new Set(input.items.map(item => item.productId)).size !== input.items.length) throw new DomainError('VALIDATION_FAILED', 'Provide one line per product', {}, 400);
+  if (!input.notes.trim() || !Number.isFinite(input.businessDate.getTime()) || !['add', 'subtract', 'damage', 'writeoff', 'reclassify', 'count_variance', 'correction'].includes(input.adjustmentType)) throw new DomainError('VALIDATION_FAILED', 'Valid adjustment type, date and explanation are required', {}, 400);
+  if (reasonCode.requiresApproval && !approvedAdjustmentId) return requestAdjustmentApproval(tx, input, correlationId);
+  const existing = approvedAdjustmentId ? await tx.stockAdjustment.findFirst({ where: { id: approvedAdjustmentId, companyId: input.companyId, status: 'pending_approval' } }) : null;
+  const approval = existing?.approvalRequestId ? await tx.approvalRequest.findFirst({ where: { id: existing.approvalRequestId, companyId: input.companyId, referenceType: 'stock_adjustment', referenceId: existing.id, status: 'approved' } }) : null;
+  if (approvedAdjustmentId && (!existing || !approval || approval.approvedBy === approval.requestedBy)) throw new DomainError('APPROVAL_REQUIRED', 'Independent approval is required before posting', {}, 409);
 
-  const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
+  const { documentNumber: referenceNo } = existing ? { documentNumber: existing.referenceNo } : await nextDocumentNumber(tx, {
     companyId: input.companyId,
     branchId: input.branchId,
     documentType: 'STOCK_ADJUSTMENT',
@@ -60,7 +65,7 @@ export async function postStockAdjustment(
     },
   });
 
-  const adjustment = await tx.stockAdjustment.create({
+  const adjustment = existing ?? await tx.stockAdjustment.create({
     data: {
       companyId: input.companyId,
       branchId: input.branchId,
@@ -117,17 +122,14 @@ export async function postStockAdjustment(
     if (recovery && (!stock || stock.qtyDamaged.lt(item.quantityDelta))) throw new DomainError('INVENTORY_INSUFFICIENT', 'Insufficient damaged stock to recover', {}, 409);
     const valueDelta = new Prisma.Decimal(item.quantityDelta).mul(unitCost);
 
-    const adjustmentItem = await tx.stockAdjustmentItem.create({
-      data: {
-        companyId: input.companyId,
-        stockAdjustmentId: adjustment.id,
-        lineNo,
-        productId: item.productId,
-        quantityDelta: item.quantityDelta,
-        unitCostSnapshot: unitCost,
-        valueDelta,
-        eventId,
-      },
+    const lineData = {
+      companyId: input.companyId, stockAdjustmentId: adjustment.id, lineNo, productId: item.productId,
+      quantityDelta: item.quantityDelta, unitCostSnapshot: unitCost, valueDelta, eventId,
+    };
+    const adjustmentItem = await tx.stockAdjustmentItem.upsert({
+      where: { stockAdjustmentId_lineNo: { stockAdjustmentId: adjustment.id, lineNo } },
+      update: lineData,
+      create: lineData,
     });
 
     const movement = await postStockMovement(tx, {
@@ -166,7 +168,7 @@ export async function postStockAdjustment(
   }
 
   const journal = await postInventoryVarianceJournal(tx, { companyId: input.companyId, branchId: input.branchId, sourceType: 'stock_adjustment', sourceId: adjustment.id, referenceNo, businessDate: input.businessDate, userId: input.postedBy, values: journalValues }, correlationId);
-  if (journal) await tx.stockAdjustment.update({ where: { id: adjustment.id }, data: { journalEntryId: journal.journalEntryId } });
+  await tx.stockAdjustment.update({ where: { id: adjustment.id }, data: { status: 'posted', postedAt: new Date(), journalEntryId: journal?.journalEntryId, approvedBy: approval?.approvedBy } });
 
   await tx.auditLog.create({
     data: {
@@ -177,4 +179,36 @@ export async function postStockAdjustment(
   });
 
   return { adjustmentId: adjustment.id, referenceNo, status: 'posted', itemCount: input.items.length };
+}
+
+async function requestAdjustmentApproval(tx: Prisma.TransactionClient, input: PostStockAdjustmentInput, correlationId: string) {
+  const { documentNumber: referenceNo } = await nextDocumentNumber(tx, { companyId: input.companyId, branchId: input.branchId, documentType: 'STOCK_ADJUSTMENT', fiscalYear: input.businessDate.getFullYear(), prefix: 'SA-' });
+  const adjustment = await tx.stockAdjustment.create({ data: { companyId: input.companyId, branchId: input.branchId, warehouseId: input.warehouseId, referenceNo, clientTxnId: randomUUID(), adjustmentType: input.adjustmentType, reasonCodeId: input.reasonCodeId, businessDate: input.businessDate, notes: input.notes, createdBy: input.postedBy, status: 'pending_approval' } });
+  for (const [index, item] of input.items.entries()) {
+    if (!Number.isFinite(item.quantityDelta) || item.quantityDelta === 0 || (item.unitCost !== undefined && (!Number.isFinite(item.unitCost) || item.unitCost < 0))) throw new DomainError('VALIDATION_FAILED', 'Invalid adjustment quantity or cost', {}, 400);
+    const product = await tx.product.findFirst({ where: { companyId: input.companyId, id: item.productId, deletedAt: null } });
+    if (!product) throw new DomainError('VALIDATION_FAILED', 'Select an available product', {}, 400);
+    const stock = await tx.warehouseStock.findUnique({ where: { companyId_warehouseId_productId: { companyId: input.companyId, warehouseId: input.warehouseId, productId: item.productId } } });
+    const cost = item.quantityDelta > 0 ? new Prisma.Decimal(item.unitCost ?? 0) : stock?.movingAverageCost ?? new Prisma.Decimal(0);
+    await tx.stockAdjustmentItem.create({ data: { companyId: input.companyId, stockAdjustmentId: adjustment.id, lineNo: index + 1, productId: item.productId, quantityDelta: item.quantityDelta, unitCostSnapshot: cost, valueDelta: cost.mul(item.quantityDelta) } });
+  }
+  const approval = await tx.approvalRequest.create({ data: { companyId: input.companyId, branchId: input.branchId, requestType: 'stock_adjustment', referenceType: 'stock_adjustment', referenceId: adjustment.id, requestedBy: input.postedBy, reason: input.notes, payload: JSON.stringify(input), status: 'pending' } });
+  await tx.stockAdjustment.update({ where: { id: adjustment.id }, data: { approvalRequestId: approval.id } });
+  await tx.auditLog.create({ data: { companyId: input.companyId, userId: input.postedBy, correlationId, action: 'stock_adjustment.request_approval', entityType: 'stock_adjustment', entityId: adjustment.id, afterValue: JSON.stringify({ approval_request_id: approval.id }) } });
+  return { adjustmentId: adjustment.id, referenceNo, status: 'pending_approval', itemCount: input.items.length };
+}
+
+export async function actOnStockAdjustment(tx: Prisma.TransactionClient, input: { companyId: string; id: string; userId: string; action: 'post' | 'cancel' }, correlationId: string) {
+  const adjustment = await tx.stockAdjustment.findFirst({ where: { companyId: input.companyId, id: input.id, status: 'pending_approval' } });
+  if (!adjustment?.approvalRequestId) throw new DomainError('VALIDATION_FAILED', 'Adjustment is not pending approval', {}, 409);
+  const approval = await tx.approvalRequest.findFirst({ where: { id: adjustment.approvalRequestId, companyId: input.companyId, referenceType: 'stock_adjustment', referenceId: adjustment.id } });
+  if (!approval) throw new DomainError('VALIDATION_FAILED', 'Approval record unavailable', {}, 409);
+  if (input.action === 'cancel') {
+    await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'cancelled' } });
+    await tx.stockAdjustment.update({ where: { id: adjustment.id }, data: { status: 'cancelled' } });
+    await tx.auditLog.create({ data: { companyId: input.companyId, userId: input.userId, correlationId, action: 'stock_adjustment.cancel', entityType: 'stock_adjustment', entityId: adjustment.id, afterValue: JSON.stringify({ status: 'cancelled' }) } });
+    return { adjustmentId: adjustment.id, referenceNo: adjustment.referenceNo, status: 'cancelled', itemCount: 0 };
+  }
+  const payload = JSON.parse(approval.payload) as PostStockAdjustmentInput;
+  return postStockAdjustment(tx, { ...payload, companyId: input.companyId, postedBy: input.userId, businessDate: new Date(payload.businessDate) }, correlationId, adjustment.id);
 }

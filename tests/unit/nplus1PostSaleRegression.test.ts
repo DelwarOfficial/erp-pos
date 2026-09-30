@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 
 vi.mock('@/lib/numbering', () => ({
   nextDocumentNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
+  nextJournalNumber: vi.fn(async () => ({ documentNumber: 'SAFE-PROOF', sequenceValue: 1 })),
 }));
 vi.mock('@/domain/inventory/stockMovement', () => ({
   postStockMovement: vi.fn(async () => ({ movementId: 'movement-safe' })),
