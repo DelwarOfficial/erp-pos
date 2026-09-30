@@ -36,6 +36,8 @@ async function reserveMariaDbRange(
   tx: Prisma.TransactionClient,
   params: DocumentNumberParams,
   count: number,
+  /** Give up after this many seconds waiting for a lock (MariaDB SET STATEMENT). */
+  lockWaitSeconds?: number,
 ): Promise<{ sequenceId: string; rangeStart: bigint; rangeEnd: bigint; branchCode: string | null }> {
   if (!Number.isSafeInteger(count) || count < 1) throw new Error('INVALID_SEQUENCE_COUNT');
   const padding = params.padding ?? 6;
@@ -47,8 +49,9 @@ async function reserveMariaDbRange(
   // (branch_scope = IFNULL(branch_id, '')) + UNIQUE(company, scope, type, year).
   // It MUST be written here: it is what makes ON DUPLICATE KEY UPDATE atomic.
   const branchScope = branchId ?? '';
+  const limit = lockWaitSeconds ? Prisma.raw(`SET STATEMENT innodb_lock_wait_timeout = ${Math.max(1, Math.floor(lockWaitSeconds))} FOR `) : Prisma.empty;
   await tx.$executeRaw`
-    INSERT INTO document_sequences
+    ${limit}INSERT INTO document_sequences
       (id, company_id, branch_id, branch_scope, document_type, fiscal_year, prefix, next_number, padding, version)
     VALUES
       (${generatedId}, ${params.companyId}, ${branchId}, ${branchScope}, ${params.documentType}, ${params.fiscalYear},
@@ -167,8 +170,13 @@ export async function nextDocumentNumber(
 // gap-free nextDocumentNumber.
 
 const JOURNAL_NUMBER_BLOCK = Math.max(1, parseInt(process.env.JOURNAL_NUMBER_BLOCK ?? '20', 10) || 20);
+/** A reservation that waits longer than this is abandoned for the in-transaction path. */
+const JOURNAL_BLOCK_LOCK_WAIT_SECONDS = 1;
 const journalBlocks = new Map<string, { sequenceId: string; next: bigint; end: bigint }>();
 const journalRefills = new Map<string, Promise<void>>();
+/** After a failed reservation, use the in-transaction path for a while instead of waiting again. */
+const JOURNAL_BLOCK_RETRY_AFTER_MS = 30_000;
+const journalBlockFailedAt = new Map<string, number>();
 
 export async function nextJournalNumber(
   tx: Prisma.TransactionClient,
@@ -179,6 +187,8 @@ export async function nextJournalNumber(
   if (!isMariaDb()) return nextDocumentNumber(tx, sequence);
 
   const key = `${params.companyId}|${params.fiscalYear}|${params.prefix}`;
+  const failedAt = journalBlockFailedAt.get(key);
+  if (failedAt && Date.now() - failedAt < JOURNAL_BLOCK_RETRY_AFTER_MS) return nextDocumentNumber(tx, sequence);
   for (;;) {
     const block = journalBlocks.get(key);
     if (block && block.next <= block.end) {
@@ -189,18 +199,29 @@ export async function nextJournalNumber(
     // One refill per key at a time; concurrent callers wait for it.
     let refill = journalRefills.get(key);
     if (!refill) {
-      refill = systemDb.$transaction(own => reserveMariaDbRange(own, sequence, JOURNAL_NUMBER_BLOCK))
+      refill = systemDb.$transaction(own => reserveMariaDbRange(own, sequence, JOURNAL_NUMBER_BLOCK, JOURNAL_BLOCK_LOCK_WAIT_SECONDS))
         .then(range => { journalBlocks.set(key, { sequenceId: range.sequenceId, next: range.rangeStart, end: range.rangeEnd }); })
         .finally(() => journalRefills.delete(key));
       journalRefills.set(key, refill);
     }
-    await refill;
+    try {
+      await refill;
+    } catch {
+      // The block could not be reserved in its own transaction -- typically
+      // because the caller's still-open transaction holds a row it needs (a
+      // company created and posted to in one transaction, as onboarding does):
+      // waiting would deadlock the two. Take this one number the gap-free way,
+      // inside the caller's transaction.
+      journalBlockFailedAt.set(key, Date.now());
+      return nextDocumentNumber(tx, sequence);
+    }
   }
 }
 
 /** Tests only: forget reserved blocks, as a process restart would. */
 export function resetJournalNumberBlocks() {
   journalBlocks.clear();
+  journalBlockFailedAt.clear();
 }
 
 /**

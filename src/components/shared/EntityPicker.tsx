@@ -15,9 +15,10 @@ export interface BusinessEntity {
 }
 
 /** Searches server-supported lists; reference lists can filter the loaded page locally. */
-export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value, onChange, disabled, serverSearch = true }: {
+export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value, onChange, disabled, serverSearch = true, searchParam = 'search', minimumSearch = 0 }: {
   label: string; endpoint: string; value: T | null; onChange: (entity: T) => void;
   disabled?: boolean; serverSearch?: boolean;
+  searchParam?: string; minimumSearch?: number;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -30,6 +31,7 @@ export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value,
   const [page, setPage] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
+    if (search.trim().length < minimumSearch) { setItems([]); setCursor(null); setLoading(false); setError(''); return; }
     let alive = true;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
@@ -37,13 +39,14 @@ export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value,
       try {
         const query = new URLSearchParams(endpoint.split('?')[1]);
         query.set('limit', '100');
-        if (serverSearch && search) query.set('search', search);
+        if (serverSearch && search) query.set(searchParam, search);
         if (page) query.set('cursor', page);
         const response = await apiFetch(`${endpoint.split('?')[0]}?${query}`, { signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error?.message ?? `Unable to load ${label.toLowerCase()}`);
         if (alive) {
-          setItems(current => page ? [...current, ...(data.items ?? [])] : data.items ?? []);
+          const options = (data.items ?? []).map((item: T & { reference_no?: string; serial_number?: string }) => ({ ...item, name: item.name ?? item.reference_no ?? item.serial_number ?? 'Unnamed record' }));
+          setItems(current => page ? [...current, ...options] : options);
           setCursor(data.has_more ? data.next_cursor : null);
         }
       } catch (cause) {
@@ -51,7 +54,7 @@ export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value,
       } finally { if (alive) setLoading(false); }
     }, 200);
     return () => { alive = false; clearTimeout(timer); controller.abort(); };
-  }, [open, endpoint, serverSearch, search, page, attempt, label]);
+  }, [open, endpoint, serverSearch, search, searchParam, minimumSearch, page, attempt, label]);
   const visible = serverSearch ? items : items.filter(item => `${item.name} ${item.code ?? ''} ${item.branch?.name ?? ''}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="min-w-0 space-y-1.5">
     <Label htmlFor={id}>{label}</Label>
@@ -66,7 +69,7 @@ export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value,
           {visible.map(item => <Button key={item.id} type="button" role="option" aria-selected={item.id === value?.id} variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => { onChange(item); setOpen(false); }}>
             <span>{item.name}{item.code ? ` (${item.code})` : ''}{item.branch ? <span className="block text-xs text-muted-foreground">{item.branch.name}</span> : null}</span>
           </Button>)}
-          {!loading && !error && !visible.length ? <p className="p-2 text-sm text-muted-foreground">No matching options.</p> : null}
+          {!loading && !error && !visible.length ? <p className="p-2 text-sm text-muted-foreground">{search.trim().length < minimumSearch ? `Type at least ${minimumSearch} characters to search.` : 'No matching options.'}</p> : null}
         </div>
         {loading ? <p role="status" className="text-sm">Loading options…</p> : cursor ? <Button type="button" variant="outline" onClick={() => setPage(cursor)}>Load more options</Button> : null}
       </PopoverContent>

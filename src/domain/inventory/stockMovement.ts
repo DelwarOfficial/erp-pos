@@ -293,12 +293,12 @@ function isUniqueViolation(e: unknown): boolean {
  * Allowed transitions are defined here; any transition not in the map is rejected.
  */
 const ALLOWED_SERIAL_TRANSITIONS: Record<string, string[]> = {
-  in_stock: ['reserved', 'sold', 'in_transit', 'damaged', 'returned_to_supplier', 'scrapped'],
+  in_stock: ['reserved', 'sold', 'in_transit', 'damaged', 'repair', 'returned_to_supplier', 'scrapped'],
   reserved: ['in_stock', 'sold', 'in_transit', 'damaged'],
-  sold: ['in_stock', 'returned_to_supplier'],  // sold → in_stock (return) or → returned_to_supplier
+  sold: ['in_stock', 'repair', 'returned_to_supplier'],
   in_transit: ['in_stock', 'damaged'],  // received or damaged in transit
   damaged: ['in_stock', 'repair', 'scrapped'],
-  repair: ['in_stock', 'scrapped'],
+  repair: ['in_stock', 'sold', 'scrapped'],
   returned_to_supplier: [],  // terminal (unless re-received, which creates a new serial row)
   replaced: [],  // terminal
   scrapped: [],  // terminal

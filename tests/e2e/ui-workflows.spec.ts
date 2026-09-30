@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
+  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -158,6 +158,51 @@ test('stock count snapshot → save → review → recount → post preserves bl
   const journal = await db.journalEntry.findFirstOrThrow({ where: { companyId: fixture.companyId, sourceType: 'stock_count', sourceId: count.id }, include: { lines: true } });
   expect(journal.lines.filter(line => line.debitBase.gt(0)).reduce((sum, line) => sum + line.debitBase.toNumber(), 0)).toBe(50);
   expect((await api(`/api/v1/stock-counts/${count.id}/actions`, { action: 'post' })).status()).toBe(409);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('stock adjustments add, damage, recover and remove serials; approval enforces maker-checker', async ({ page }) => {
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const serialProduct = await db.product.create({ data: { companyId: fixture.companyId, categoryId: base.categoryId, unitId: base.unitId, name: 'Adjustment serialized product', code: 'UI-ADJUSTMENT', isSerialized: true } });
+  const reason = await db.inventoryReasonCode.create({ data: { companyId: fixture.companyId, code: 'UI-ADJUST', name: 'Approved stock correction', defaultExpenseAccountId: fixture.expense.id } });
+  const approvalReason = await db.inventoryReasonCode.create({ data: { companyId: fixture.companyId, code: 'UI-REVIEW', name: 'Independent stock review', defaultExpenseAccountId: fixture.expense.id, requiresApproval: true } });
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/inventory/adjustments');
+  for (const step of [
+    { type: 'add', qty: '2', serials: 'UI-ADJUST-1\nUI-ADJUST-2', status: 'in_stock', onHand: '2', damaged: '0' },
+    { type: 'damage', qty: '1', serials: 'UI-ADJUST-1', status: 'damaged', onHand: '1', damaged: '1' },
+    { type: 'reclassify', qty: '1', serials: 'UI-ADJUST-1', status: 'in_stock', onHand: '2', damaged: '0' },
+    { type: 'subtract', qty: '1', serials: 'UI-ADJUST-1', status: 'scrapped', onHand: '1', damaged: '0' },
+  ]) {
+    await page.getByRole('button', { name: 'New adjustment', exact: true }).click(); await pick(page, 'Adjustment warehouse', warehouse.name); await pick(page, 'Adjustment reason', reason.name);
+    await page.getByLabel('Adjustment type', { exact: true }).selectOption(step.type); await pick(page, 'Adjustment product 1', serialProduct.name);
+    await page.getByLabel('Quantity 1', { exact: true }).fill(step.qty); if (step.type === 'add') await page.getByLabel('Unit cost 1', { exact: true }).fill('25');
+    await page.getByLabel('Adjustment serials 1', { exact: true }).fill(step.serials); await page.getByLabel('Explanation', { exact: true }).fill(`Browser verified ${step.type}`);
+    const posting = page.waitForResponse(response => response.url().endsWith('/api/v1/stock-adjustments') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Post adjustment', exact: true }).click(); const result = await posting; expect(result.status(), await result.text()).toBe(201); const document = await result.json();
+    await expect(page.getByRole('heading', { name: document.referenceNo, exact: true })).toBeVisible();
+    const stock = await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: serialProduct.id } } });
+    expect(stock.qtyOnHand.toString()).toBe(step.onHand); expect(stock.qtyDamaged.toString()).toBe(step.damaged);
+    expect((await db.productSerial.findUniqueOrThrow({ where: { companyId_serialNumber: { companyId: fixture.companyId, serialNumber: 'UI-ADJUST-1' } } })).status).toBe(step.status);
+    expect(await db.journalEntry.count({ where: { companyId: fixture.companyId, sourceType: 'stock_adjustment', sourceId: document.adjustmentId } })).toBe(1);
+  }
+  await page.getByRole('button', { name: 'New adjustment', exact: true }).click(); await pick(page, 'Adjustment reason', approvalReason.name); await page.getByLabel('Adjustment type', { exact: true }).selectOption('add'); await pick(page, 'Adjustment product 1', product.name);
+  await page.getByLabel('Quantity 1', { exact: true }).fill('1'); await page.getByLabel('Unit cost 1', { exact: true }).fill('50'); await page.getByLabel('Explanation', { exact: true }).fill('Independent reviewer required');
+  const queued = page.waitForResponse(response => response.url().endsWith('/api/v1/stock-adjustments') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Submit for approval', exact: true }).click(); const queuedResponse = await queued; expect(queuedResponse.status(), await queuedResponse.text()).toBe(201); const pending = await queuedResponse.json();
+  const record = await db.stockAdjustment.findUniqueOrThrow({ where: { id: pending.adjustmentId } }); expect(record.status).toBe('pending_approval');
+  expect(await db.stockMovement.count({ where: { companyId: fixture.companyId, referenceId: record.id } })).toBe(0);
+  const selfApproval = await page.request.post(`/api/v1/approvals/${record.approvalRequestId}/resolve`, { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { decision: 'approved' } }); expect(selfApproval.status()).toBe(403);
+  const checker = await db.user.create({ data: { companyId: fixture.companyId, name: 'Independent checker', email: `${randomUUID()}@example.invalid`, passwordHash: 'not-a-login', accessScope: 'multi_branch', roles: { create: { roleId: fixture.role.id } } } });
+  for (const branch of fixture.branches) await db.userBranchAccess.create({ data: { userId: checker.id, branchId: branch.id } });
+  const familyId = randomUUID(); const sessionId = randomUUID(); await db.refreshToken.create({ data: { companyId: fixture.companyId, userId: checker.id, familyId, sessionId, mfaVerified: true, tokenHash: randomUUID(), expiresAt: new Date(Date.now() + 3600000) } });
+  const checkerToken = await new SignJWT({ company_id: fixture.companyId, scope: 'multi_branch', is_global: false, branch_ids: fixture.branches.map(branch => branch.id), session_id: sessionId, family_id: familyId, mfa_verified: true }).setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuer('erp-pos').setAudience('erp-pos-clients').setSubject(checker.id).setIssuedAt().setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  await page.context().addCookies([{ name: 'erp_access', value: checkerToken, url: process.env.E2E_BASE_URL!, httpOnly: true, sameSite: 'Strict' }]); await page.reload();
+  await page.getByRole('listitem').filter({ hasText: pending.referenceNo }).getByRole('button', { name: 'View adjustment', exact: true }).click();
+  await page.getByRole('button', { name: 'Approve adjustment', exact: true }).click(); await expect(page.getByRole('button', { name: 'Post approved adjustment', exact: true })).toBeEnabled();
+  const approvedPost = page.waitForResponse(response => response.url().endsWith(`/stock-adjustments/${record.id}`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Post approved adjustment', exact: true }).click(); const approvedResponse = await approvedPost; expect(approvedResponse.status(), await approvedResponse.text()).toBe(200);
+  expect((await db.stockAdjustment.findUniqueOrThrow({ where: { id: record.id } })).status).toBe('posted');
+  expect(await db.stockMovement.count({ where: { companyId: fixture.companyId, referenceId: record.id } })).toBe(1);
   await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
