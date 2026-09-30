@@ -85,31 +85,36 @@ describe('Security: CSRF Protection', () => {
 });
 
 describe('Security: CSP Headers', () => {
-  it('CSP does not allow unsafe-eval in script-src (unsafe-inline required by Next.js hydration)', () => {
-    const config = readFileSync('next.config.ts', 'utf8');
-    const cspMatch = config.match(/Content-Security-Policy.*value: (["`])(.+?)\1/);
-    expect(cspMatch).not.toBeNull();
-    // The production policy: drop the development-only addition (Next's dev
-    // tooling needs eval; production builds never get it).
-    const csp = cspMatch![2]
-      .replace(/\$\{process\.env\.NODE_ENV === 'development' \? " 'unsafe-eval'" : ''\}/, '')
-      .replace(/\$\{process\.env\.NODE_ENV === 'development' \? ' https:\/\/\*\.space-z\.ai' : ''\}/, '');
-    expect(csp).not.toContain('${'); // nothing else computed at runtime
-    const scriptSrcMatch = csp.match(/script-src ([^;]+)/);
-    if (scriptSrcMatch) {
-      // unsafe-inline is required for Next.js 16 Turbopack client hydration
-      // (inline scripts for React hydration). In production with nonce-based CSP,
-      // this should be replaced with per-request nonces.
-      // unsafe-eval is NEVER allowed (prevents eval() injection attacks).
-      expect(scriptSrcMatch[1]).not.toContain('unsafe-eval');
-    }
+  // F-68: the policy is built per request with a script nonce (src/lib/security/csp.ts).
+  it('production script-src allows only nonce-bearing scripts: no unsafe-inline, no unsafe-eval', async () => {
+    const { contentSecurityPolicy } = await import('@/lib/security/csp');
+    const scriptSrc = contentSecurityPolicy('abc123', false).match(/script-src ([^;]+)/)![1];
+    expect(scriptSrc).toContain("'nonce-abc123'");
+    expect(scriptSrc).toContain("'strict-dynamic'");
+    expect(scriptSrc).not.toContain('unsafe-inline');
+    expect(scriptSrc).not.toContain('unsafe-eval');
+    // eval only in development, where React's tooling needs it.
+    expect(contentSecurityPolicy('abc123', true)).toContain("'unsafe-eval'");
   });
 
-  it('production CSP lets only this origin frame the app (F-68)', () => {
-    const config = readFileSync('next.config.ts', 'utf8');
-    const csp = config.match(/Content-Security-Policy.*value: (["`])(.+?)\1/)![2]
-      .replace(/\$\{process\.env\.NODE_ENV === 'development' \?[^}]*\}/g, '');
-    expect(csp).toMatch(/frame-ancestors 'self';/);
+  it('production CSP lets only this origin frame the app and blocks plugins', async () => {
+    const { contentSecurityPolicy } = await import('@/lib/security/csp');
+    const csp = contentSecurityPolicy('n', false);
+    expect(csp).toMatch(/frame-ancestors 'self'(;|$)/);
+    expect(csp).toContain("object-src 'none'");
+    expect(contentSecurityPolicy('n', true)).toContain('https://*.space-z.ai');
+  });
+
+  it('issues a fresh, unguessable nonce per page request', async () => {
+    const { newNonce } = await import('@/lib/security/csp');
+    const nonces = new Set(Array.from({ length: 100 }, () => newNonce()));
+    expect(nonces.size).toBe(100);
+    for (const nonce of nonces) expect(Buffer.from(nonce, 'base64')).toHaveLength(16);
+    const middleware = readFileSync('src/middleware.ts', 'utf8');
+    expect(middleware).toContain('withNonce(req)');
+    expect(readFileSync('src/app/layout.tsx', 'utf8')).toContain('x-nonce');
+    // No second, static policy that would still allow inline script.
+    expect(readFileSync('next.config.ts', 'utf8')).not.toContain("key: 'Content-Security-Policy'");
   });
 
   it('HSTS header is present with 2-year max-age', () => {

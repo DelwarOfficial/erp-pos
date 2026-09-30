@@ -9,9 +9,25 @@
 //         - Origin/Referer header matching the request host, OR
 //         - X-CSRF-Token header matching the erp_access cookie value (double-submit)
 //      c. Webhook endpoints (/api/v1/webhooks/*) are exempt (they use HMAC signatures)
+//
+// Page requests also get their Content-Security-Policy here, with a fresh
+// script nonce per request (F-68, src/lib/security/csp.ts).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessCookieName } from '@/lib/auth/cookieNames';
+import { contentSecurityPolicy, newNonce } from '@/lib/security/csp';
+
+/** A page response with a per-request nonce in its Content-Security-Policy. */
+function withNonce(req: NextRequest) {
+  const nonce = newNonce();
+  const policy = contentSecurityPolicy(nonce, process.env.NODE_ENV === 'development');
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', policy);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set('Content-Security-Policy', policy);
+  return response;
+}
 
 const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 const EXEMPT_PATHS = [
@@ -28,7 +44,7 @@ export function middleware(req: NextRequest) {
 
   // Only check mutations
   if (!MUTATION_METHODS.includes(method)) {
-    return NextResponse.next();
+    return path.startsWith('/api/') ? NextResponse.next() : withNonce(req);
   }
 
   // Exempt paths (webhooks, auth, cron)

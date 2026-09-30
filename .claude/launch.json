@@ -1,0 +1,1 @@
+{ "version": "0.0.1", "configurations": [ { "name": "dev-smoke", "runtimeExecutable": "node", "runtimeArgs": ["C:/Users/Admin/AppData/Local/Temp/claude/D--Antigravity-erp-pos/924fce65-3cac-43ad-93cc-80376581e568/scratchpad/dev-smoke.mjs"], "port": 3100 } ] }
