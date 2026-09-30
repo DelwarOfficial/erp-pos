@@ -596,6 +596,11 @@ export async function postSale(
         branchId: input.branchId, memo: `Tax output for ${referenceNo}` });
     }
 
+    // F-34: a sale with a value must reach the ledger. Too few revenue lines
+    // used to skip the posting silently; only a zero-value sale has none.
+    if (revenueJournalLines.length < 2 && grandTotal.gt(0)) {
+      throw new DomainError('INTERNAL_ERROR', `Revenue posting for ${referenceNo} could not be assembled`, { lines: revenueJournalLines.length }, 500);
+    }
     if (revenueJournalLines.length >= 2) {
       await postJournalEntry(tx, {
         companyId: input.companyId,

@@ -17,8 +17,10 @@ export function getRedisConnection(): IORedis {
 }
 
 export const QUEUE_NAMES = {
-  OUTBOX: 'outbox', WEBHOOK: 'webhook', COMMUNICATION: 'communication',
-  OFFLINE_SYNC: 'offline-sync', RECONCILIATION: 'reconciliation',
+  // F-48: only queues a worker consumes are declared. Webhook delivery runs
+  // through the outbox; offline sync is a synchronous API; marketing SMS go
+  // through SMS_SEND.
+  OUTBOX: 'outbox', RECONCILIATION: 'reconciliation',
   RETENTION: 'retention', EXPIRE_RESERVATIONS: 'expire-reservations',
   // Customer due reminders: the scheduling tick, and one job per SMS send.
   DUE_REMINDERS: 'due-reminders', SMS_SEND: 'sms-send',

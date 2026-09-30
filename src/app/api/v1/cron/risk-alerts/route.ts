@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';
 
@@ -25,7 +26,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (token !== expectedToken) {
+  // F-15: constant-time comparison, so response timing reveals nothing about the token.
+  const supplied = Buffer.from(token ?? '');
+  const expected = Buffer.from(expectedToken);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
     return NextResponse.json(
       { error: { code: 'UNAUTHORIZED', message: 'Invalid or missing cron token' } },
       { status: 401 },
