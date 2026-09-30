@@ -91,7 +91,9 @@ describe('Security: CSP Headers', () => {
     expect(cspMatch).not.toBeNull();
     // The production policy: drop the development-only addition (Next's dev
     // tooling needs eval; production builds never get it).
-    const csp = cspMatch![2].replace(/\$\{process\.env\.NODE_ENV === 'development' \? " 'unsafe-eval'" : ''\}/, '');
+    const csp = cspMatch![2]
+      .replace(/\$\{process\.env\.NODE_ENV === 'development' \? " 'unsafe-eval'" : ''\}/, '')
+      .replace(/\$\{process\.env\.NODE_ENV === 'development' \? ' https:\/\/\*\.space-z\.ai' : ''\}/, '');
     expect(csp).not.toContain('${'); // nothing else computed at runtime
     const scriptSrcMatch = csp.match(/script-src ([^;]+)/);
     if (scriptSrcMatch) {
@@ -101,6 +103,13 @@ describe('Security: CSP Headers', () => {
       // unsafe-eval is NEVER allowed (prevents eval() injection attacks).
       expect(scriptSrcMatch[1]).not.toContain('unsafe-eval');
     }
+  });
+
+  it('production CSP lets only this origin frame the app (F-68)', () => {
+    const config = readFileSync('next.config.ts', 'utf8');
+    const csp = config.match(/Content-Security-Policy.*value: (["`])(.+?)/)![2]
+      .replace(/\$\{process\.env\.NODE_ENV === 'development' \?[^}]*\}/g, '');
+    expect(csp).toMatch(/frame-ancestors 'self';/);
   });
 
   it('HSTS header is present with 2-year max-age', () => {
