@@ -6,6 +6,7 @@ import { signWebhook, generateDeliveryId, getTimestampHeader } from '@/lib/integ
 import { decryptString } from '@/lib/crypto';
 import { recordSecurityEvent } from '@/lib/audit';
 import { postToOutboundUrl } from '@/lib/integrations/outboundUrl';
+import { errorMeta, logger } from '@/lib/logging';
 
 const POLL_INTERVAL_MS = 10_000;
 const HTTP_TIMEOUT_MS = 15_000;
@@ -93,7 +94,7 @@ async function deliverWebhook(event: any, endpoint: any): Promise<DeliveryOutcom
   const timestamp = getTimestampHeader();
   let secret: string;
   try { secret = decryptString(endpoint.secretCiphertext, 1); }
-  catch { console.error(`Failed to decrypt webhook secret for endpoint ${endpoint.id}`); return 'unusable'; }
+  catch { logger.error('[outbox-worker] webhook secret cannot be decrypted', { endpoint_id: endpoint.id }); return 'unusable'; }
 
   const signature = signWebhook(secret, timestamp, event.payload);
   const deliveryIdToUse = existing?.deliveryId ?? generateDeliveryId();
@@ -147,19 +148,19 @@ export function startOutboxWorker(): void {
   // Sandbox/dev: fall back to setInterval polling inside the web process.
   const useBullMQ = process.env.NODE_ENV === 'production' && process.env.REDIS_URL;
   if (useBullMQ) {
-    console.log('[outbox-worker] Production mode — BullMQ worker handles delivery (see src/workers/index.ts)');
+    logger.info('[outbox-worker] production: the BullMQ worker delivers (src/workers/index.ts)');
     return;
   }
 
-  console.log('[outbox-worker] Dev mode — polling every', POLL_INTERVAL_MS, 'ms');
+  logger.info('[outbox-worker] development: polling', { interval_ms: POLL_INTERVAL_MS });
   intervalId = setInterval(async () => {
-    try { const count = await processOutboxBatch(); if (count > 0) console.log(`[outbox-worker] Processed ${count} deliveries`); }
-    catch (e) { console.error('[outbox-worker] Error:', e); }
+    try { const count = await processOutboxBatch(); if (count > 0) logger.info('[outbox-worker] deliveries processed', { count }); }
+    catch (e) { logger.error('[outbox-worker] batch failed', errorMeta(e)); }
   }, POLL_INTERVAL_MS);
 }
 
 export function stopOutboxWorker(): void {
   if (intervalId) { clearInterval(intervalId); intervalId = null; }
   isRunning = false;
-  console.log('[outbox-worker] Stopped');
+  logger.info('[outbox-worker] stopped');
 }

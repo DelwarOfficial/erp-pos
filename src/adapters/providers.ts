@@ -7,6 +7,7 @@ import { SmsProvider, EmailProvider, CourierProvider, RiskProvider, PaymentProvi
 import { providerRegistry } from './index';
 import { db } from '@/lib/db';
 import { decryptString } from '@/lib/crypto';
+import { errorMeta, logger } from '@/lib/logging';
 
 // ── SSL Wireless SMS Adapter (Bangladesh) ──
 export class SslSmsProvider implements SmsProvider {
@@ -90,7 +91,7 @@ export class SesEmailProvider implements EmailProvider {
   async sendEmail(params: { to: string; subject: string; htmlBody: string; textBody?: string }) {
     // In production, use @aws-sdk/client-sesv2
     // Simplified stub for sandbox
-    console.log(`[SES] Would send email to ${params.to}: ${params.subject}`);
+    logger.info('[SES] would send email (stub)', { subject: params.subject });
     return { providerMessageId: `ses-${Date.now()}`, status: 'sent' as const };
   }
 }
@@ -118,7 +119,7 @@ export class ResendEmailProvider implements EmailProvider {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      console.error('[Resend] Send failed:', res.status, data);
+      logger.error('[Resend] send failed', { status: res.status });
       return { providerMessageId: '', status: 'failed' as const };
     }
     return { providerMessageId: data.id ?? `resend-${Date.now()}`, status: 'sent' as const };
@@ -333,7 +334,7 @@ export function registerProviders(): void {
       const { InternalRiskProvider } = require('./riskProvider');
       providerRegistry.registerRisk(new InternalRiskProvider());
     } catch (e) {
-      console.warn('[providers] Failed to load InternalRiskProvider, falling back to stub:', e);
+      logger.warn('[providers] InternalRiskProvider failed to load; using the stub', errorMeta(e));
       providerRegistry.registerRisk(new StubRiskProvider());
     }
   }
@@ -346,7 +347,7 @@ export function registerProviders(): void {
       const { MockNotificationProvider } = require('./slackProvider');
       providerRegistry.registerNotification(new MockNotificationProvider());
     } catch (e) {
-      console.warn('[providers] Failed to load MockNotificationProvider:', e);
+      logger.warn('[providers] MockNotificationProvider failed to load', errorMeta(e));
     }
   } else {
     // Production: register Slack if webhook URL is configured
@@ -355,9 +356,9 @@ export function registerProviders(): void {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { SlackWebhookProvider } = require('./slackProvider');
         providerRegistry.registerNotification(new SlackWebhookProvider());
-        console.log('[providers] Slack notification provider registered');
+        logger.info('[providers] Slack notification provider registered');
       } catch (e) {
-        console.warn('[providers] Failed to load SlackWebhookProvider:', e);
+        logger.warn('[providers] SlackWebhookProvider failed to load', errorMeta(e));
       }
     }
     // Production: register Telegram if bot token is configured
@@ -366,13 +367,12 @@ export function registerProviders(): void {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { TelegramBotProvider } = require('./telegramProvider');
         providerRegistry.registerNotification(new TelegramBotProvider());
-        console.log('[providers] Telegram notification provider registered');
+        logger.info('[providers] Telegram notification provider registered');
       } catch (e) {
-        console.warn('[providers] Failed to load TelegramBotProvider:', e);
+        logger.warn('[providers] TelegramBotProvider failed to load', errorMeta(e));
       }
     }
   }
 
-  console.log('[providers] Registered — risk provider:',
-    providerRegistry.getRisk('internal_v2') ? 'internal_v2' : 'internal (stub)');
+  logger.info('[providers] registered', { risk_provider: providerRegistry.getRisk('internal_v2') ? 'internal_v2' : 'internal (stub)' });
 }

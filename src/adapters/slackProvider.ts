@@ -14,6 +14,7 @@
 //   critical → #ff0000 (red)
 
 import type { NotificationProvider } from './index';
+import { logger } from '@/lib/logging';
 
 const SEVERITY_COLORS: Record<string, string> = {
   info: '#36a64f',
@@ -113,12 +114,9 @@ export class MockNotificationProvider implements NotificationProvider {
       providerMessageId: `mock-notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     };
     this.callLog.push({ params, result, timestamp: Date.now() });
-    console.log(`[mock:notification] ${params.severity.toUpperCase()} ${params.title}: ${params.message.slice(0, 80)}`);
-    if (params.fields) {
-      for (const f of params.fields) {
-        console.log(`  ${f.label}: ${f.value}`);
-      }
-    }
+    logger.info(`[mock:notification] ${params.severity.toUpperCase()} ${params.title}`, {
+      message: params.message.slice(0, 80), fields: Object.fromEntries((params.fields ?? []).map(f => [f.label, f.value])),
+    });
     return result;
   }
 

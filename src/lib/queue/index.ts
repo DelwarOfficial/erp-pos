@@ -3,6 +3,7 @@
 
 import { Queue, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
+import { errorMeta, logger } from '@/lib/logging';
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 let connection: IORedis | null = null;
@@ -10,8 +11,8 @@ let connection: IORedis | null = null;
 export function getRedisConnection(): IORedis {
   if (!connection) {
     connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: true });
-    connection.on('error', (err) => console.error('[redis] Error:', err.message));
-    connection.on('connect', () => console.log('[redis] Connected'));
+    connection.on('error', (err) => logger.error('[redis] error', errorMeta(err)));
+    connection.on('connect', () => logger.info('[redis] connected'));
   }
   return connection;
 }

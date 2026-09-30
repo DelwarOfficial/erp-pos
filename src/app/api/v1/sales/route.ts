@@ -13,6 +13,7 @@ import { getCorrelationId } from '@/lib/http';
 import { providerRegistry } from '@/adapters';
 import { PostSaleSchema, postSaleInput } from '@/lib/sales/saleRequest';
 import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
+import { errorMeta, logger } from '@/lib/logging';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
         registerProviders();
         const riskProvider = providerRegistry.getRisk('internal_v2');
         if (!riskProvider) {
-          console.warn('[risk] InternalRiskProvider not registered — skipping assessment');
+          logger.warn('[risk] InternalRiskProvider not registered; assessment skipped');
           return;
         }
         const saleResult = result.body as { saleId: string; grandTotal: string; eventId: string; referenceNo: string };
@@ -138,9 +139,9 @@ export async function POST(req: NextRequest) {
           companyId: auth.companyId,
           requestEventId: saleResult.eventId,
         }));
-        console.log(`[risk] Assessment recorded for sale ${saleResult.referenceNo}`);
+        logger.info('[risk] assessment recorded', { sale_reference: saleResult.referenceNo });
       } catch (e) {
-        console.error('[risk] Assessment failed (sale still succeeded):', e instanceof Error ? `${e.message}\n${e.stack}` : JSON.stringify(e));
+        logger.error('[risk] assessment failed (the sale still succeeded)', errorMeta(e));
       }
     })();
 

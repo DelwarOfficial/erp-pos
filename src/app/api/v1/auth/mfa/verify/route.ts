@@ -15,6 +15,7 @@ import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
 import { buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
 import { checkDistributedRateLimit, resetDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
 import { issueRefreshToken } from '@/lib/auth/refreshToken';
+import { logger } from '@/lib/logging';
 
 const MfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
     resetRateLimit(rlKey);
     if (!(await resetDistributedRateLimit('mfa-verify', rlKey))) {
       // Session is already issued. Keep distributed quota until expiry; no retry/reissue.
-      console.warn('[auth] MFA rate-limit cleanup unavailable; quota retained until expiry');
+      logger.warn('[auth] MFA rate-limit cleanup unavailable; quota retained until expiry');
     }
     return mfaResponse;
   } catch (e) {

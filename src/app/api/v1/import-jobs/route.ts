@@ -7,6 +7,7 @@ import { DomainError } from '@/lib/errors/codes';
 import { getTemplate } from '@/lib/import-export/templates';
 import { validateImport } from '@/lib/import-export/importProcessor';
 import crypto from 'node:crypto';
+import { errorMeta, logger } from '@/lib/logging';
 
 // GET /api/v1/import-jobs — list import jobs for the current company
 export async function GET(req: NextRequest) {
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
         : `Validation found ${result.invalidRows} invalid rows out of ${result.totalRows}. Download errors for details.`,
     }, { status: 201 });
   } catch (e) {
-    console.error('[import-jobs] POST failed:', e);
+    logger.error('[import-jobs] POST failed', errorMeta(e));
     return NextResponse.json({ error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } }, { status: 500 });
   }
 }

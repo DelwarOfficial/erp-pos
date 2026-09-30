@@ -7,6 +7,7 @@ import { systemDb as db } from '@/lib/db';
 import { runReconciliation } from '@/lib/reconciliation/checks';
 import { enqueue, QUEUE_NAMES } from '@/lib/queue';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';
+import { errorMeta, logger } from '@/lib/logging';
 
 const SCHEDULE = [
   // High-frequency integrity checks (every hour)
@@ -29,7 +30,7 @@ export async function runScheduledReconciliation(): Promise<{ companies: number;
       const result = await runReconciliation(company.id, 'nightly', 'system:scheduler');
       totalFindings += result.findings.length;
     } catch (e) {
-      console.error(`[reconciliation-scheduler] Failed for company ${company.id}:`, e);
+      logger.error('[reconciliation-scheduler] failed for a company', { company_id: company.id, ...errorMeta(e) });
     }
   }
 
@@ -39,17 +40,17 @@ export async function runScheduledReconciliation(): Promise<{ companies: number;
     const alerts = await evaluateRiskAlerts();
     riskAlerts = alerts.length;
     if (riskAlerts > 0) {
-      console.log(`[reconciliation-scheduler] Triggered ${riskAlerts} risk alerts`);
+      logger.info('[reconciliation-scheduler] risk alerts triggered', { count: riskAlerts });
     }
   } catch (e) {
-    console.error('[reconciliation-scheduler] Risk alert evaluation failed:', e);
+    logger.error('[reconciliation-scheduler] risk alert evaluation failed', errorMeta(e));
   }
 
   return { companies: companies.length, totalFindings, riskAlerts };
 }
 
 export function enqueueReconciliationRun(): void {
-  enqueue(QUEUE_NAMES.RECONCILIATION, 'run-all', {}).catch(console.error);
+  enqueue(QUEUE_NAMES.RECONCILIATION, 'run-all', {}).catch(e => logger.error('[reconciliation-scheduler] enqueue failed', errorMeta(e)));
 }
 
 export { SCHEDULE };

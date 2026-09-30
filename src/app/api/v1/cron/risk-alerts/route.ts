@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';
+import { errorMeta, logger } from '@/lib/logging';
 
 // POST /api/v1/cron/risk-alerts
 // Token-authed endpoint for external cron services (cron-job.org, etc.)
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       alerts,
     });
   } catch (e) {
-    console.error('[cron:risk-alerts] Evaluation failed:', e);
+    logger.error('[cron:risk-alerts] evaluation failed', errorMeta(e));
     return NextResponse.json(
       { error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } },
       { status: 500 },

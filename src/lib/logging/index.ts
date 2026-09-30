@@ -38,8 +38,19 @@ function log(level: LogLevel, message: string, meta?: Record<string, unknown>): 
   if (ENV === 'production') process.stdout.write(JSON.stringify(entry) + '\n');
   else {
     const c = level === 'error' ? '\x1b[31m' : level === 'warn' ? '\x1b[33m' : level === 'info' ? '\x1b[36m' : '\x1b[90m';
-    process.stdout.write(`${c}[${entry.timestamp}] ${level.toUpperCase()}\x1b[0m ${message}\n`);
+    const extra = meta ? ` ${JSON.stringify(redact(meta))}` : '';
+    process.stdout.write(`${c}[${entry.timestamp}] ${level.toUpperCase()}\x1b[0m ${message}${extra}\n`);
   }
+}
+
+/**
+ * What to log about a caught error: its name and message. No stack trace in
+ * production (it reveals file paths and code structure to whoever reads the
+ * logs), and never the error object itself, which can carry request data.
+ */
+export function errorMeta(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { error: String(error) };
+  return { error: error.message, error_name: error.name, ...(ENV === 'production' ? {} : { stack: error.stack }) };
 }
 
 export const logger = {

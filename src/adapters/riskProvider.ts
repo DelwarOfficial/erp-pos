@@ -9,6 +9,7 @@
 
 import { db } from '@/lib/db';
 import type { RiskProvider } from './index';
+import { errorMeta, logger } from '@/lib/logging';
 
 // ── Env-configurable thresholds (parsed once at module load) ──
 function envInt(name: string, defaultValue: number): number {
@@ -95,7 +96,7 @@ export class InternalRiskProvider implements RiskProvider {
     try {
       result = await this.evaluate(params);
     } catch (e) {
-      console.error('[riskProvider] evaluate() threw:', e instanceof Error ? `${e.message}\n${e.stack}` : String(e));
+      logger.error('[riskProvider] evaluate() threw', errorMeta(e));
       throw e;
     }
     const providerReference = `risk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -123,7 +124,7 @@ export class InternalRiskProvider implements RiskProvider {
         });
       } catch (e) {
         // Don't fail the risk assessment if persistence fails
-        console.error('[riskProvider] Failed to persist assessment:', e instanceof Error ? `${e.message}\n${e.stack}` : JSON.stringify(e));
+        logger.error('[riskProvider] failed to persist assessment', errorMeta(e));
       }
     }
 

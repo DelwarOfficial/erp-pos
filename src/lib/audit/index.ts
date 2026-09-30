@@ -4,6 +4,7 @@
 
 import { db, systemDb } from '../db';
 import { getTenantContext } from '../db/transaction';
+import { logger } from '@/lib/logging';
 
 export interface AuditParams {
   action: string;
@@ -69,7 +70,7 @@ export async function recordSecurityEvent(params: SecurityEventParams): Promise<
   // tenant context, so we log the event with a null companyId marker.
   if (!companyId) {
     // Log to console instead of throwing — webhooks must not 500 on audit failures
-    console.warn(`[security] Event "${params.eventType}" logged without companyId (platform-level):`, params.metadata);
+    logger.warn('[security] platform-level event recorded without a company', { event_type: params.eventType });
     return;
   }
   const client = ctx ? db : systemDb;

@@ -15,13 +15,14 @@ import { runRetentionJob } from '@/lib/retention/job';
 import { sendOutboundMessage } from '@/domain/receivables/reminders';
 import { reminderContext, runDueReminderTick, SEND_CONCURRENCY, TICK_MS } from '@/workers/dueReminders';
 import { assertProductionSecurityConfig } from '@/lib/config/productionGuards';
+import { logger } from '@/lib/logging';
 import { initWorkerErrorTracking, captureJobFailure, flushWorkerErrorTracking } from '@/workers/sentry';
 import { clearWorkerHeartbeat, writeWorkerHeartbeat, WORKER_HEARTBEAT_INTERVAL_MS } from '@/lib/health/workerHeartbeat';
 
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '4', 10);
 
-function log(level: 'info' | 'warn' | 'error', msg: string, meta?: unknown) {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), level, source: 'worker', msg, meta }));
+function log(level: 'info' | 'warn' | 'error', msg: string, meta?: Record<string, unknown>) {
+  logger[level](msg, { source: 'worker', ...meta });
 }
 
 export async function startWorkers(): Promise<void> {

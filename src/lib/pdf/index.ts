@@ -9,6 +9,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { errorMeta, logger } from '@/lib/logging';
 
 // ── PDF generation via Puppeteer (renders HTML → PDF) ──
 // Falls back to returning the HTML string if Puppeteer is not installed.
@@ -98,7 +99,7 @@ html, body { margin: 0; padding: 0; font-family: 'Noto Sans Bengali', 'Hind Sili
       }
     }
   } catch (e) {
-    console.warn('[pdf] Puppeteer render failed, falling back to HTML:', e instanceof Error ? e.message : e);
+    logger.warn('[pdf] Puppeteer render failed; falling back to HTML', errorMeta(e));
   }
 
   // Fallback: return HTML — browser's print dialog can produce a PDF

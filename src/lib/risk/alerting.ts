@@ -11,6 +11,7 @@
 import { systemDb as db } from '@/lib/db';
 import { providerRegistry } from '@/adapters';
 import { recordSecurityEvent } from '@/lib/audit';
+import { errorMeta, logger } from '@/lib/logging';
 
 // Configurable thresholds (env vars)
 const ALERT_PRECISION_THRESHOLD = parseFloat(process.env.RISK_ALERT_PRECISION_THRESHOLD ?? '0.5');
@@ -146,7 +147,7 @@ export async function evaluateRiskAlerts(): Promise<RiskAlert[]> {
           companyId: alertCompanyId,
         });
       } catch (e) {
-        console.error('[risk-alerting] Failed to record security event:', e);
+        logger.error('[risk-alerting] failed to record security event', errorMeta(e));
       }
     }
 
@@ -184,12 +185,12 @@ export async function evaluateRiskAlerts(): Promise<RiskAlert[]> {
               <p>View the full report at <a href="${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/dashboard/risk-tuning">Risk Tuning Dashboard</a></p>
             `,
           });
-          console.log(`[risk-alerting] Email alert sent for ${alert.type} via ${emailProvider.code}`);
+          logger.info('[risk-alerting] email alert sent', { alert_type: alert.type, provider: emailProvider.code });
         } else {
-          console.warn(`[risk-alerting] No email provider registered — alert for ${alert.type} recorded as security event only`);
+          logger.warn('[risk-alerting] no email provider; alert recorded as a security event only', { alert_type: alert.type });
         }
       } catch (e) {
-        console.error(`[risk-alerting] Failed to send email alert for ${alert.type}:`, e);
+        logger.error('[risk-alerting] email alert failed', { alert_type: alert.type, ...errorMeta(e) });
       }
     }
 
@@ -218,16 +219,16 @@ export async function evaluateRiskAlerts(): Promise<RiskAlert[]> {
             url: dashboardUrl,
           });
           if (result.delivered) {
-            console.log(`[risk-alerting] Notification sent for ${alert.type} via ${notifier.code}`);
+            logger.info('[risk-alerting] notification sent', { alert_type: alert.type, provider: notifier.code });
           } else {
-            console.warn(`[risk-alerting] Notification failed for ${alert.type} via ${notifier.code}: ${result.error}`);
+            logger.warn('[risk-alerting] notification failed', { alert_type: alert.type, provider: notifier.code, error: result.error });
           }
         } catch (e) {
-          console.error(`[risk-alerting] Notification error for ${alert.type} via ${notifier.code}:`, e);
+          logger.error('[risk-alerting] notification error', { alert_type: alert.type, provider: notifier.code, ...errorMeta(e) });
         }
       }
     } catch (e) {
-      console.error(`[risk-alerting] Failed to send notifications for ${alert.type}:`, e);
+      logger.error('[risk-alerting] notifications failed', { alert_type: alert.type, ...errorMeta(e) });
     }
   }
 

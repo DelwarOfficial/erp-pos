@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { systemDb as db } from '@/lib/db';
 import { recordSecurityEvent } from '@/lib/audit';
+import { errorMeta, logger } from '@/lib/logging';
 
 // POST /api/v1/webhooks/courier/[provider]
 // Receives courier status callbacks (Pathao, RedX) and updates the delivery_order.
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
         companyId: undefined as unknown as string, // platform-level event
       });
     } catch (e) {
-      console.warn('[webhook/courier] Failed to record security event:', e instanceof Error ? e.message : e);
+      logger.warn('[webhook/courier] failed to record security event', errorMeta(e));
     }
     return NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 });
   }
