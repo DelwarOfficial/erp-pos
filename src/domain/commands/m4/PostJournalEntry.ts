@@ -36,7 +36,8 @@ export interface PostJournalEntryInput {
   sourceId: string;
   description: string;
   currencyCode: string;
-  exchangeRate: number;
+  /** Transaction-to-base rate. A string or Decimal keeps it exact (F-31). */
+  exchangeRate: number | string | Prisma.Decimal;
   createdBy: string;
   reversalOfEntryId?: string;
   /**
@@ -70,7 +71,9 @@ export async function postJournalEntry(
   }
 
   // 1. Validate each line: exactly one of debit > 0 or credit > 0
-  if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0 || !Number.isFinite(input.entryDate.getTime())) {
+  let exchangeRate: Prisma.Decimal;
+  try { exchangeRate = new Prisma.Decimal(input.exchangeRate); } catch { exchangeRate = new Prisma.Decimal(NaN); }
+  if (!exchangeRate.isFinite() || exchangeRate.lte(0) || !Number.isFinite(input.entryDate.getTime())) {
     throw new DomainError('VALIDATION_FAILED', 'Valid entry date and positive exchange rate required', {}, 400);
   }
   let totalDebit = new Prisma.Decimal(0);
@@ -107,6 +110,18 @@ export async function postJournalEntry(
   if (totalDebit.isZero()) {
     throw new DomainError('VALIDATION_FAILED', 'Empty journal entry (zero debit/credit)', {}, 400);
   }
+
+  // 2b. Currency scale (F-32). Base amounts are stored to the paisa: callers
+  // multiply by exchange rates and moving-average costs, which leave more
+  // decimals than a currency has. Each line is rounded half-up; the few paisa
+  // this can move between the two sides go to the policy's rounding account,
+  // or, without one, onto the largest line of the short side.
+  const lines = await roundToCurrencyScale(tx, input.companyId, input.lines);
+  if (lines.length < 2) {
+    throw new DomainError('VALIDATION_FAILED', 'Journal entry amounts are below the smallest currency unit', {}, 400);
+  }
+  totalDebit = lines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0));
+  totalCredit = lines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
 
   // 3. Validate fiscal period is open
   const entryDateOnly = new Date(input.entryDate);
@@ -180,7 +195,7 @@ export async function postJournalEntry(
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       currencyCode: input.currencyCode,
-      exchangeRate: input.exchangeRate,
+      exchangeRate,
       description: input.description,
       status: 'posted',
       // Declared up front so the database can verify the lines against it:
@@ -188,7 +203,7 @@ export async function postJournalEntry(
       // lines table compares the rows to it once lineCount of them exist.
       totalDebit,
       totalCredit,
-      lineCount: input.lines.length,
+      lineCount: lines.length,
       createdBy: input.createdBy,
       postedBy: input.createdBy,
       postedAt: new Date(),
@@ -198,7 +213,7 @@ export async function postJournalEntry(
 
   // 8. Create journal lines
   let lineNo = 1;
-  for (const line of input.lines) {
+  for (const line of lines) {
     await tx.journalLine.create({
       data: {
         companyId: input.companyId,
@@ -231,7 +246,7 @@ export async function postJournalEntry(
         entry_no: entryNo,
         total_debit: totalDebit,
         total_credit: totalCredit,
-        line_count: input.lines.length,
+        line_count: lines.length,
         source: `${input.sourceType}/${input.sourceId}`,
       }),
     },
@@ -316,3 +331,35 @@ export async function reverseJournalEntry(
 
   return result;
 }
+
+const MONEY_SCALE = 2;
+
+/** Lines rounded to currency scale and still balanced; see step 2b. */
+async function roundToCurrencyScale(tx: Prisma.TransactionClient, companyId: string, input: JournalLineInput[]) {
+  const lines = input.map(line => ({
+    ...line,
+    debit: new Prisma.Decimal(line.debit).toDecimalPlaces(MONEY_SCALE, Prisma.Decimal.ROUND_HALF_UP),
+    credit: new Prisma.Decimal(line.credit).toDecimalPlaces(MONEY_SCALE, Prisma.Decimal.ROUND_HALF_UP),
+  }));
+  const debit = lines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0));
+  const credit = lines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
+  const residual = debit.minus(credit);
+  if (residual.isZero()) return lines.filter(line => !line.debit.isZero() || !line.credit.isZero());
+  // Half-up rounding moves each line by at most half a paisa.
+  if (residual.abs().gt(new Prisma.Decimal(lines.length).mul('0.005'))) {
+    throw new DomainError('VALIDATION_FAILED', 'Journal lines do not balance at currency scale', { residual: residual.toString() }, 400);
+  }
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId }, select: { roundingAccountId: true } });
+  const amount = residual.abs();
+  if (policy?.roundingAccountId) {
+    lines.push({ chartOfAccountId: policy.roundingAccountId, debit: residual.isNegative() ? amount : new Prisma.Decimal(0),
+      credit: residual.isNegative() ? new Prisma.Decimal(0) : amount, memo: 'Rounding to currency scale' });
+  } else {
+    const side = residual.isNegative() ? 'debit' : 'credit';
+    const largest = lines.reduce((best, line) => (line[side].gt(best[side]) ? line : best));
+    largest[side] = largest[side].plus(amount);
+  }
+  // A line rounded to zero on both sides carries nothing.
+  return lines.filter(line => !line.debit.isZero() || !line.credit.isZero());
+}
+
