@@ -20,7 +20,7 @@ const T0 = new Date('2000-01-01T00:00:00Z');
 const at = (ms: number) => new Date(T0.getTime() + ms);
 
 async function endpoint(url: string) {
-  return db.webhookEndpoint.create({ data: { companyId: A, url, secretCiphertext: encryptString('whsec_test').ciphertext, subscribedEvents: '["sale.posted"]', createdBy: fx.user.id } });
+  return db.webhookEndpoint.create({ data: { companyId: A, url, secretCiphertext: new Uint8Array(encryptString('whsec_test').ciphertext), subscribedEvents: '["sale.posted"]', createdBy: fx.user.id } });
 }
 async function event() {
   const business = await db.businessEvent.create({ data: { companyId: A, eventType: 'sale.posted', sourceType: 'sale', sourceId: randomUUID(), correlationId: randomUUID() } });

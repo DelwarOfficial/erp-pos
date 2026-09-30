@@ -18,6 +18,7 @@
 // the transaction, and RLS policies would enforce row-level isolation
 // regardless of application bugs. See docs/adr/0002-rls-via-middleware.md.
 
+import { DomainError } from '@/lib/errors/codes';
 import { PrismaClient, Prisma } from '@prisma/client';
 export type TransactionClient = Prisma.TransactionClient;
 import { randomUUID } from 'node:crypto';
@@ -28,6 +29,19 @@ export type { TenantContext } from './transactionContext';
 export { getTenantContext, requireTenantContext } from './transactionContext';
 
 export type UnitOfWork<T> = (tx: TransactionClient) => Promise<T>;
+
+/**
+ * MariaDB aborts one of two conflicting transactions: a deadlock (1213), or
+ * "record has changed since last read" (1020) under SERIALIZABLE. Prisma
+ * reports P2034 when it recognises it.
+ */
+export function isWriteConflict(error: unknown): boolean {
+  const e = error as { code?: string; message?: string };
+  return e?.code === 'P2034' || /deadlock|1213|write conflict|could not serialize|1020|Record has changed since last read/i.test(String(e?.message ?? ''));
+}
+
+/** Attempts in all, for a unit of work aborted by a write conflict (F-35). */
+export const WRITE_CONFLICT_ATTEMPTS = 3;
 
 /**
  * Run a unit of work inside a single Prisma transaction with the given
@@ -46,6 +60,30 @@ export async function withTenant<T>(
   ctx: TenantContext,
   work: UnitOfWork<T>,
   // timeout: only for a unit of work measured to need longer, and say why there.
+  options?: { isolationLevel?: 'Serializable' | 'ReadCommitted'; timeout?: number },
+): Promise<T> {
+  // F-35: every unit of work runs SERIALIZABLE, so under contention MariaDB
+  // aborts one side. The whole transaction rolled back, so it is run again
+  // (after a short random pause), up to WRITE_CONFLICT_ATTEMPTS times. Units
+  // of work only touch the database -- provider calls happen outside
+  // transactions -- so a rerun repeats nothing external. A conflict that
+  // persists is reported as a retryable 409, not a 500.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runOnce(ctx, work, options);
+    } catch (error) {
+      if (!isWriteConflict(error)) throw error;
+      if (attempt >= WRITE_CONFLICT_ATTEMPTS) {
+        throw new DomainError('CONCURRENT_MODIFICATION', 'The data was changed by another request at the same moment. Please retry.', {}, 409);
+      }
+      await new Promise(resolve => setTimeout(resolve, 20 + Math.floor(Math.random() * 60) * attempt));
+    }
+  }
+}
+
+async function runOnce<T>(
+  ctx: TenantContext,
+  work: UnitOfWork<T>,
   options?: { isolationLevel?: 'Serializable' | 'ReadCommitted'; timeout?: number },
 ): Promise<T> {
   return tenantStorage.run(ctx, async (): Promise<T> => {

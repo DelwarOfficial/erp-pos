@@ -22,7 +22,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
 import { db } from '@/lib/db';
-import { withTenant, runInTenantContext, type TenantContext } from '@/lib/db/transaction';
+import { isWriteConflict, withTenant, runInTenantContext, type TenantContext } from '@/lib/db/transaction';
 import { encryptString, decryptString, sha256 } from '@/lib/crypto';
 import { describeSmsAccount, loadSmsGateway } from '@/lib/sms/credentials';
 import { installmentBalances, OPEN_SALE_STATUSES } from './balances';
@@ -55,17 +55,16 @@ async function setup(tx: Prisma.TransactionClient, companyId: string): Promise<S
 }
 
 /**
- * MariaDB aborts one of two transactions that conflict (deadlock, or a
- * serialization failure under SERIALIZABLE). In this engine the other run has
- * then done, or will do, the same idempotent work, so the loser gives way.
+ * A write conflict that outlasts withTenant's retries: in this engine the
+ * other run has then done, or will do, the same idempotent work, so the loser
+ * gives way.
  */
-function isWriteConflict(error: unknown): boolean {
-  const e = error as { code?: string; message?: string };
-  return e?.code === 'P2034' || /deadlock|1213|write conflict|could not serialize|1020/i.test(String(e?.message ?? ''));
+function isConflict(error: unknown): boolean {
+  return isWriteConflict(error) || (error instanceof DomainError && error.code === 'CONCURRENT_MODIFICATION');
 }
 
 async function yieldOnConflict<T>(fallback: T, work: () => Promise<T>): Promise<T> {
-  try { return await work(); } catch (error) { if (isWriteConflict(error)) return fallback; throw error; }
+  try { return await work(); } catch (error) { if (isConflict(error)) return fallback; throw error; }
 }
 
 // ── plan ────────────────────────────────────────────────────────────────────
@@ -241,7 +240,7 @@ export async function sendOutboundMessage(ctx: TenantContext, messageId: string,
   } catch (error) {
     // Two workers claiming at once: MariaDB aborts one of the conflicting
     // transactions (deadlock / serialization failure). The other holds the claim.
-    if (isWriteConflict(error)) return 'not_claimed';
+    if (isConflict(error)) return 'not_claimed';
     throw error;
   }
   if (claimed.count !== 1) return 'not_claimed';
