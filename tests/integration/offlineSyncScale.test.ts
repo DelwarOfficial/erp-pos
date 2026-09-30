@@ -1,9 +1,9 @@
-// F-71 regression: the largest offline batch the API accepts (200 commands; it was 500),
+// F-71 regression: the largest offline batch the API accepts (100 commands; it was 500, then 200),
 // applied in the route's own transaction (withTenant: Serializable, 30 s).
 //
 // Each command was checked for a duplicate sequence with its own query and
 // recorded with its own insert, inside the transaction that also posts every
-// sale. This runs 200 real offline cash sales through syncOfflineBatch on the
+// sale. This runs 100 real offline cash sales through syncOfflineBatch on the
 // disposable MariaDB, replays the batch to check duplicate detection, and rolls
 // everything back.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

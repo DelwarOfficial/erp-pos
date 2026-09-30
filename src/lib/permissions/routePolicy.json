@@ -1967,5 +1967,21 @@
       "tax.manage"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/inventory-reasons/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-counts/[id]/actions/route.ts",
+    "method": "POST",
+    "permissions": [
+      "stock_count.post"
+    ],
+    "exception": null
   }
 ]

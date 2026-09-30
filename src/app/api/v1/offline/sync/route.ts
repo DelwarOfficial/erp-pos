@@ -24,9 +24,7 @@ const OfflineCommandSchema = z.object({
 const SyncSchema = z.object({
   device_id: z.string().uuid(),
   // A batch is applied in one Serializable transaction with a 30-second
-  // timeout. 500 real cash sales took over 30 s on an idle local MariaDB and
-  // rolled back entirely; 200 take well under half of it. A terminal with more
-  // sends several batches -- duplicate detection makes a resend safe.
+  // timeout; see OFFLINE_SYNC_MAX_COMMANDS for how the cap was chosen.
   commands: z.array(OfflineCommandSchema).min(1).max(OFFLINE_SYNC_MAX_COMMANDS),
 });
 
