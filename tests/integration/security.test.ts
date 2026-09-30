@@ -107,7 +107,7 @@ describe('Security: CSP Headers', () => {
 
   it('production CSP lets only this origin frame the app (F-68)', () => {
     const config = readFileSync('next.config.ts', 'utf8');
-    const csp = config.match(/Content-Security-Policy.*value: (["`])(.+?)/)![2]
+    const csp = config.match(/Content-Security-Policy.*value: (["`])(.+?)\1/)![2]
       .replace(/\$\{process\.env\.NODE_ENV === 'development' \?[^}]*\}/g, '');
     expect(csp).toMatch(/frame-ancestors 'self';/);
   });
