@@ -37,6 +37,10 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get('search')?.trim();
     if (search) where.OR = [{ referenceNo: { contains: search } }, { customer: { name: { contains: search } } }];
     if (status) where.saleStatus = status;
+    const branchId = url.searchParams.get('branch_id'); const customerId = url.searchParams.get('customer_id');
+    if (branchId) where.branchId = z.string().uuid().parse(branchId);
+    if (customerId) where.customerId = customerId === 'walk-in' ? null : z.string().uuid().parse(customerId);
+    if (url.searchParams.get('service_only') === 'true') { where.items = { some: {}, every: { product: { productType: 'service' } } }; where.serviceRequestsServiceSale = { none: {} }; }
     if (from || to) {
       where.businessDate = {};
       if (from) (where.businessDate as Record<string, unknown>).gte = from;

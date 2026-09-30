@@ -16,7 +16,7 @@ import { nextDocumentNumber } from '@/lib/numbering';
 
 export const ALLOWED_SERVICE_TRANSITIONS: Record<string, string[]> = {
   received: ['diagnosing', 'cancelled'],
-  diagnosing: ['awaiting_customer_approval', 'received', 'cancelled'],
+  diagnosing: ['awaiting_customer_approval', 'approved', 'received', 'cancelled'],
   awaiting_customer_approval: ['approved', 'received', 'cancelled'],
   approved: ['in_repair', 'cancelled'],
   in_repair: ['awaiting_parts', 'ready', 'unrepairable'],

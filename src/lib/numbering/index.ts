@@ -9,9 +9,8 @@
 // inside the parent Prisma transaction. Concurrent transactions serialize
 // on the row update.
 
-import { Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { systemDb } from '@/lib/db';
 
 export interface DocumentNumberParams {
   companyId: string;
@@ -172,6 +171,23 @@ export async function nextDocumentNumber(
 const JOURNAL_NUMBER_BLOCK = Math.max(1, parseInt(process.env.JOURNAL_NUMBER_BLOCK ?? '20', 10) || 20);
 /** A reservation that waits longer than this is abandoned for the in-transaction path. */
 const JOURNAL_BLOCK_LOCK_WAIT_SECONDS = 1;
+/**
+ * Reservations use their own two-connection pool. The postings waiting for a
+ * block each hold a connection from the main pool; if the reservation needed
+ * one from the same pool, a burst of postings could take every connection and
+ * the reservation would never start.
+ */
+let sequencePool: PrismaClient | undefined;
+function sequenceDb(): PrismaClient {
+  if (!sequencePool) {
+    const url = new URL(process.env.DATABASE_URL ?? '');
+    url.searchParams.set('connection_limit', '2');
+    url.searchParams.set('pool_timeout', '5');
+    sequencePool = new PrismaClient({ datasources: { db: { url: url.toString() } }, log: [] });
+  }
+  return sequencePool;
+}
+
 const journalBlocks = new Map<string, { sequenceId: string; next: bigint; end: bigint }>();
 const journalRefills = new Map<string, Promise<void>>();
 /** After a failed reservation, use the in-transaction path for a while instead of waiting again. */
@@ -199,7 +215,7 @@ export async function nextJournalNumber(
     // One refill per key at a time; concurrent callers wait for it.
     let refill = journalRefills.get(key);
     if (!refill) {
-      refill = systemDb.$transaction(own => reserveMariaDbRange(own, sequence, JOURNAL_NUMBER_BLOCK, JOURNAL_BLOCK_LOCK_WAIT_SECONDS))
+      refill = sequenceDb().$transaction(own => reserveMariaDbRange(own, sequence, JOURNAL_NUMBER_BLOCK, JOURNAL_BLOCK_LOCK_WAIT_SECONDS))
         .then(range => { journalBlocks.set(key, { sequenceId: range.sequenceId, next: range.rangeStart, end: range.rangeEnd }); })
         .finally(() => journalRefills.delete(key));
       journalRefills.set(key, refill);

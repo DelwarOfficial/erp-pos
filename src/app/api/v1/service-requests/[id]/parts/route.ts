@@ -8,6 +8,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { postServicePartConsumption } from '@/domain/commands/m5/Service';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 
 const ConsumePartsSchema = z.object({
   items: z.array(z.object({
@@ -15,6 +16,7 @@ const ConsumePartsSchema = z.object({
     quantity: z.number().positive(),
     unit_price: z.number().min(0),
     warranty_covered: z.boolean().default(false),
+    serial_numbers: z.array(z.string().trim().min(1).max(255)).optional(),
   })).min(1),
 });
 
@@ -23,6 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'service.complete');
+    await runInTenantContext(auth.ctx, async () => requireFeatureFlag('service_warranty_enabled'));
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ConsumePartsSchema.parse(await req.json());
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               consumedBy: auth.userId,
               items: body.items.map(i => ({
                 productId: i.product_id, quantity: i.quantity,
-                unitPrice: i.unit_price, warrantyCovered: i.warranty_covered,
+                unitPrice: i.unit_price, warrantyCovered: i.warranty_covered, serialNumbers: i.serial_numbers,
               })),
             }, correlationId);
             return { status: 200, body: result, resourceType: 'service_request', resourceId: id };
