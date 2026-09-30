@@ -22,10 +22,6 @@ export type MovementType =
   | 'opening_stock'
   | 'reversal';
 
-const INBOUND_TYPES: MovementType[] = [
-  'purchase_receive', 'sale_return_receive', 'transfer_receive',
-  'adjustment_in', 'opening_stock', 'stock_count_gain',
-];
 const OUTBOUND_TYPES: MovementType[] = [
   'sale_issue', 'transfer_dispatch', 'adjustment_out',
   'purchase_return_issue', 'stock_count_loss',
@@ -90,54 +86,38 @@ export function planStockMovement(stock: StockRowState, params: PostStockMovemen
 
   const stockBucket: StockBucket = params.stockBucket ?? 'on_hand';
 
-  const qtyOnHandBefore = parseFloat(stock.qtyOnHand.toString());
-  const macBefore = parseFloat(stock.movingAverageCost.toString());
-  const qtyDeltaAbs = Math.abs(qtyDelta);
+  // Quantities in Decimal (F-33): every bucket is checked here, so a movement
+  // that would drive one negative is a 409 naming the bucket, not a raw CHECK
+  // violation from the database.
+  const delta = new Prisma.Decimal(params.qtyDelta);
+  const bucketBefore = { on_hand: stock.qtyOnHand, damaged: stock.qtyDamaged, in_transit: stock.qtyInTransitOut }[stockBucket];
+  const bucketAfter = new Prisma.Decimal(bucketBefore).plus(delta);
+  const newQtyOnHand = stockBucket === 'on_hand' ? bucketAfter : new Prisma.Decimal(stock.qtyOnHand);
+  const newQtyDamaged = stockBucket === 'damaged' ? bucketAfter : new Prisma.Decimal(stock.qtyDamaged);
+  const newQtyInTransit = stockBucket === 'in_transit' ? bucketAfter : new Prisma.Decimal(stock.qtyInTransitOut);
 
-  let newQtyOnHand = qtyOnHandBefore;
-  let newQtyDamaged = parseFloat(stock.qtyDamaged.toString());
-  let newQtyInTransit = parseFloat(stock.qtyInTransitOut.toString());
-
-  if (stockBucket === 'on_hand') {
-    newQtyOnHand = qtyOnHandBefore + qtyDelta;
-  } else if (stockBucket === 'damaged') {
-    newQtyDamaged = newQtyDamaged + qtyDelta;
-  } else if (stockBucket === 'in_transit') {
-    newQtyInTransit = newQtyInTransit + qtyDelta;
-  }
-
-  if (stockBucket === 'on_hand' && newQtyOnHand < 0) {
+  if (bucketAfter.isNegative()) {
+    const label = { on_hand: '', damaged: 'damaged ', in_transit: 'in-transit ' }[stockBucket];
     throw new DomainError(
       'INVENTORY_INSUFFICIENT',
-      `Insufficient stock: on_hand=${qtyOnHandBefore}, requested=${qtyDeltaAbs}, available=${qtyOnHandBefore}`,
+      `Insufficient ${label}stock: ${bucketBefore.toString()} available, ${delta.abs().toString()} requested`,
       {
         warehouse_id: params.warehouseId,
         product_id: params.productId,
-        on_hand: qtyOnHandBefore,
-        requested: qtyDeltaAbs,
-        available: qtyOnHandBefore,
+        bucket: stockBucket,
+        available: bucketBefore.toString(),
+        requested: delta.abs().toString(),
       },
       409,
     );
   }
-  if (stockBucket === 'on_hand' && qtyDelta < 0 && stock.qtyReserved && new Prisma.Decimal(newQtyOnHand).lt(stock.qtyReserved)) {
+  if (stockBucket === 'on_hand' && delta.isNegative() && stock.qtyReserved && newQtyOnHand.lt(stock.qtyReserved)) {
     throw new DomainError('INVENTORY_INSUFFICIENT', 'Stock is reserved for another operation', { reserved: stock.qtyReserved.toString() }, 409);
   }
-  if (newQtyDamaged < 0 || newQtyInTransit < 0) throw new DomainError('INVENTORY_INSUFFICIENT', 'Movement exceeds the available bucket quantity', {}, 409);
 
-  let macAfter = macBefore;
-  const isInbound = INBOUND_TYPES.includes(params.movementType);
   const isOutbound = OUTBOUND_TYPES.includes(params.movementType);
 
-  if (isInbound && stockBucket === 'on_hand') {
-    if (qtyOnHandBefore + qtyDeltaAbs > 0) {
-      const oldValue = qtyOnHandBefore * macBefore;
-      const inboundValue = qtyDeltaAbs * unitCost;
-      macAfter = (oldValue + inboundValue) / (qtyOnHandBefore + qtyDeltaAbs);
-    }
-  }
-
-  const totalCostDelta = qtyDelta * (isOutbound ? macBefore : unitCost);
+  const totalCostDelta = delta.mul(isOutbound ? stock.movingAverageCost : new Prisma.Decimal(params.unitCost));
   const projection = stockBucket === 'on_hand' ? projectStockValue({
     quantity: stock.qtyOnHand.toString(), averageCost: stock.movingAverageCost.toString(),
     quantityDelta: String(params.qtyDelta),
@@ -152,7 +132,7 @@ export function planStockMovement(stock: StockRowState, params: PostStockMovemen
       productId: params.productId,
       stockBucket,
       movementType: params.movementType,
-      qtyDelta,
+      qtyDelta: delta,
       unitCost: isOutbound ? stock.movingAverageCost : params.unitCost,
       totalCostDelta: projection?.valueDelta ?? totalCostDelta,
       referenceType: params.referenceType,
@@ -168,14 +148,15 @@ export function planStockMovement(stock: StockRowState, params: PostStockMovemen
       qtyOnHand: projection?.quantity ?? newQtyOnHand,
       qtyDamaged: newQtyDamaged,
       qtyInTransitOut: newQtyInTransit,
-      movingAverageCost: projection?.averageCost ?? macAfter,
+      // On hand, the projection revalues the average cost; the other buckets leave it.
+      movingAverageCost: projection?.averageCost ?? stock.movingAverageCost,
   };
   return {
     movementData, stockData,
-    qtyOnHandBefore: qtyOnHandBefore.toString(),
+    qtyOnHandBefore: stock.qtyOnHand.toString(),
     qtyOnHandAfter: String(projection?.quantity ?? newQtyOnHand),
-    movingAverageCostBefore: macBefore.toString(),
-    movingAverageCostAfter: String(projection?.averageCost ?? macAfter),
+    movingAverageCostBefore: stock.movingAverageCost.toString(),
+    movingAverageCostAfter: String(stockData.movingAverageCost),
   };
 }
 
