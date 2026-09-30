@@ -14,9 +14,20 @@ const MAX_RESPONSE_EXCERPT = 500;
 let isRunning = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
-export async function processOutboxBatch(): Promise<number> {
+/** How long a claimed event is hidden from other runners while it is delivered. */
+export const OUTBOX_LEASE_MS = 5 * 60_000;
+
+/**
+ * Deliver due events. Each event is first claimed with a conditional update
+ * that only one runner can win (F-45: several runners used to deliver the
+ * same event at once); a crashed runner's claim expires after the lease and
+ * the event is retried. An endpoint that already received the event is not
+ * sent it again, and the event is published only when every subscribed
+ * endpoint has it.
+ */
+export async function processOutboxBatch(now = new Date()): Promise<number> {
   const pendingEvents = await db.outboxEvent.findMany({
-    where: { status: 'pending', nextAttemptAt: { lte: new Date() } },
+    where: { status: 'pending', nextAttemptAt: { lte: now } },
     take: 50, orderBy: { nextAttemptAt: 'asc' },
     include: { company: { include: { webhookEndpoints: { where: { status: 'active' } } } } },
   });
@@ -24,6 +35,12 @@ export async function processOutboxBatch(): Promise<number> {
   let deliveryCount = 0;
 
   for (const event of pendingEvents) {
+    const claimed = await db.outboxEvent.updateMany({
+      where: { id: event.id, status: 'pending', nextAttemptAt: event.nextAttemptAt },
+      data: { nextAttemptAt: new Date(now.getTime() + OUTBOX_LEASE_MS) },
+    });
+    if (claimed.count !== 1) continue; // another runner has it
+
     const endpoints = event.company.webhookEndpoints.filter(ep => {
       const subscribed = JSON.parse(ep.subscribedEvents) as string[];
       return subscribed.includes(event.eventName) || subscribed.includes('*');
@@ -34,41 +51,52 @@ export async function processOutboxBatch(): Promise<number> {
       continue;
     }
 
+    const failures: string[] = [];
     for (const endpoint of endpoints) {
-      await deliverWebhook(event, endpoint);
-      deliveryCount++;
+      const outcome = await deliverWebhook(event, endpoint);
+      if (outcome === 'sent' || outcome === 'failed') deliveryCount++;
+      if (outcome === 'failed' || outcome === 'unusable') failures.push(endpoint.id);
     }
 
-    const stillPending = await db.outboxEvent.findUnique({ where: { id: event.id } });
-    if (stillPending && stillPending.status === 'pending' && stillPending.attemptCount >= stillPending.maxAttempts) {
-      await db.outboxEvent.update({
-        where: { id: event.id },
-        data: { status: 'dead_letter', deadLetteredAt: new Date(), deadLetterReason: `Max attempts (${stillPending.maxAttempts}) exceeded` },
+    if (failures.length === 0) {
+      await db.outboxEvent.updateMany({ where: { id: event.id, status: 'pending' },
+        data: { status: 'published', publishedAt: new Date(), lastError: null } });
+      continue;
+    }
+    const attemptCount = event.attemptCount + 1;
+    if (attemptCount >= event.maxAttempts) {
+      await db.outboxEvent.updateMany({
+        where: { id: event.id, status: 'pending' },
+        data: { status: 'dead_letter', attemptCount, deadLetteredAt: new Date(), deadLetterReason: `Max attempts (${event.maxAttempts}) exceeded` },
       });
       await recordSecurityEvent({
         eventType: 'outbox_dead_letter', severity: 'critical',
-        metadata: { outbox_event_id: event.id, event_name: event.eventName, attempt_count: stillPending.attemptCount },
+        metadata: { outbox_event_id: event.id, event_name: event.eventName, attempt_count: attemptCount, failed_endpoints: failures.length },
         companyId: event.companyId,
       });
+    } else {
+      await db.outboxEvent.updateMany({ where: { id: event.id, status: 'pending' },
+        data: { attemptCount, lastError: `${failures.length} endpoint(s) not delivered`, nextAttemptAt: computeBackoff(attemptCount) } });
     }
   }
   return deliveryCount;
 }
 
-async function deliverWebhook(event: any, endpoint: any): Promise<void> {
-  const timestamp = getTimestampHeader();
-  const deliveryId = generateDeliveryId();
+type DeliveryOutcome = 'sent' | 'already_delivered' | 'failed' | 'unusable';
 
-  let secret: string;
-  try { secret = decryptString(endpoint.secretCiphertext, 1); }
-  catch { console.error(`Failed to decrypt webhook secret for endpoint ${endpoint.id}`); return; }
-
-  const signature = signWebhook(secret, timestamp, event.payload);
+async function deliverWebhook(event: any, endpoint: any): Promise<DeliveryOutcome> {
   const existing = await db.webhookDelivery.findUnique({
     where: { webhookEndpointId_outboxEventId: { webhookEndpointId: endpoint.id, outboxEventId: event.id } },
   });
+  if (existing?.status === 'delivered') return 'already_delivered';
 
-  let deliveryIdToUse = existing?.deliveryId ?? deliveryId;
+  const timestamp = getTimestampHeader();
+  let secret: string;
+  try { secret = decryptString(endpoint.secretCiphertext, 1); }
+  catch { console.error(`Failed to decrypt webhook secret for endpoint ${endpoint.id}`); return 'unusable'; }
+
+  const signature = signWebhook(secret, timestamp, event.payload);
+  const deliveryIdToUse = existing?.deliveryId ?? generateDeliveryId();
   if (!existing) {
     await db.webhookDelivery.create({
       data: { companyId: event.companyId, webhookEndpointId: endpoint.id, outboxEventId: event.id,
@@ -87,31 +115,20 @@ async function deliverWebhook(event: any, endpoint: any): Promise<void> {
       timeoutMs: HTTP_TIMEOUT_MS,
       maxBodyBytes: MAX_RESPONSE_EXCERPT,
     });
-    const excerpt = response.body;
-
     await db.webhookDelivery.update({
       where: { deliveryId: deliveryIdToUse },
       data: { status: response.ok ? 'delivered' : 'failed', attemptCount: { increment: 1 },
         lastAttemptedAt: new Date(), responseStatus: response.status,
-        responseBodyExcerpt: excerpt, lastError: response.ok ? null : `HTTP ${response.status}`,
+        responseBodyExcerpt: response.body, lastError: response.ok ? null : `HTTP ${response.status}`,
         nextAttemptAt: response.ok ? new Date() : computeBackoff(event.attemptCount + 1) },
     });
-
-    if (response.ok) {
-      await db.outboxEvent.updateMany({ where: { id: event.id, status: 'pending' },
-        data: { status: 'published', publishedAt: new Date() } });
-    } else {
-      await db.outboxEvent.update({ where: { id: event.id },
-        data: { attemptCount: { increment: 1 }, lastError: `HTTP ${response.status}`,
-          nextAttemptAt: computeBackoff(event.attemptCount + 1) } });
-    }
+    return response.ok ? 'sent' : 'failed';
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : 'Network error';
     await db.webhookDelivery.update({ where: { deliveryId: deliveryIdToUse },
       data: { status: 'failed', attemptCount: { increment: 1 }, lastAttemptedAt: new Date(),
         lastError: errorMsg, nextAttemptAt: computeBackoff(event.attemptCount + 1) } });
-    await db.outboxEvent.update({ where: { id: event.id },
-      data: { attemptCount: { increment: 1 }, lastError: errorMsg, nextAttemptAt: computeBackoff(event.attemptCount + 1) } });
+    return 'failed';
   }
 }
 
