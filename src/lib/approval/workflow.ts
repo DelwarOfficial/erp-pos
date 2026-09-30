@@ -5,6 +5,7 @@
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors/codes';
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 
 export interface CreateApprovalRequestParams {
   companyId: string;
@@ -55,8 +56,9 @@ export async function resolveApprovalRequest(params: {
   resolvedBy: string;
   decision: 'approved' | 'rejected';
   reason?: string;
-}) {
-  const request = await db.approvalRequest.findFirst({
+}, tx?: Prisma.TransactionClient) {
+  const client = tx ?? db;
+  const request = await client.approvalRequest.findFirst({
     where: { id: params.approvalRequestId, companyId: params.companyId },
   });
   if (!request) throw new DomainError('RESOURCE_NOT_FOUND', 'Approval request not found', {}, 404);
@@ -67,7 +69,7 @@ export async function resolveApprovalRequest(params: {
     throw new DomainError('SELF_APPROVAL_PROHIBITED', 'You cannot approve/reject your own request', { requested_by: request.requestedBy }, 403);
   }
 
-  return db.approvalRequest.update({
+  return client.approvalRequest.update({
     where: { id: params.approvalRequestId },
     data: {
       status: params.decision,

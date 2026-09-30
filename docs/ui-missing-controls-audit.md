@@ -14,20 +14,26 @@ Date: 2026-09-28. Scope: all 41 dashboard route entrypoints, shared navigation, 
 
 ## High-priority missing workflows
 
-### Implementation progress — 2026-09-29
+### Implementation progress — 2026-09-30
 
 The following changes are **implemented, verification pending** unless explicitly stated otherwise. They are not yet a completed audit. Remaining rows below remain authoritative; none is waived by this progress note.
 
 | Work item | Current evidence / next gate |
 |---|---|
-| Purchase branch/warehouse identity | Form now uses selected warehouse's `branch.id` and warehouse `id`; searchable supplier/warehouse/product controls. Real browser creation still pending. |
-| Purchase detail / receiving | Detail quantities, partial receiving, serial/batch/date fields, confirmation, retry-stable idempotency key and history implemented. Serialized-product and duplicate-line domain validation added. Disposable MariaDB ledger suite **5/5 passed**, including partial serialized receipt; browser UAT pending. |
+| Purchase branch/warehouse identity | **FIXED / VERIFIED** in real browser: created purchase stores the selected warehouse ID and its actual branch ID. Searchable supplier/warehouse/product controls used. Evidence: `.local/workflow-browser.log`. |
+| Purchase detail / receiving | **FIXED / VERIFIED** basic lifecycle: create → view → partial receipt → full receipt; stock quantity/cost, two receiving journals and 390px layout checked. Serial validation covered by disposable integration tests; serialized/batch browser scenarios still pending. |
 | Purchase history access | Server cursor pagination, reference/supplier search and validated date range; UI filters and Load older purchases implemented. Browser pagination checks pending. |
-| Print authorization | Invoice/receipt now use normal session authentication, `sale.read`, tenant context and branch authorization. Arbitrary network-printer target disabled; download/browser printing retained. Receipt allocation/method mapping corrected. Permission and document browser tests pending. |
-| Transfer workflow | Create/detail/dispatch/receive/cancel UI and tenant-scoped detail API implemented. Existing commands reused. Serialized transfer handling and populated browser lifecycle still require verification/remediation. |
+| Print authorization | Session authentication, `sale.read`, tenant context and branch authorization implemented. Real checkout invoice/receipt return 200; anonymous access 401; arbitrary network-printer targeting 400. Branch-denied, permission-denied and revoked-session tests remain pending. |
+| Transfer workflow | **FIXED / VERIFIED** standard create → dispatch → receive and serialized create → reserve → dispatch → receive / cancel, including serial-event history and wrong-source rejection. Fixed missing source-stock reservation rejection and missing transit-bucket movements. Mobile width checked. Evidence: `.local/workflow-transfer-browser.log` (standard pass; initial serial test assertion raced), `.local/workflow-serial-transfer-browser.log` (serial rerun passed). Pagination/detail serial display implemented. Batch transfer custody still needs review. |
 | Cashier / opening stock entity fields | Warehouse picker added; cashier branch derived from warehouse and cash-account picker filtered by branch/type/active status. Browser transactions pending. |
+| Sales return / refund and POS customer / split tender | **FIXED / VERIFIED** basic real-browser lifecycle: select customer → split cash tender → post sale → print → return → full refund. Database payment allocations, returned/refunded state, same-key replay and excess-refund rejection verified. Evidence: `.local/workflow-pos-return-browser.log`. Damaged/serialized returns, mixed tender methods and foreign-currency regressions remain pending. |
+| Stock counts | Implemented authoritative snapshots, blind-count response masking, start/save/review/reopen/cancel/post, serial/batch reconciliation, movement freeze, variance journals and approval integration. Browser reached posted state and correct stock; final test assertion used wrong journal field and was corrected. Rerun pending. **27/27 stock/ledger tests passed**, including 5,000-line posting in 3.36 seconds (`.local/workflow-stock-integration.log`). Serialized and approval browser scenarios remain pending. |
+| Adjustments | Form/detail/history and approval-required submission, independent approval, cancel and posting controls implemented; serial/batch stock updates and journal posting added. Browser/integration verification pending. Batch damage/recovery currently rejected because `ProductBatch` has no damaged-bucket quantity; this is a concrete schema/domain gap still requiring implementation, not a completed workflow. |
+| Business detail views | Payment/expense detail pages and fiscal-period UI implemented; populated action UAT pending. |
+| Catalogue / access / draft protection | Catalogue update/delete APIs and UI, reference guards, permission gates, company-preserving access Cancel links implemented. Selective unsaved-draft hook added to count/adjustment forms. Broader form adoption and browser lifecycle checks pending. |
+| Service / CRM / HR | Request detail/actions and CRM/HR create/edit/detail remain implementation work. Do not mark complete. |
 
-Shared additions: searchable `EntityPicker` with paginated options/error recovery; `useWorkflowMutation` retains idempotency keys across ambiguous failures. Stock count save/review/post endpoints and service state-transition endpoint were confirmed absent and remain implementation work, not external blockers.
+Shared additions: searchable `EntityPicker` with paginated options/error recovery; `useWorkflowMutation` retains idempotency keys across ambiguous failures; selective draft-loss confirmation without persisting sensitive drafts. Missing stock-count lifecycle endpoints have now been implemented. Service state-transition endpoint remains implementation work. Full 41-screen re-audit, navigation/Retry regression suite, final lint/typecheck/build and red-team pass remain pending. Earlier verification below applies only to the original presentation pass.
 
 P1 means a core operating task is blocked or error-prone. P2 means important usability or coverage is missing. No P0 outage was established by this review.
 

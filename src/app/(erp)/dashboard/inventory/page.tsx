@@ -66,6 +66,7 @@ export default function InventoryPage() {
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" asChild><Link href="/dashboard/inventory/transfers">Transfers</Link></Button>
           <Button variant="outline" asChild><Link href="/dashboard/inventory/counts">Stock counts</Link></Button>
+          <Button variant="outline" asChild><Link href="/dashboard/inventory/adjustments">Adjustments</Link></Button>
           <Button variant="outline" className="min-h-[44px]" asChild><Link href="/dashboard/inventory/opening-stock">Post Opening Stock</Link></Button>
           <Button variant={lowStockOnly ? 'default' : 'outline'} onClick={() => setLowStockOnly(!lowStockOnly)} className="min-h-[44px]">
             <AlertTriangle className="h-4 w-4 mr-2" />

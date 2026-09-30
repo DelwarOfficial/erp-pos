@@ -94,6 +94,7 @@ export async function postStockAdjustment(
       where: { id: item.productId, companyId: input.companyId, deletedAt: null },
     });
     if (!product) throw new DomainError('VALIDATION_FAILED', `Product ${item.productId} not found`, {}, 404);
+    if (product.productType !== 'standard') throw new DomainError('VALIDATION_FAILED', 'Only stock-managed standard products can be adjusted', {}, 400);
     if (['add', 'reclassify'].includes(input.adjustmentType) && item.quantityDelta < 0 || ['subtract', 'damage', 'writeoff'].includes(input.adjustmentType) && item.quantityDelta > 0) throw new DomainError('VALIDATION_FAILED', 'Quantity direction must match adjustment type', {}, 400);
     const recovery = input.adjustmentType === 'reclassify';
     const numbers = (item.serialNumbers ?? []).map(number => number.trim());

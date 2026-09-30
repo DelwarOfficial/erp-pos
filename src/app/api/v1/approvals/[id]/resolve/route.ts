@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               resolvedBy: auth.userId!,
               decision: body.decision,
               reason: body.reason,
-            });
+            }, tx);
             return { status: 200, body: { item: resolved }, resourceType: 'approval_request', resourceId: id };
           },
           tx,

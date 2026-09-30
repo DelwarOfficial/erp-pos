@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const adjustment = await db.stockAdjustment.findFirst({ where: { id, companyId: auth.companyId }, include: {
         warehouse: { select: { id: true, name: true, code: true } }, branch: { select: { id: true, name: true } }, reasonCode: { select: { id: true, name: true } },
         items: { orderBy: { lineNo: 'asc' }, include: { product: { select: { id: true, name: true, code: true } }, batch: { select: { batchNo: true } }, serials: { include: { serial: { select: { serialNumber: true, status: true } } } } } },
-      });
+      } });
       if (!adjustment) throw new DomainError('RESOURCE_NOT_FOUND', 'Adjustment not found', {}, 404);
       const approval = adjustment.approvalRequestId ? await db.approvalRequest.findFirst({ where: { id: adjustment.approvalRequestId, companyId: auth.companyId }, select: { id: true, status: true, requestedBy: true, reason: true } }) : null;
       return { id: adjustment.id, reference_no: adjustment.referenceNo, status: adjustment.status, adjustment_type: adjustment.adjustmentType, warehouse: adjustment.warehouse,
