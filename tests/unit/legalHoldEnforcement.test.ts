@@ -48,7 +48,17 @@ describe('retention respects legal holds and tenant boundaries', () => {
     mocks.customerFindMany.mockResolvedValue([]);
     mocks.customerUpdate.mockImplementation((args: unknown) => args);
     mocks.transaction.mockResolvedValue([]);
+    // The purge path only runs where security events are not append-only; on
+    // MariaDB (below) nothing is purged (F-59).
+    process.env.DATABASE_URL = 'postgresql://127.0.0.1:5432/x';
+  });
+
+  it('never purges security events or audit logs on MariaDB, where they are append-only', async () => {
     process.env.DATABASE_URL = 'mysql://127.0.0.1:43318/x';
+    const result = await runRetentionJob('audit_only');
+    expect(mocks.securityDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.auditDeleteMany).not.toHaveBeenCalled();
+    expect(result.securityEventsDeleted).toBe(0);
   });
 
   it('scopes every delete to one company at a time', async () => {

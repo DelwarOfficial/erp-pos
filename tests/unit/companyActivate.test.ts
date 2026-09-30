@@ -75,10 +75,10 @@ afterAll(async () => {
     await db.company.deleteMany({ where: { id: tenantCompanyId } });
   }
   if (platformCompanyId) {
-    await db.securityEvent.deleteMany({ where: { companyId: platformCompanyId } });
+    // security_events is append-only (F-59); the company stays if it has any.
     await db.auditLog.deleteMany({ where: { companyId: platformCompanyId } });
     await db.user.deleteMany({ where: { id: platformUserId } });
-    await db.company.deleteMany({ where: { id: platformCompanyId } });
+    await db.company.deleteMany({ where: { id: platformCompanyId } }).catch(() => undefined);
   }
   await db.$disconnect();
 });

@@ -54,11 +54,11 @@ afterAll(async () => {
     if (companyId) {
       await db.featureFlag.deleteMany({ where: { companyId } });
       await db.companyLanguage.deleteMany({ where: { companyId } });
-      await db.securityEvent.deleteMany({ where: { companyId } });
+      // security_events is append-only (F-59); the company stays if it has any.
       await db.auditLog.deleteMany({ where: { companyId } });
     }
     if (userId) await db.user.deleteMany({ where: { id: userId } });
-    if (companyId) await db.company.deleteMany({ where: { id: companyId } });
+    if (companyId) await db.company.deleteMany({ where: { id: companyId } }).catch(() => undefined);
   });
   await db.$disconnect();
 });

@@ -101,7 +101,7 @@ afterAll(async () => {
   cookieStore.clear();
   if (companyId) {
     await db.refreshToken.deleteMany({ where: { companyId } });
-    await db.securityEvent.deleteMany({ where: { companyId } });
+    // security_events is append-only (F-59); the company stays if it has any.
     await db.auditLog.deleteMany({ where: { companyId } });
   }
   for (const id of [privUserId, plainUserId]) {

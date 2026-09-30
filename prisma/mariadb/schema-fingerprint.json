@@ -28633,6 +28633,18 @@
    "event": "UPDATE",
    "body": "0b28d4275770e9f3"
   },
+  "trg_security_events_immutable_del": {
+   "table": "security_events",
+   "timing": "BEFORE",
+   "event": "DELETE",
+   "body": "dc43a2e1c18f3948"
+  },
+  "trg_security_events_immutable_upd": {
+   "table": "security_events",
+   "timing": "BEFORE",
+   "event": "UPDATE",
+   "body": "dc43a2e1c18f3948"
+  },
   "trg_serialevents_immutable_del": {
    "table": "serial_events",
    "timing": "BEFORE",

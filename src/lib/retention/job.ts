@@ -88,14 +88,16 @@ async function runForCompany(companyId: string, policy: RetentionPolicy): Promis
   };
 
   if (policy === 'default' || policy === 'audit_only') {
-    // MariaDB audit rows are protected by append-only triggers. Purging there
-    // requires a separately privileged archive workflow, never the app login.
-    if (!/^mysql:/i.test(process.env.DATABASE_URL ?? '') && !holds.blocksAuditLogs) {
+    // On MariaDB, audit_logs and security_events (F-59) are append-only,
+    // enforced by triggers: purging them is a separately privileged archive
+    // workflow, never the app login. Elsewhere the retention window applies.
+    const appendOnly = /^mysql:/i.test(process.env.DATABASE_URL ?? '');
+    if (!appendOnly && !holds.blocksAuditLogs) {
       const deleted = await db.auditLog.deleteMany({ where: { companyId, occurredAt: { lt: auditCutoff } } });
       result.auditEventsDeleted = deleted.count;
     }
 
-    if (!holds.blocksSecurityEvents) {
+    if (!appendOnly && !holds.blocksSecurityEvents) {
       const deleted = await db.securityEvent.deleteMany({ where: { companyId, occurredAt: { lt: auditCutoff } } });
       result.securityEventsDeleted = deleted.count;
     }

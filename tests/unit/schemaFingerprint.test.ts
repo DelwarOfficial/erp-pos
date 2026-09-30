@@ -25,7 +25,7 @@ describe('schema fingerprint', () => {
     // The fingerprint must include every migration. cashier_device_pins' keys
     // (20260927000100) are checked as a sample.
     const newest = readdirSync('prisma/mariadb/migrations').filter(n => /^\d{14}_/.test(n)).sort().at(-1);
-    expect(newest).toBe('20261001000100_cash_over_short_account');
+    expect(newest).toBe('20261001000200_security_events_append_only');
     const pins = Object.values(fingerprint.tables.cashier_device_pins.foreignKeys);
     expect(pins.map(fk => `${fk.columns}->${fk.references}`).sort()).toEqual([
       'company_id,device_id->devices(company_id,id)',

@@ -185,3 +185,19 @@ describe('Security: Credit Sales (D05)', () => {
     expect(postSale).toContain('Walk-in customers cannot make credit sales');
   });
 });
+
+describe('Security: security_events are append-only (F-59)', () => {
+  it('refuses to edit or delete a security event', async () => {
+    const { PrismaClient } = await import('@prisma/client');
+    const { randomUUID } = await import('node:crypto');
+    const client = new PrismaClient();
+    try {
+      const company = await client.company.findFirstOrThrow({ select: { id: true } });
+      const event = await client.securityEvent.create({ data: { companyId: company.id, eventType: 'test.append_only', severity: 'info', metadata: JSON.stringify({ probe: randomUUID() }) } });
+      await expect(client.$executeRaw`UPDATE security_events SET severity = 'low' WHERE id = ${event.id}`).rejects.toThrow(/IMMUTABLE_LEDGER/);
+      await expect(client.$executeRaw`DELETE FROM security_events WHERE id = ${event.id}`).rejects.toThrow(/IMMUTABLE_LEDGER/);
+    } finally {
+      await client.$disconnect();
+    }
+  });
+});

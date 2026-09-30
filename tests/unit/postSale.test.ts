@@ -154,7 +154,6 @@ afterAll(async () => {
       { label: 'branch', run: () => db.branch.deleteMany({ where: { companyId } }) },
       { label: 'user', run: () => db.user.deleteMany({ where: { companyId } }) },
       { label: 'auditLog', run: () => db.auditLog.deleteMany({ where: { companyId } }) },
-      { label: 'securityEvent', run: () => db.securityEvent.deleteMany({ where: { companyId } }) },
       { label: 'financialAccount', run: () => db.financialAccount.deleteMany({ where: { companyId } }) },
       { label: 'chartOfAccount', run: () => db.chartOfAccount.deleteMany({ where: { companyId } }) },
       { label: 'company', run: () => db.company.deleteMany({ where: { id: companyId } }) },

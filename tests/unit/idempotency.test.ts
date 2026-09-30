@@ -46,10 +46,10 @@ afterAll(async () => {
   // Clean up — delete in dependency order
   if (companyId) {
     await db.idempotencyRequest.deleteMany({ where: { companyId } });
-    await db.securityEvent.deleteMany({ where: { companyId } });
+    // security_events is append-only (F-59); the company stays if it has any.
   }
   if (userId) await db.user.deleteMany({ where: { id: userId } });
-  if (companyId) await db.company.deleteMany({ where: { id: companyId } });
+  if (companyId) await db.company.deleteMany({ where: { id: companyId } }).catch(() => undefined);
   await db.$disconnect();
 });
 
