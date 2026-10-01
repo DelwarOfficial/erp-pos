@@ -1983,5 +1983,13 @@
       "stock_count.post"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/service-requests/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "service.read"
+    ],
+    "exception": null
   }
 ]
