@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
+import { dispatchTransferBatches, receiveTransferBatches } from '@/domain/inventory/transferBatches';
 
 export interface CreateTransferInput {
   companyId: string;
@@ -229,6 +230,8 @@ export async function dispatchTransfer(
       effectiveAt: new Date(), createdBy: input.dispatchedBy,
       metadata: { transfer_ref: transfer.referenceNo, to_warehouse: transfer.toWarehouseId },
     });
+    await dispatchTransferBatches(tx, { companyId: input.companyId, warehouseId: transfer.fromWarehouseId,
+      productId: item.productId, quantity: item.qtyRequested, movementId: movement.movementId });
     for (const { serial } of item.serials) {
       if (serial.status !== 'reserved' || serial.currentWarehouseId !== transfer.fromWarehouseId || serial.currentReservationId !== item.reservationId) {
         throw new DomainError('SERIAL_NOT_AVAILABLE', 'Reserved serial custody changed before dispatch', {}, 409);
@@ -316,7 +319,7 @@ export async function receiveTransfer(
       referenceType: 'transfer', referenceId: transfer.id, sourceLineId: item.id,
       effectiveAt: new Date(), createdBy: input.receivedBy,
     });
-    await postStockMovement(tx, {
+    const inbound = await postStockMovement(tx, {
       companyId: input.companyId, eventId, eventLineNo,
       warehouseId: transfer.toWarehouseId, productId: item.productId,
       movementType: 'transfer_receive',
@@ -326,6 +329,9 @@ export async function receiveTransfer(
       effectiveAt: new Date(), createdBy: input.receivedBy,
       metadata: { transfer_ref: transfer.referenceNo, from_warehouse: transfer.fromWarehouseId },
     });
+    await receiveTransferBatches(tx, { companyId: input.companyId, transferId: transfer.id, lineId: item.id,
+      sourceWarehouseId: transfer.fromWarehouseId, warehouseId: transfer.toWarehouseId,
+      productId: item.productId, quantity: item.qtyDispatched, movementId: inbound.movementId });
     eventLineNo++;
 
     await tx.transferItem.update({

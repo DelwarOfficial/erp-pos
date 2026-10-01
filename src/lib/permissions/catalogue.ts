@@ -28,6 +28,7 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'gift_card.read', module: 'gift_card', description: 'View gift cards' },
   { code: 'crm.lead.read', module: 'crm', description: 'View leads' },
   { code: 'crm.lead.create', module: 'crm', description: 'Create leads' },
+  { code: 'crm.lead.update', module: 'crm', description: 'Update leads and record follow-up activity' },
   { code: 'audit.view', module: 'audit', description: 'View audit and security records' },
   { code: 'audit.manage', module: 'audit', description: 'Manage risk review outcomes and thresholds' },
   { code: 'approval.read', module: 'approval', description: 'View approval requests' },

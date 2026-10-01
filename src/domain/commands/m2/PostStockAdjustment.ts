@@ -105,7 +105,12 @@ export async function postStockAdjustment(
     } else if (product.isSerialized && (serials.length !== numbers.length || serials.some(serial => serial.productId !== product.id || serial.currentWarehouseId !== warehouse.id || serial.currentReservationId || serial.status !== (recovery ? 'damaged' : 'in_stock')))) throw new DomainError('SERIAL_NOT_AVAILABLE', 'Selected serials are unavailable in the source bucket', {}, 409);
     let batch = item.batchNo ? await tx.productBatch.findFirst({ where: { companyId: input.companyId, warehouseId: warehouse.id, productId: product.id, batchNo: item.batchNo.trim() } }) : null;
     if (product.trackBatches && !item.batchNo?.trim()) throw new DomainError('VALIDATION_FAILED', 'Enter the product batch number', {}, 400);
-    if (product.trackBatches && (recovery || input.adjustmentType === 'damage')) throw new DomainError('VALIDATION_FAILED', 'Batch damage/recovery requires batch bucket tracking, which this schema does not yet support', {}, 409);
+    if (product.trackBatches && recovery) {
+      if (!batch) throw new DomainError('INVENTORY_INSUFFICIENT', 'Select the original damaged batch for recovery', {}, 409);
+      const damaged = await tx.stockMovementBatch.aggregate({ where: { companyId: input.companyId, productBatchId: batch.id,
+        stockMovement: { companyId: input.companyId, warehouseId: warehouse.id, productId: product.id, stockBucket: 'damaged' } }, _sum: { qty: true } });
+      if (!damaged._sum.qty || damaged._sum.qty.lt(item.quantityDelta)) throw new DomainError('INVENTORY_INSUFFICIENT', 'Insufficient damaged quantity in this batch; reconcile untracked legacy damage before recovery', {}, 409);
+    }
     if (product.trackBatches && item.quantityDelta < 0 && (!batch || batch.qtyOnHand.minus(batch.qtyReserved).lt(Math.abs(item.quantityDelta)))) throw new DomainError('INVENTORY_INSUFFICIENT', 'Insufficient available batch stock', {}, 409);
 
     const isInbound = item.quantityDelta > 0;
@@ -147,15 +152,16 @@ export async function postStockAdjustment(
     eventLineNo++;
     const persisted = await tx.stockMovement.findUniqueOrThrow({ where: { id: movement.movementId }, select: { totalCostDelta: true } });
     journalValues.push({ value: persisted.totalCostDelta, reasonCodeId: reasonCode.id });
-    if (input.adjustmentType === 'damage' || recovery) await postStockMovement(tx, {
+    const damagedMovement = input.adjustmentType === 'damage' || recovery ? await postStockMovement(tx, {
       companyId: input.companyId, eventId, eventLineNo: eventLineNo++, warehouseId: warehouse.id, productId: product.id,
       stockBucket: 'damaged', movementType: 'damage_move', qtyDelta: -item.quantityDelta, unitCost,
       referenceType: 'stock_adjustment', referenceId: adjustment.id, sourceLineId: adjustmentItem.id, effectiveAt: input.businessDate, createdBy: input.postedBy,
-    });
+    }) : null;
     if (product.trackBatches) {
       batch = batch ? await tx.productBatch.update({ where: { id: batch.id }, data: { qtyOnHand: { increment: item.quantityDelta } } }) : await tx.productBatch.create({ data: { companyId: input.companyId, productId: product.id, warehouseId: warehouse.id, batchNo: item.batchNo!.trim(), qtyOnHand: item.quantityDelta } });
       await tx.stockAdjustmentItem.update({ where: { id: adjustmentItem.id }, data: { batchId: batch.id } });
       await tx.stockMovementBatch.create({ data: { companyId: input.companyId, stockMovementId: movement.movementId, productBatchId: batch.id, qty: item.quantityDelta } });
+      if (damagedMovement) await tx.stockMovementBatch.create({ data: { companyId: input.companyId, stockMovementId: damagedMovement.movementId, productBatchId: batch.id, qty: -item.quantityDelta } });
     }
     for (const number of numbers) {
       const existing = serials.find(serial => serial.serialNumber === number);

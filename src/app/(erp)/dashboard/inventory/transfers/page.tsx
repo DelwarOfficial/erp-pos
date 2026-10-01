@@ -18,7 +18,7 @@ interface Transfer {
   id: string; reference_no: string; status: string; notes?: string;
   from_warehouse: BusinessEntity; to_warehouse: BusinessEntity;
   requested_at: string; dispatched_at?: string; received_at?: string;
-  items?: { id: string; product: BusinessEntity; qty_requested: string; qty_dispatched: string; qty_received: string; serials: { serial_number: string; status: string }[] }[];
+  items?: { id: string; product: BusinessEntity; qty_requested: string; qty_dispatched: string; qty_received: string; serials: { serial_number: string; status: string }[]; batches: { batch_no: string; expiry_date: string | null; quantity: string }[] }[];
 }
 export default function TransfersPage() {
   const session = useDashboardSession();
@@ -73,7 +73,7 @@ export default function TransfersPage() {
     if (result) { toast.success('Transfer updated.'); await load(); await view(detail.id); }
   }
   return <div className="space-y-5">
-    <div className="flex flex-wrap justify-between gap-3"><div><h1 className="text-2xl font-bold">Stock transfers</h1><p className="text-muted-foreground">Reserve, dispatch and receive stock between warehouses.</p></div><div className="flex gap-2"><Button variant="outline" disabled={loading || command.pending} onClick={() => void load()}>Refresh</Button>{allowed('transfer.dispatch') ? <Button onClick={() => setCreating(true)}>New transfer</Button> : null}</div></div>
+    <div className="flex flex-wrap justify-between gap-3"><div><h1 className="text-2xl font-bold">Stock transfers</h1><p className="text-muted-foreground">Reserve, dispatch and receive stock between warehouses. Batch-tracked stock is allocated by earliest expiry at dispatch.</p></div><div className="flex gap-2"><Button variant="outline" disabled={loading || command.pending} onClick={() => void load()}>Refresh</Button>{allowed('transfer.dispatch') ? <Button onClick={() => setCreating(true)}>New transfer</Button> : null}</div></div>
     {error || command.error ? <div role="alert" className="rounded-md border p-4">{error || command.error}</div> : null}
     {loading ? <p role="status">Loading transfers…</p> : null}
     {creating ? <Card><CardHeader><CardTitle>New transfer</CardTitle></CardHeader><CardContent><form onSubmit={create}><fieldset disabled={command.pending} className="space-y-4">
@@ -87,6 +87,7 @@ export default function TransfersPage() {
       <Badge>{detail.status.replaceAll('_', ' ')}</Badge><p>{detail.from_warehouse.name} → {detail.to_warehouse.name}</p>{detail.notes ? <p className="whitespace-pre-wrap">{detail.notes}</p> : null}
       <dl className="grid gap-3 text-sm sm:grid-cols-3">{[['Requested', detail.requested_at], ['Dispatched', detail.dispatched_at], ['Received', detail.received_at]].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd>{value ? new Date(value).toLocaleString() : 'Not yet'}</dd></div>)}</dl>
       <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th>Product</th><th>Requested</th><th>Dispatched</th><th>Received</th></tr></thead><tbody>{detail.items?.map(line => <tr key={line.id} className="border-b"><td className="py-3 pr-3">{line.product.name} ({line.product.code})</td><td>{line.qty_requested}</td><td>{line.qty_dispatched}</td><td>{line.qty_received}</td></tr>)}</tbody></table></div>
+      {detail.items?.some(line => line.batches?.length) ? <section><h3 className="font-semibold">Dispatched batches</h3><ul className="divide-y">{detail.items.flatMap(line => (line.batches ?? []).map(batch => <li key={line.id + batch.batch_no} className="flex flex-wrap justify-between gap-2 py-2"><span>{line.product.name} ? {batch.batch_no}</span><span>{batch.quantity} units ? {batch.expiry_date ? 'Expires ' + new Date(batch.expiry_date).toLocaleDateString() : 'No expiry date'}</span></li>))}</ul></section> : null}
       {detail.items?.some(line => line.serials?.length) ? <div><h3 className="font-semibold">Serial custody</h3><ul className="divide-y">{detail.items.flatMap(line => (line.serials ?? []).map(serial => <li key={serial.serial_number} className="flex flex-wrap justify-between gap-2 py-2"><span>{line.product.name} · {serial.serial_number}</span><Badge variant="secondary">{serial.status.replaceAll('_', ' ')}</Badge></li>))}</ul></div> : null}
       {detail.status === 'pending' && allowed('transfer.dispatch') ? <div className="space-y-3"><Button disabled={command.pending} onClick={() => void action('dispatch')}>Dispatch transfer</Button><div><Label htmlFor="transfer-reason">Cancellation reason</Label><Input id="transfer-reason" maxLength={500} value={reason} onChange={e => setReason(e.target.value)} /></div><Button variant="outline" disabled={command.pending || !reason.trim()} onClick={() => void action('cancel')}>Cancel transfer</Button></div> : null}
       {detail.status === 'in_transit' && allowed('transfer.receive') ? <Button disabled={command.pending} onClick={() => void action('receive')}>Receive transfer</Button> : null}

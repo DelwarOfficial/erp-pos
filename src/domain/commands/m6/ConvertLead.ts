@@ -37,9 +37,13 @@ export async function convertLead(
     if (found) {
       wonStatus = found;
     } else {
-      // Create a won status
+      // Preserve tenant-defined status ordering; position 99 may already be used.
+      if (await tx.leadStatus.findFirst({ where: { companyId: input.companyId, name: 'Won' } })) {
+        throw new DomainError('VALIDATION_FAILED', 'Configure an active won status before converting this lead', {}, 409);
+      }
+      const last = await tx.leadStatus.aggregate({ where: { companyId: input.companyId }, _max: { position: true } });
       wonStatus = await tx.leadStatus.create({
-        data: { companyId: input.companyId, name: 'Won', position: 99, isWon: true, isActive: true },
+        data: { companyId: input.companyId, name: 'Won', position: (last._max.position ?? -1) + 1, isWon: true, isActive: true },
       });
     }
   }

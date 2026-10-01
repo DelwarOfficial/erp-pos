@@ -10,20 +10,8 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
-const LeadSchema = z.object({
-  branch_id: z.string().uuid().optional(),
-  status_id: z.string().uuid(),
-  subject_id: z.string().uuid().optional(),
-  source_id: z.string().uuid().optional(),
-  assigned_to: z.string().uuid().optional(),
-  name: z.string().min(1).max(200),
-  company_name: z.string().max(200).optional(),
-  phone: z.string().max(30).optional(),
-  email: z.string().email().max(150).optional(),
-  estimated_value: z.number().min(0).optional(),
-  next_action_at: z.string().datetime().optional(),
-  notes: z.string().optional(),
-}).refine(d => d.phone || d.email, { message: 'phone or email required' });
+import { LeadInput, leadFields, validateLeadReferences } from '@/lib/api/leadInput';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -31,11 +19,14 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
     await requirePermission(auth, "crm.lead.read");
     const url = req.nextUrl;
+    const page = readListPage(url);
+    const search = url.searchParams.get('search')?.trim();
     const today = url.searchParams.get('today') === 'true';
     const statusId = url.searchParams.get('status_id') ?? undefined;
     const assignedTo = url.searchParams.get('assigned_to') ?? undefined;
 
     const where: Record<string, unknown> = { companyId: auth.companyId };
+    if (search) where.OR = [{ name: { contains: search } }, { companyName: { contains: search } }, { phone: { contains: search } }];
     if (statusId) where.statusId = statusId;
     if (assignedTo) where.assignedTo = assignedTo;
     if (today) {
@@ -46,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const leads = await runInTenantContext(auth.ctx, async () => {
       return db.lead.findMany({
-        where, take: 100, orderBy: { nextActionAt: 'asc' },
+        where, ...listPageArgs(page), orderBy: [{ nextActionAt: 'asc' }, { id: 'asc' }],
         include: {
           status: { select: { id: true, name: true, isWon: true, isLost: true, position: true } },
           subject: { select: { id: true, name: true } },
@@ -57,7 +48,8 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      items: leads.map(l => ({
+      ...listPageResult(leads, page),
+      items: listPageResult(leads, page).items.map(l => ({
         id: l.id, name: l.name, company_name: l.companyName,
         phone: l.phone, email: l.email,
         estimated_value: l.estimatedValue?.toString() ?? null,
@@ -78,7 +70,8 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateRequest();
     await requirePermission(auth, "crm.lead.create");
     const idempotencyKey = requireIdempotencyKey(req);
-    const body = LeadSchema.parse(await req.json());
+    const body = LeadInput.parse(await req.json());
+    if (body.branch_id) await requirePermission(auth, 'crm.lead.create', body.branch_id);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/leads', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
@@ -86,21 +79,11 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'lead.create', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
+            const status = await validateLeadReferences(tx, auth.companyId, body);
             const lead = await tx.lead.create({
               data: {
                 companyId: auth.companyId,
-                branchId: body.branch_id ?? null,
-                statusId: body.status_id,
-                subjectId: body.subject_id ?? null,
-                sourceId: body.source_id ?? null,
-                assignedTo: body.assigned_to ?? null,
-                name: body.name,
-                companyName: body.company_name ?? null,
-                phone: body.phone ?? null,
-                email: body.email ?? null,
-                estimatedValue: body.estimated_value ?? null,
-                nextActionAt: body.next_action_at ? new Date(body.next_action_at) : null,
-                notes: body.notes ?? null,
+                ...leadFields(body, status.id),
                 createdBy: auth.userId,
               },
             });

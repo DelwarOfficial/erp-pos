@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'service.read', 'service.intake', 'service.complete', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
+  for (const code of ['crm.lead.read', 'crm.lead.create', 'crm.lead.update', 'lead.convert', 'purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'service.read', 'service.intake', 'service.complete', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -294,4 +294,94 @@ test('POS customer and split payment use authoritative pricing; receipt/invoice 
   const excess = await page.request.post('/api/v1/payments', { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { ...refunded.request().postDataJSON(), amount: 1 } });
   expect(excess.status()).toBe(409);
   expect(await db.payment.count({ where: { saleReturnId: returnData.saleReturnId } })).toBe(1);
+});
+
+test('batch transfer preserves allocation, expiry and destination custody', async ({ page }) => {
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const batchProduct = await db.product.create({ data: { companyId: fixture.companyId, name: 'Browser batch transfer product', code: 'UI-BATCH-TRANSFER', categoryId: base.categoryId, unitId: base.unitId, trackBatches: true } });
+  await db.warehouseStock.create({ data: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: batchProduct.id, qtyOnHand: 10, movingAverageCost: 25 } });
+  const early = await db.productBatch.create({ data: { companyId: fixture.companyId, productId: batchProduct.id, warehouseId: warehouse.id, batchNo: 'UI-EARLY', expiryDate: new Date('2030-01-01'), qtyOnHand: 4, qtyReserved: 1 } });
+  const late = await db.productBatch.create({ data: { companyId: fixture.companyId, productId: batchProduct.id, warehouseId: warehouse.id, batchNo: 'UI-LATE', expiryDate: new Date('2031-01-01'), qtyOnHand: 6 } });
+  await login(page); await page.goto('/dashboard/inventory/transfers'); page.on('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'New transfer', exact: true }).click();
+  await pick(page, 'Source warehouse', warehouse.name); await pick(page, 'Destination warehouse', destination.name); await pick(page, 'Product 1', batchProduct.name);
+  await page.getByLabel('Quantity', { exact: true }).fill('5');
+  const creating = page.waitForResponse(response => response.url().endsWith('/api/v1/transfers') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create transfer', exact: true }).click(); const created = await creating; expect(created.status(), await created.text()).toBe(201); const transfer = await created.json();
+  await page.getByRole('button', { name: 'Dispatch transfer', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Receive transfer', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dispatched batches' })).toBeVisible();
+  expect((await db.productBatch.findUniqueOrThrow({ where: { id: early.id } })).qtyOnHand.toString()).toBe('1');
+  expect((await db.productBatch.findUniqueOrThrow({ where: { id: late.id } })).qtyOnHand.toString()).toBe('4');
+  const conflicting = await db.productBatch.create({ data: { companyId: fixture.companyId, productId: batchProduct.id, warehouseId: destination.id, batchNo: early.batchNo, expiryDate: new Date('2032-01-01'), qtyOnHand: 0 } });
+  const blocked = page.waitForResponse(response => response.url().endsWith('/receive') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Receive transfer', exact: true }).click(); expect((await blocked).status()).toBe(409);
+  expect((await db.warehouseStock.findUniqueOrThrow({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: batchProduct.id } } })).qtyInTransitOut.toString()).toBe('5');
+  expect(await db.stockMovement.count({ where: { companyId: fixture.companyId, referenceId: transfer.transferId, movementType: 'transfer_receive' } })).toBe(0);
+  await db.productBatch.update({ where: { id: conflicting.id }, data: { expiryDate: early.expiryDate } });
+  const receiving = page.waitForResponse(response => response.url().endsWith('/receive') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Receive transfer', exact: true }).click(); const received = await receiving; expect(received.status(), await received.text()).toBe(200);
+  await expect(page.getByRole('button', { name: 'Receive transfer', exact: true })).toHaveCount(0);
+  const destinationBatches = await db.productBatch.findMany({ where: { companyId: fixture.companyId, productId: batchProduct.id, warehouseId: destination.id }, orderBy: { batchNo: 'asc' } });
+  expect(destinationBatches.map(batch => [batch.batchNo, batch.qtyOnHand.toString(), batch.expiryDate?.toISOString()])).toEqual([[early.batchNo, '3', early.expiryDate?.toISOString()], [late.batchNo, '2', late.expiryDate?.toISOString()]]);
+  expect(await db.stockMovementBatch.count({ where: { companyId: fixture.companyId, stockMovement: { referenceId: transfer.transferId } } })).toBe(4);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('batch adjustment damage and recovery preserve per-batch damaged custody', async ({ page }) => {
+  const base = await db.product.findUniqueOrThrow({ where: { id: product.id } });
+  const tracked = await db.product.create({ data: { companyId: fixture.companyId, categoryId: base.categoryId, unitId: base.unitId, name: 'Batch damage product', code: 'UI-BATCH-DAMAGE', trackBatches: true } });
+  const reason = await db.inventoryReasonCode.create({ data: { companyId: fixture.companyId, code: 'UI-BATCH-REASON', name: 'Batch reconciliation', defaultExpenseAccountId: fixture.expense.id } });
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/inventory/adjustments');
+  for (const step of [{ type: 'add', qty: '4', onHand: '4', damaged: '0' }, { type: 'damage', qty: '3', onHand: '1', damaged: '3' }, { type: 'reclassify', qty: '2', onHand: '3', damaged: '1' }]) {
+    await page.getByRole('button', { name: 'New adjustment', exact: true }).click(); await pick(page, 'Adjustment warehouse', warehouse.name); await pick(page, 'Adjustment reason', reason.name);
+    await page.getByLabel('Adjustment type', { exact: true }).selectOption(step.type); await pick(page, 'Adjustment product 1', tracked.name);
+    await page.getByLabel('Quantity 1', { exact: true }).fill(step.qty); if (step.type === 'add') await page.getByLabel('Unit cost 1', { exact: true }).fill('25');
+    await page.getByLabel('Batch number 1', { exact: true }).fill('DAMAGED-BATCH-A'); await page.getByLabel('Explanation', { exact: true }).fill(`Batch custody ${step.type}`);
+    const posting = page.waitForResponse(response => response.url().endsWith('/api/v1/stock-adjustments') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Post adjustment', exact: true }).click(); const response = await posting; expect(response.status(), await response.text()).toBe(201); const adjustment = await response.json();
+    await expect(page.getByRole('heading', { name: adjustment.referenceNo, exact: true })).toBeVisible();
+    const batch = await db.productBatch.findFirstOrThrow({ where: { productId: tracked.id, warehouseId: warehouse.id, batchNo: 'DAMAGED-BATCH-A' } });
+    expect(batch.qtyOnHand.toString()).toBe(step.onHand);
+    const damaged = await db.stockMovementBatch.aggregate({ where: { productBatchId: batch.id, stockMovement: { stockBucket: 'damaged' } }, _sum: { qty: true } });
+    expect(damaged._sum.qty?.toString() ?? '0').toBe(step.damaged);
+    const stock = await db.warehouseStock.findFirstOrThrow({ where: { productId: tracked.id, warehouseId: warehouse.id } }); expect(stock.qtyOnHand.toString()).toBe(step.onHand); expect(stock.qtyDamaged.toString()).toBe(step.damaged);
+  }
+  const wrongBatch = await db.productBatch.create({ data: { companyId: fixture.companyId, productId: tracked.id, warehouseId: warehouse.id, batchNo: 'UNDAMAGED-BATCH-B' } });
+  const rejected = await page.request.post('/api/v1/stock-adjustments', { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { branch_id: fixture.branches[0].id, warehouse_id: warehouse.id, adjustment_type: 'reclassify', reason_code_id: reason.id, business_date: new Date().toISOString(), notes: 'Cannot recover another batch', items: [{ product_id: tracked.id, quantity_delta: 1, batch_no: wrongBatch.batchNo }] } });
+  expect(rejected.status(), await rejected.text()).toBe(409);
+  expect((await db.productBatch.findUniqueOrThrow({ where: { id: wrongBatch.id } })).qtyOnHand.toString()).toBe('0');
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('CRM create, edit, follow-up and conversion enforce permissions and tenant references', async ({ page }) => {
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/crm');
+  await page.getByRole('button', { name: 'New lead', exact: true }).click();
+  await page.getByLabel('Lead name', { exact: true }).fill('Browser follow-up lead'); await page.getByLabel('Phone', { exact: true }).fill('01700009991');
+  await pick(page, 'Lead branch', fixture.branches[0].name); await page.getByLabel('Lead notes', { exact: true }).fill('Contact requested a product demonstration.');
+  const creating = page.waitForResponse(response => response.url().endsWith('/api/v1/leads') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create lead', exact: true }).click(); const created = await creating; expect(created.status(), await created.text()).toBe(201); const lead = await created.json();
+  await expect(page.getByRole('button', { name: 'Edit lead', exact: true })).toBeVisible();
+  const qualified = await db.leadStatus.create({ data: { companyId: fixture.companyId, name: 'Qualified', position: 2 } });
+  await page.getByRole('button', { name: 'Edit lead', exact: true }).click(); await page.getByLabel('Company name', { exact: true }).fill('Browser business'); await page.getByLabel('Next follow-up', { exact: true }).fill('2030-03-10T10:30');
+  await pick(page, 'Lead status', qualified.name); await pick(page, 'Lead assignee', fixture.user.name);
+  const saving = page.waitForResponse(response => response.url().endsWith(`/leads/${lead.id}`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Save lead', exact: true }).click(); const saved = await saving; expect(saved.status(), await saved.text()).toBe(200);
+  await expect(page.getByText('Lead updated: Qualified', { exact: true })).toBeVisible();
+  const persisted = await db.lead.findUniqueOrThrow({ where: { id: lead.id } }); expect(persisted.assignedTo).toBe(fixture.user.id); expect(persisted.statusId).toBe(qualified.id); expect(persisted.companyName).toBe('Browser business'); expect(persisted.nextActionAt).not.toBeNull();
+  const foreign = await ensureSyntheticIssuerTenant(db, { companyId: randomUUID(), code: `CRM-${randomUUID().slice(0,8)}`, label: 'Foreign CRM' });
+  const foreignStatus = await db.leadStatus.create({ data: { companyId: foreign.companyId, name: 'Foreign status', position: 0 } });
+  const headers = { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() };
+  const crossTenant = await page.request.post('/api/v1/leads', { headers, data: { name: 'Forbidden status', phone: '01700009992', branch_id: fixture.branches[0].id, status_id: foreignStatus.id } }); expect(crossTenant.status()).toBe(400);
+  const permission = await db.permission.findUniqueOrThrow({ where: { code: 'crm.lead.update' } });
+  await db.rolePermission.delete({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } } });
+  try {
+    const denied = await page.request.post(`/api/v1/leads/${lead.id}`, { headers: { ...headers, 'Idempotency-Key': randomUUID() }, data: { action: 'update', lead: { name: 'Unauthorized change', phone: '01700009991' } } }); expect(denied.status()).toBe(403);
+  } finally { await db.rolePermission.create({ data: { roleId: fixture.role.id, permissionId: permission.id } }); }
+  const converting = page.waitForResponse(response => response.url().endsWith(`/leads/${lead.id}`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Convert to customer', exact: true }).click(); const converted = await converting; expect(converted.status(), await converted.text()).toBe(200); const customerResult = await converted.json();
+  await expect(page.getByText('Customer: Browser follow-up lead', { exact: true })).toBeVisible();
+  expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).convertedCustomerId).toBe(customerResult.customerId);
+  expect(await db.customer.count({ where: { companyId: fixture.companyId, phone: '01700009991' } })).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
