@@ -426,6 +426,8 @@ Security-relevant event stream.
 | metadata | JSONB | NOT NULL DEFAULT '{}' | GIN |
 | occurred_at | TIMESTAMPTZ | NOT NULL DEFAULT now() | INDEX |
 
+- **Append-only (implemented, migration `20261001000200`).** Like `audit_logs`, rows can be neither updated nor deleted through the application login: `BEFORE UPDATE` / `BEFORE DELETE` triggers raise `IMMUTABLE_LEDGER`. The retention job does not purge security events on MariaDB; archiving old rows is a separately privileged workflow (§12.4).
+
 ## 5.3 Numbering, Events, and Idempotency
 
 ### `document_sequences`
@@ -448,6 +450,9 @@ Transactional sequence per company/branch/type/year.
 
 - Because PostgreSQL treats NULL as distinct in a plain UNIQUE constraint, two separate partial indexes are required: one for company-wide sequences (`branch_id IS NULL`) and one for branch-specific sequences (`branch_id IS NOT NULL`). Without this split, duplicate company-wide sequences could be created.
 - `next_document_number(...)` locks the row and returns a number inside the document transaction; rollback also rolls back the increment.
+- **Implemented:** `nextDocumentNumber` (`src/lib/numbering`) does this with `INSERT … ON DUPLICATE KEY UPDATE next_number = next_number + n` on the `UNIQUE (company_id, branch_scope, document_type, fiscal_year)` row, where `branch_scope` is `IFNULL(branch_id, '')` (MariaDB has no partial unique index). A branch-scoped number carries the branch code (`INV-DHK-000001`) because reference numbers are unique per company; company-wide sequences keep the bare prefix.
+- The lock is held until the document transaction commits, so callers take the number as late as possible: a sale takes its invoice number after all product, stock, serial and credit checks, just before the sale row is written.
+- **Journal entry numbers are the one exception (decided 2026-09-30).** `JE-` numbers are internal ledger references, ordered by posting date rather than by number, and every posting in every branch takes one, so a company-wide lock held until commit serialised all postings. They are issued from reserved blocks (`nextJournalNumber`): a process reserves `JOURNAL_NUMBER_BLOCK` (default 20) numbers from the same `JOURNAL` sequence row in its own short, immediately committed transaction, on a separate two-connection pool, and issues them from memory. Numbers stay unique; a rolled-back posting or a restarted process leaves a gap, and numbers from different processes interleave. If a block cannot be reserved within one second (for example a company created and posted to in one open transaction), the posting falls back to the in-transaction path. Invoices, receipts, returns and every customer-facing document remain gap-free.
 
 ### `document_number_leases`
 
@@ -859,6 +864,7 @@ Immutable quantity and valuation ledger. Each row changes one stock bucket.
 - Sale returns enter at the original sale item cost. Transfers carry source cost into the destination average.
 - Bucket-to-bucket changes write paired negative/positive rows at the same cost.
 - Backdated stock events are blocked after later movements unless an approved revaluation recalculates every later cost.
+- **Bucket guards (implemented):** quantities are computed in Decimal, and a movement that would drive any bucket (`on_hand`, `damaged`, `in_transit`) negative is refused with `INVENTORY_INSUFFICIENT` (409) naming the bucket, the quantity available and the quantity requested, before the database CHECK is reached.
 
 ### `stock_reservations`
 
@@ -1993,6 +1999,8 @@ Double-entry lines with branch and party dimensions.
 - `post_journal_entry()` verifies open period, tenant consistency, required control-account dimensions, and equal total debit/credit, then posts.
 - A deferred constraint rejects an unbalanced entry at COMMIT. Posted headers/lines are immutable by trigger.
 - Cross-branch collection places cash and AR lines on their actual branches; optional inter-branch clearing lines keep branch books balanced.
+- **Currency scale (implemented).** The MariaDB columns are `DECIMAL(65,30)` (Prisma's default), not `DECIMAL(18,2)`, so the scale is enforced at posting: `postJournalEntry` first checks the entry balances exactly, then rounds each line half-up to the paisa. The at most half a paisa per line this can move between the sides is posted to `rounding_account_id`, or, if none is set, added to the largest line of the short side. An entry that rounds to nothing is refused. Stock-movement values keep full precision, so stock valuation and the inventory account can differ by a few paisa.
+- **Exchange rate (implemented).** `exchange_rate` is accepted as a string or Decimal, validated as a Decimal and stored exactly; it is never a binary float.
 
 ### `accounting_policies`
 
@@ -2025,12 +2033,14 @@ Required account mappings.
 | opening_balance_equity_account_id | UUID | NULLABLE FK → chart_of_accounts.id |  |
 | impairment_allowance_account_id | UUID | NULLABLE FK → chart_of_accounts.id |  |
 | cheque_bounce_fee_account_id | UUID | NULLABLE FK → chart_of_accounts.id |  |
+| cash_over_short_account_id | UUID | NULLABLE FK → chart_of_accounts.id (tenant composite FK) |  |
 | UNIQUE | — | company_id | UNIQUE |
 
 - `grni_account_id` (Goods Received Not Invoiced) is required when purchase receiving can occur before supplier invoicing; the posting function uses it to hold the liability until the supplier invoice arrives.
 - `opening_balance_equity_account_id` is the contra account for opening stock and opening balance journal entries during cutover (§7.23).
 - `impairment_allowance_account_id` supports the `stock_value` formula in §11.1; the impairment allowance is maintained via stock adjustment or manual journal.
 - `cheque_bounce_fee_account_id` records the fee income/expense when a cheque bounces (§7.21).
+- `cash_over_short_account_id` takes a cashier shift's counted shortage or overage (§7.8). Migration `20261001000100` creates account 5600 "Cash Over/Short" for existing companies and links it (skipped where code 5600 is already used); new companies get it from the chart-of-accounts seed. Closing a shift with a variance and no account set is refused with a message saying what to configure.
 - Conditional CHECK: if the purchasing module is enabled, `grni_account_id` must be non-null; if the service module is enabled, `service_cogs_account_id` and `repair_wip_account_id` must be non-null; if cheques are used, `cheque_clearing_account_id` must be non-null. These are enforced by `validate_accounting_policies()`.
 
 ## 5.11 Payments, Advances, Installments, and Cashier Control
@@ -2102,6 +2112,8 @@ Cash drawer accountability.
 
 - The partial unique index on `(cashier_id, cash_account_id) WHERE status='open'` ensures a cashier has at most one open shift per cash account. A cashier may have open shifts on different cash accounts simultaneously only if explicitly permitted by policy; the default policy is one open shift per cashier across all accounts, enforced by an additional partial unique `WHERE status='open'` on `(cashier_id, company_id)`.
 - POS card/mobile payments at the same register also require an open shift for tender reconciliation; the posting function rejects any POS tender (cash, card, mobile, cheque) when no open shift exists for the operating cashier and cash account.
+- **Expected closing cash (implemented):** `opening_float` + incoming − outgoing cash payments of the shift, counting payments that are `posted` or `reversed` (a reversed payment and its posted reversal cancel), summed in Decimal. Earlier code counted incoming cash only, so every cash refund or payout showed as a shortage.
+- **Variance posting (implemented):** a non-zero `variance` posts Dr `cash_over_short_account_id` / Cr the drawer's cash account for a shortage (the reverse for an overage), branch-tagged, with source `cashier_shift`.
 
 ### `cash_drawer_counts`
 
@@ -3338,6 +3350,7 @@ Transactional integration event.
 - After `attempt_count` reaches `max_attempts`, the worker sets `status='dead_letter'`, `dead_lettered_at=now()`, and `dead_letter_reason`. Dead-lettered events are visible in the admin reconciliation dashboard and trigger a critical alert. They may be manually requeued (`status='pending'`, `attempt_count=0`) after the root cause is fixed.
 - `skipped` is used for events that are intentionally not published (e.g., feature-flag-disabled consumers).
 - The partial index `INDEX WHERE published_at IS NULL AND status='pending'` lets workers efficiently claim unpublished pending events.
+- **Delivery (implemented, `src/workers/outboxWorker.ts`).** Each due event is claimed with a conditional update on its `next_attempt_at` that only one runner can win, pushing it out by a 5-minute lease; a crashed runner's event becomes due again when the lease ends. An endpoint whose `webhook_deliveries` row is already `delivered` is not sent the event again; the event is `published` only when every subscribed endpoint has it, and `attempt_count` grows once per attempt, not once per failing endpoint.
 
 ### `webhook_endpoints`
 
@@ -3793,6 +3806,8 @@ flowchart TD
   I --> J[Audit and lock]
 ```
 
+**Implemented:** expected cash counts incoming minus outgoing cash payments of the shift (posted or reversed), in Decimal; any non-zero variance is posted against `accounting_policies.cash_over_short_account_id` (§5.11 `cashier_shifts`).
+
 ## 7.9 Corrections and Backdating
 
 | Action | Allowed state | Implementation |
@@ -3846,6 +3861,8 @@ flowchart TD
   L --> M[Mark count and adjustment posted]
   M --> N[COMMIT]
 ```
+
+**Implemented:** a count can have thousands of lines, so creating, saving and posting it are bulk statements rather than per-line round trips: saving validates reasons and scanned serials with one query each and writes line values and serial resolutions in batches of 500 (2,000 lines save in under 2 s); posting writes movements and stock rows in batches of 1,000 with an optimistic version check. Write-offs, damage and count variances post a journal (Dr variance expense / Cr inventory) for the valuation change.
 
 ## 7.12 Hold, Recall, and Complete POS Sale
 
@@ -3911,6 +3928,8 @@ flowchart TD
 5. Worker sends through adapter with rate limit, retry, and provider status query.
 6. Withdrawn/no consent recipients are skipped; the reason is retained.
 7. Message bodies and destinations are protected from ordinary logs.
+
+**Implemented for SMS** as specified in §5.11A "Marketing SMS campaigns": draft → preview with a confirmation token over the eligible set → send (`communication.campaign.send`) → completed; messages go through the shared SMS send worker as promotional SMS and are re-checked for consent and campaign status just before sending. Steps 2 and 4 are narrower than specified: the audience is all consenting customers or one customer group, and approval is the send permission plus the company's daily SMS limit, not a separate recipient/cost threshold.
 
 ## 7.17 Payroll Run
 
@@ -4247,6 +4266,8 @@ audit.view.company
 support.manage.company
 ```
 
+**Added with the receivables, collections and SMS work (§5.11A):** `collection.view.branch`, `collection.manage.branch` (promises to pay, follow-ups), `collection.reschedule.branch` (change a contractual due date), `communication.transactional.send.branch` (manual due reminder), `communication.bulk_send.company`, `communication.reminder_policy.manage.company`, `communication.sms_provider.manage.company`, together with the existing `communication.template.manage.company`, `communication.campaign.manage.company` and `communication.campaign.send`. The authoritative list is `src/lib/permissions/catalogue.ts`; `src/lib/permissions/routePolicy.json` records the permissions each API handler checks, and a test keeps the two in step.
+
 ## 8.6 Segregation of Duties
 
 - The creator of a journal adjustment, stock write-off, payroll run, high-value refund, large discount override, tax-rule change, or courier settlement cannot be its final approver.
@@ -4446,6 +4467,7 @@ All master/transaction lists provide permission-aware columns, search, stable so
 - Local PII is minimized; queues are encrypted with a device-bound key where supported; auth tokens are not kept in ordinary local storage.
 - Commands remain local until the server confirms committed resource ID and hash.
 - After disaster recovery the server publishes a new recovery epoch; older devices upload to quarantine and re-bootstrap.
+- **Batch size (implemented):** one `POST /api/v1/offline/sync` request carries at most 100 commands. A batch is applied in one SERIALIZABLE transaction with a 30-second timeout; 200 cash sales took about 24 s idle and over the timeout under load. A terminal with more sends several batches; duplicate detection makes a resend safe.
 
 | Conflict | Action |
 |---|---|
@@ -4621,6 +4643,7 @@ Critical/high findings block fiscal-period locking until resolved or formally wa
 ## 12.2 Application and Infrastructure Security
 
 - CSRF protection on all cookie-authenticated mutations; strict CSP, HSTS, no unsafe raw HTML.
+- **CSP (implemented, `src/lib/security/csp.ts`, `src/middleware.ts`).** Every page request gets a fresh 128-bit nonce. `script-src 'self' 'nonce-…' 'strict-dynamic'`, with no `'unsafe-inline'`; `'unsafe-eval'` only in development (React's dev tooling). `style-src` keeps `'unsafe-inline'` because components set inline styles; styles cannot run code. `object-src 'none'`; `frame-ancestors 'self'` (the space-z.ai preview gateway is added in development only). Pages render per request because the root layout reads the nonce. Verified on a production build: injected inline script and event handlers are blocked, nonce-bearing framework scripts run.
 - Parameterized Prisma/TypedSQL only. Raw string SQL interpolation is prohibited.
 - Endpoint-specific body limits, rate limits, and export/report abuse controls.
 - TLS in transit; encrypted disks, object storage, and backups.
@@ -4641,6 +4664,7 @@ Required for direct account/stock adjustment, negative-stock exception, backdate
 - Access to phone, address, financial history, and bulk export is permissioned and audited.
 - Production data is prohibited in developer/test environments unless irreversibly masked.
 - Data-subject requests, retention, consent wording, breach response, and lawful archival require approved legal policy.
+- **Retention job (implemented, `src/lib/retention/job.ts`):** runs per company with that company's configured periods, honours legal holds, and anonymizes customers in one transaction per batch. On MariaDB it purges neither `audit_logs` nor `security_events`; both are append-only by trigger.
 
 `RESOLVED §20.D09`: Privacy notices, purpose-based processing, consent records, access controls, retention schedules, anonymization, legal holds, and data-subject-request workflows are specified in §20.D09. `EXTERNAL SIGN-OFF REQUIRED`: Final privacy-notice legal language, retention periods, and data-request procedures must be approved by qualified Bangladesh legal counsel before production go-live (see Appendix B).
 
@@ -4709,6 +4733,8 @@ Responses never expose SQL, stack traces, secrets, internal topology, or another
 
 Deadlock/serialization errors are retried a bounded number of times with idempotent retries. Final failure returns a conflict, not a partial result.
 
+**Implemented:** `withTenant` reruns the whole transaction after a write conflict (MariaDB 1213 deadlock, 1020 record changed, Prisma P2034), after a short random pause, up to three attempts in all; a conflict that persists is `CONCURRENT_MODIFICATION` (409, retryable). Units of work touch only the database (provider calls are made outside transactions), so a rerun repeats nothing external. Journal entry numbers are an exception to the "document number" row above: they come from reserved blocks (§5.3).
+
 ## 13.3 Logging, Tracing, and Metrics
 
 - Structured JSON logs with correlation_id, environment, release, company_id, and permitted branch context.
@@ -4716,6 +4742,7 @@ Deadlock/serialization errors are retried a bounded number of times with idempot
 - Propagate correlation through API, DB command, audit, queue, webhook, and provider call.
 - Use error tracking plus OpenTelemetry-compatible traces where available.
 - Alert on API error/latency, DB pool saturation, deadlocks, queue age, outbox age, webhook dead letters, sync conflicts, reconciliation findings, backup age, unresolved shift variance, journal failures, and stock/serial mismatch.
+- **Implemented:** server code logs only through `src/lib/logging` (`logger`), never `console.*`, so lines carry correlation and company ids and are redacted. A caught error is logged with `errorMeta(e)`: name and message, and the stack only outside production.
 
 # 14. Backup, Recovery, and Business Continuity
 
@@ -4815,6 +4842,8 @@ post_store_credit_from_return
 reverse_journal_entry
 post_account_adjustment
 ```
+
+**Append-only tables (MariaDB triggers raising `IMMUTABLE_LEDGER` on UPDATE and DELETE):** `journal_entries`, `journal_lines`, `audit_logs`, `security_events` (migration `20261001000200`) and `installment_due_date_changes` (migration `20260929000100`).
 
 Privileged database logic (historical `SECURITY DEFINER` wording) follows least-privilege MariaDB discipline: triggers and transactional domain commands validate company context and run under restricted accounts with only required grants. There is no `search_path` concept on MariaDB.
 
@@ -7414,6 +7443,8 @@ No team may replace an authoritative ledger with a cached balance, omit a requir
 
 ### Decision
 `RESOLVED §21.15`: Content-Security-Policy: `script-src 'self'` (no `unsafe-inline` or `unsafe-eval`). `style-src 'self' 'unsafe-inline'` (required by Next.js/Tailwind). `frame-ancestors 'self' https://*.space-z.ai` (preview gateway). HSTS: `max-age=63072000; includeSubDomains; preload`.
+
+**As implemented (supersedes the policy text above):** Next.js needs inline scripts, so `script-src 'self'` alone cannot work; the deployed policy is per request with a nonce: `script-src 'self' 'nonce-<per request>' 'strict-dynamic'`, `'unsafe-eval'` in development only. The space-z.ai gateway may frame the app in development only; production allows `frame-ancestors 'self'`. See §12.2.
 
 ---
 
