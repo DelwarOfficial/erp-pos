@@ -1991,5 +1991,30 @@
       "service.read"
     ],
     "exception": null
+  },
+  {
+    "file": "v1/stock-adjustments/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "inventory.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/service-requests/[id]/route.ts",
+    "method": "POST",
+    "permissions": [
+      "service.complete",
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/stock-adjustments/[id]/route.ts",
+    "method": "POST",
+    "permissions": [
+      "stock_adjustment.post"
+    ],
+    "exception": null
   }
 ]
