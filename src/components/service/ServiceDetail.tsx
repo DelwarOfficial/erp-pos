@@ -23,7 +23,7 @@ export function ServiceDetail({ id, onClose, onChanged }: { id: string; onClose:
   const mutation = useWorkflowMutation(); const [detail, setDetail] = useState<Detail | null>(null); const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
   const [note, setNote] = useState(''); const [estimate, setEstimate] = useState(''); const [deposit, setDeposit] = useState(''); const [invoice, setInvoice] = useState<BusinessEntity | null>(null);
   const [parts, setParts] = useState<Part[]>([{ key: 'initial', product: null, qty: '', price: '0', serials: '', warranty: false }]); const [showParts, setShowParts] = useState(false);
-  const dirty = !!note || showParts && parts.some(part => part.product || part.qty); useDraftProtection(dirty);
+  const dirty = !!note || !!invoice || !!detail && (Number(estimate) !== Number(detail.estimated_amount) || Number(deposit) !== Number(detail.deposit_required)) || showParts && parts.some(part => part.product || part.qty || part.serials || part.batch); useDraftProtection(dirty);
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try { const res = await apiFetch(`/api/v1/service-requests/${id}`); const data = await res.json(); if (!res.ok) throw new Error(data.error?.message ?? 'Unable to load service request'); setDetail(data); setEstimate(data.estimated_amount); setDeposit(data.deposit_required); }

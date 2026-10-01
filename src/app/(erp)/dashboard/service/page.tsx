@@ -167,7 +167,7 @@ export default function ServicePage() {
                     <span className="text-xs text-muted-foreground">{new Date(r.received_at).toLocaleString()}</span>
                   </div>
                   <div className="text-sm mt-1">
-                    {r.customer ? `${r.customer.name} (${r.customer.phone})` : 'Walk-in'}
+                    {r.customer ? `${r.customer.name}${r.customer.phone ? ` (${r.customer.phone})` : ''}` : 'Walk-in'}
                     {r.serial && ` • IMEI: ${r.serial.serialNumber}`}
                     {` • ${r.part_count} parts used`}
                   </div>

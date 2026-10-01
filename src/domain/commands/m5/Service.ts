@@ -170,6 +170,7 @@ export async function postServicePartConsumption(
   input: ConsumeServicePartInput,
   correlationId: string,
 ): Promise<{ eventId: string; itemCount: number }> {
+  if (!input.items.length) throw new DomainError('VALIDATION_FAILED', 'Add at least one service part', {}, 400);
   const sr = await tx.serviceRequest.findFirst({
     where: { id: input.serviceRequestId, companyId: input.companyId },
   });
@@ -198,7 +199,7 @@ export async function postServicePartConsumption(
     },
   });
 
-  const journalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string }> = [];
+  const journalLines: Array<{ chartOfAccountId: string; branchId: string; debit: number; credit: number; memo?: string }> = [];
   const previous = await tx.serviceRequestPart.aggregate({ where: { serviceRequestId: sr.id }, _max: { lineNo: true } });
   let lineNo = (previous._max.lineNo ?? 0) + 1;
   let eventLineNo = 1;
@@ -262,12 +263,12 @@ export async function postServicePartConsumption(
 
     // Dr Repair WIP, Cr Inventory
     if (totalCost > 0) journalLines.push({
-      chartOfAccountId: policies.repairWipAccountId!,
+      chartOfAccountId: policies.repairWipAccountId!, branchId: sr.branchId,
       debit: totalCost, credit: 0,
       memo: `Parts: ${product.name} ×${item.quantity}`,
     });
     if (totalCost > 0) journalLines.push({
-      chartOfAccountId: policies.inventoryAccountId,
+      chartOfAccountId: policies.inventoryAccountId, branchId: sr.branchId,
       debit: 0, credit: totalCost,
       memo: `Parts issued: ${product.name}`,
     });

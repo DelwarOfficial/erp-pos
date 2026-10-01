@@ -232,11 +232,11 @@ test('service intake → diagnosis → approval → repeated parts → invoice �
   }
   await action('Mark ready', 'Repair tested successfully');
   const blocked = await page.request.post(`/api/v1/service-requests/${service.serviceRequestId}`, { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { action: 'transition', status: 'delivered', note: 'Missing invoice must block delivery' } }); expect(blocked.status()).toBe(409);
-  const pos = await page.context().newPage(); await pos.goto('/dashboard/pos'); await pos.getByPlaceholder(/Search products/).fill(labour.name);
-  await pos.getByRole('button', { name: new RegExp(labour.name) }).click(); await pick(pos, 'Customer', customer.name);
-  await pos.getByRole('combobox', { name: 'Warehouse', exact: true }).selectOption(warehouse.id); await pos.getByRole('combobox', { name: 'Account', exact: true }).selectOption(fixture.cash.id);
+  const pos = await page.context().newPage(); await pos.goto('/dashboard/pos'); await pos.getByPlaceholder(/Scan barcode or search/).fill(labour.name);
+  await pos.getByRole('button', { name: new RegExp(labour.name) }).click(); await pick(pos, 'Customer (optional)', customer.name);
+  await pick(pos, 'Warehouse *', warehouse.name); await pick(pos, 'Financial Account *', fixture.cash.name);
   const invoicing = pos.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
-  await pos.getByRole('button', { name: /Complete Sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close();
+  await pos.getByRole('button', { name: /Complete Sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close(); await page.goto('/dashboard/service'); await page.getByRole('button', { name: 'View service request', exact: true }).click();
   await pick(page, 'Service invoice', sale.referenceNo); await action('Link service invoice', 'Invoice covers approved service charge'); await action('Deliver device', 'Customer collected repaired device and accessories');
   const completed = await db.serviceRequest.findUniqueOrThrow({ where: { id: service.serviceRequestId }, include: { parts: true } }); expect(completed.status).toBe('delivered'); expect(completed.serviceSaleId).toBe(sale.saleId); expect(completed.parts.map(part => part.lineNo)).toEqual([1, 2]);
   expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('in_stock');
