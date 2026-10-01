@@ -10,27 +10,16 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
-const EmployeeSchema = z.object({
-  employee_no: z.string().min(1).max(40),
-  branch_id: z.string().uuid(),
-  department_id: z.string().uuid().optional(),
-  designation_id: z.string().uuid().optional(),
-  user_id: z.string().uuid().optional(),
-  name: z.string().min(1).max(150),
-  phone: z.string().max(30).optional(),
-  email: z.string().email().max(150).optional(),
-  address: z.string().optional(),
-  join_date: z.string().datetime(),
-  base_salary: z.number().min(0).default(0),
-  payroll_expense_account_id: z.string().uuid(),
-  payroll_payable_account_id: z.string().uuid(),
-});
+import { EmployeeInput, employeeFields, validateEmployeeReferences } from '@/lib/api/employeeInput';
+import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, "employee.read");
+    const page = readListPage(req.nextUrl);
+    const search = req.nextUrl.searchParams.get('search')?.trim();
     const employees = await runInTenantContext(auth.ctx, async () => {
       return db.employee.findMany({
         where: { companyId: auth.companyId },
@@ -51,7 +40,8 @@ export async function GET(req: NextRequest) {
       });
     });
     return NextResponse.json({
-      items: employees.map(e => ({
+      ...listPageResult(employees, page),
+      items: listPageResult(employees, page).items.map(e => ({
         id: e.id, employee_no: e.employeeNo, name: e.name,
         phone: e.phone, email: e.email,
         branch: e.branch, department: e.department, designation: e.designation,
@@ -69,7 +59,8 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateRequest();
     await requirePermission(auth, "employee.manage.branch");
     const idempotencyKey = requireIdempotencyKey(req);
-    const body = EmployeeSchema.parse(await req.json());
+    const body = EmployeeInput.parse(await req.json());
+    await requirePermission(auth, 'employee.manage.branch', body.branch_id);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/employees', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
@@ -77,22 +68,11 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'employee.create', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
+            await validateEmployeeReferences(tx, auth.companyId, body);
             const emp = await tx.employee.create({
               data: {
                 companyId: auth.companyId,
-                employeeNo: body.employee_no,
-                branchId: body.branch_id,
-                departmentId: body.department_id ?? null,
-                designationId: body.designation_id ?? null,
-                userId: body.user_id ?? null,
-                name: body.name,
-                phone: body.phone ?? null,
-                email: body.email ?? null,
-                address: body.address ?? null,
-                joinDate: new Date(body.join_date),
-                baseSalary: body.base_salary,
-                payrollExpenseAccountId: body.payroll_expense_account_id,
-                payrollPayableAccountId: body.payroll_payable_account_id,
+                ...employeeFields(body),
               },
             });
             await tx.auditLog.create({

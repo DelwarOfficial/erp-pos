@@ -939,6 +939,30 @@
     "exception": null
   },
   {
+    "file": "v1/employees/[id]/route.ts",
+    "method": "GET",
+    "permissions": [
+      "employee.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/employees/[id]/route.ts",
+    "method": "POST",
+    "permissions": [
+      "employee.manage.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/employees/options/route.ts",
+    "method": "GET",
+    "permissions": [
+      "employee.read"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/employees/route.ts",
     "method": "GET",
     "permissions": [

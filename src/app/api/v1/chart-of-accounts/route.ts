@@ -28,10 +28,13 @@ export async function GET(req: NextRequest) {
     const auth = await authenticateRequest();
     const page = readListPage(req.nextUrl);
     await requirePermission(auth, "journal.read");
+    const accountClass = z.enum(['asset', 'liability', 'equity', 'revenue', 'expense']).optional().parse(req.nextUrl.searchParams.get('account_class') ?? undefined);
+    const active = z.enum(['true', 'false']).optional().parse(req.nextUrl.searchParams.get('is_active') ?? undefined);
+    const search = req.nextUrl.searchParams.get('search')?.trim();
     const accountsPage = await runInTenantContext(auth.ctx, async () => {
       return db.chartOfAccount.findMany({
         ...listPageArgs(page),
-        where: { companyId: auth.companyId },
+        where: { companyId: auth.companyId, ...(accountClass ? { accountClass } : {}), ...(active ? { isActive: active === 'true' } : {}), ...(search ? { OR: [{ name: { contains: search } }, { code: { contains: search } }] } : {}) },
         orderBy: [{ code: 'asc' }, { id: 'asc' }],
         include: { parent: { select: { id: true, code: true, name: true } } },
       });

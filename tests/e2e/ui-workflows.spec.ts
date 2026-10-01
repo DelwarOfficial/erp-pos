@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   if (process.env.UI_HEALTH_LOCAL_VERIFICATION !== '1' || target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') throw new Error('Only approved disposable database allowed');
   const companyId = randomUUID();
   fixture = await ensureSyntheticIssuerTenant(db, { companyId, label: 'Workflow browser', code: `UI-${randomUUID().slice(0, 8)}` });
-  for (const code of ['crm.lead.read', 'crm.lead.create', 'crm.lead.update', 'lead.convert', 'purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'service.read', 'service.intake', 'service.complete', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
+  for (const code of ['employee.read', 'employee.manage.branch', 'journal.read', 'crm.lead.read', 'crm.lead.create', 'crm.lead.update', 'lead.convert', 'purchase.read', 'purchase.create', 'purchase.receive', 'supplier.read', 'product.read', 'inventory.read', 'transfer.dispatch', 'transfer.receive', 'stock_count.post', 'stock_adjustment.post', 'approval.resolve', 'service.read', 'service.intake', 'service.complete', 'sale.read', 'sale.post', 'customer.read', 'payment.read', 'shift.read', 'sale_return.post', 'sale.refund.branch', 'payment.pay.branch']) {
     const permission = await db.permission.upsert({ where: { code }, create: { code, module: code.split('.')[0], description: code }, update: {} });
     await db.rolePermission.upsert({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } }, create: { roleId: fixture.role.id, permissionId: permission.id }, update: {} });
   }
@@ -383,5 +383,28 @@ test('CRM create, edit, follow-up and conversion enforce permissions and tenant 
   await expect(page.getByText('Customer: Browser follow-up lead', { exact: true })).toBeVisible();
   expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).convertedCustomerId).toBe(customerResult.customerId);
   expect(await db.customer.count({ where: { companyId: fixture.companyId, phone: '01700009991' } })).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('HR create, view and edit validate payroll account classes, IDs and permission', async ({ page }) => {
+  const payable = await db.chartOfAccount.create({ data: { companyId: fixture.companyId, code: 'UI-PAYROLL', name: 'Browser payroll payable', accountClass: 'liability', accountSubtype: 'current_liability', normalBalance: 'C' } });
+  const department = await db.department.create({ data: { companyId: fixture.companyId, name: 'Browser operations' } });
+  const designation = await db.designation.create({ data: { companyId: fixture.companyId, name: 'Browser operator' } });
+  await login(page); page.on('dialog', dialog => dialog.accept()); await page.goto('/dashboard/hr');
+  await page.getByRole('button', { name: 'New employee', exact: true }).click(); await page.getByLabel('Employee number', { exact: true }).fill('UI-EMP-001'); await page.getByLabel('Employee name', { exact: true }).fill('Browser employee'); await page.getByLabel('Join date', { exact: true }).fill('2026-01-01'); await page.getByLabel('Base salary', { exact: true }).fill('20000');
+  await pick(page, 'Employee branch', fixture.branches[0].name); await pick(page, 'Employee department', department.name); await pick(page, 'Employee designation', designation.name); await pick(page, 'Linked employee user', fixture.user.name); await pick(page, 'Payroll expense account', fixture.expense.name); await pick(page, 'Payroll payable account', payable.name);
+  const creating = page.waitForResponse(response => response.url().endsWith('/api/v1/employees') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Create employee', exact: true }).click(); const created = await creating; expect(created.status(), await created.text()).toBe(201); const employee = await created.json();
+  await expect(page.getByRole('button', { name: 'Edit employee', exact: true })).toBeVisible();
+  const stored = await db.employee.findUniqueOrThrow({ where: { id: employee.id } }); expect(stored.branchId).toBe(fixture.branches[0].id); expect(stored.departmentId).toBe(department.id); expect(stored.userId).toBe(fixture.user.id); expect(stored.payrollExpenseAccountId).toBe(fixture.expense.id); expect(stored.payrollPayableAccountId).toBe(payable.id);
+  await page.getByRole('button', { name: 'Edit employee', exact: true }).click(); await page.getByLabel('Base salary', { exact: true }).fill('22000'); await page.getByLabel('Phone', { exact: true }).fill('01700008881');
+  const saving = page.waitForResponse(response => response.url().endsWith(`/employees/${employee.id}`) && response.request().method() === 'POST'); await page.getByRole('button', { name: 'Save employee', exact: true }).click(); const saved = await saving; expect(saved.status(), await saved.text()).toBe(200);
+  await expect(page.getByRole('button', { name: 'Edit employee', exact: true })).toBeVisible(); expect((await db.employee.findUniqueOrThrow({ where: { id: employee.id } })).baseSalary.toString()).toBe('22000');
+  const payload = saved.request().postDataJSON(); const headers = { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() };
+  const invalidAccount = await page.request.post(`/api/v1/employees/${employee.id}`, { headers, data: { ...payload, payroll_payable_account_id: fixture.expense.id } }); expect(invalidAccount.status()).toBe(400);
+  const permission = await db.permission.findUniqueOrThrow({ where: { code: 'employee.manage.branch' } }); await db.rolePermission.delete({ where: { roleId_permissionId: { roleId: fixture.role.id, permissionId: permission.id } } });
+  try { const denied = await page.request.post(`/api/v1/employees/${employee.id}`, { headers: { ...headers, 'Idempotency-Key': randomUUID() }, data: payload }); expect(denied.status()).toBe(403); }
+  finally { await db.rolePermission.create({ data: { roleId: fixture.role.id, permissionId: permission.id } }); }
+  expect(await db.auditLog.count({ where: { companyId: fixture.companyId, entityId: employee.id, action: 'employee.update' } })).toBe(1);
   await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
