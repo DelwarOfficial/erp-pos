@@ -39,13 +39,8 @@
   "exclude": [
     ".local",
     "node_modules",
-    "examples",
     "tests/e2e",
     "scripts",
-    "tests/load",
-    "skills",
-    "upload",
-    "tool-results",
-    "agent-ctx"
+    "tests/load"
   ]
 }

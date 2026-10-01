@@ -8,8 +8,7 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@erp-platform.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'ChangeMe!2026';
 
-// Authentication is shared across all tests via storageState in playwright.config.toml.
-// This file produces that shared state via a global setup pattern.
+// Each test signs in through the login form itself; no shared storage state is used.
 
 test.describe('Authentication', () => {
   test.beforeEach(async ({ page }, testInfo) => {

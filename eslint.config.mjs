@@ -100,13 +100,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     ".local/**",
     ".kilo/**",
     "next-env.d.ts",
-    "examples/**",
-    // Was "skills" without a glob, which does not exclude the directory's
-    // contents.
-    "skills/**",
     "graphify-out/**",
-    "download/**",
-    "mini-services/**",
     "tests/load/**",
     "public/sw.js",
     "public/**/*.js",
