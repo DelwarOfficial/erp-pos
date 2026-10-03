@@ -1,0 +1,859 @@
+# ERP repository inventory
+
+Snapshot: 2026-10-03, revision 0808200. File presence does not establish acceptance. Paths are relative to the repository root.
+
+## Pages (59)
+
+- src/app/(auth)/login/page.tsx
+- src/app/(auth)/mfa/page.tsx
+- src/app/(auth)/mfa/setup/page.tsx
+- src/app/(erp)/dashboard/access/permissions/page.tsx
+- src/app/(erp)/dashboard/access/roles/[id]/page.tsx
+- src/app/(erp)/dashboard/access/roles/page.tsx
+- src/app/(erp)/dashboard/access/users/[id]/page.tsx
+- src/app/(erp)/dashboard/access/users/page.tsx
+- src/app/(erp)/dashboard/accounting/fiscal-periods/page.tsx
+- src/app/(erp)/dashboard/accounting/journal/page.tsx
+- src/app/(erp)/dashboard/accounting/page.tsx
+- src/app/(erp)/dashboard/accounting/trial-balance/page.tsx
+- src/app/(erp)/dashboard/assets/page.tsx
+- src/app/(erp)/dashboard/audit/page.tsx
+- src/app/(erp)/dashboard/bank-reconciliation/page.tsx
+- src/app/(erp)/dashboard/cashier/page.tsx
+- src/app/(erp)/dashboard/catalogue/page.tsx
+- src/app/(erp)/dashboard/collections/calendar/page.tsx
+- src/app/(erp)/dashboard/collections/customers/[id]/page.tsx
+- src/app/(erp)/dashboard/collections/page.tsx
+- src/app/(erp)/dashboard/collections/reports/page.tsx
+- src/app/(erp)/dashboard/communications/campaigns/page.tsx
+- src/app/(erp)/dashboard/communications/page.tsx
+- src/app/(erp)/dashboard/communications/sms/page.tsx
+- src/app/(erp)/dashboard/crm/page.tsx
+- src/app/(erp)/dashboard/deliveries/page.tsx
+- src/app/(erp)/dashboard/expenses/[id]/page.tsx
+- src/app/(erp)/dashboard/expenses/page.tsx
+- src/app/(erp)/dashboard/feature-flags/page.tsx
+- src/app/(erp)/dashboard/gift-cards/page.tsx
+- src/app/(erp)/dashboard/hr/page.tsx
+- src/app/(erp)/dashboard/imports/page.tsx
+- src/app/(erp)/dashboard/integrations/page.tsx
+- src/app/(erp)/dashboard/inventory/adjustments/page.tsx
+- src/app/(erp)/dashboard/inventory/counts/page.tsx
+- src/app/(erp)/dashboard/inventory/opening-stock/page.tsx
+- src/app/(erp)/dashboard/inventory/page.tsx
+- src/app/(erp)/dashboard/inventory/transfers/page.tsx
+- src/app/(erp)/dashboard/onboarding/page.tsx
+- src/app/(erp)/dashboard/page.tsx
+- src/app/(erp)/dashboard/parties/page.tsx
+- src/app/(erp)/dashboard/payments/[id]/page.tsx
+- src/app/(erp)/dashboard/payments/page.tsx
+- src/app/(erp)/dashboard/pos/page.tsx
+- src/app/(erp)/dashboard/products/[id]/page.tsx
+- src/app/(erp)/dashboard/products/new/page.tsx
+- src/app/(erp)/dashboard/products/page.tsx
+- src/app/(erp)/dashboard/purchases/page.tsx
+- src/app/(erp)/dashboard/reports/page.tsx
+- src/app/(erp)/dashboard/risk-tuning/page.tsx
+- src/app/(erp)/dashboard/sales/credit/page.tsx
+- src/app/(erp)/dashboard/sales/page.tsx
+- src/app/(erp)/dashboard/security/page.tsx
+- src/app/(erp)/dashboard/service/page.tsx
+- src/app/(erp)/dashboard/settings/page.tsx
+- src/app/(erp)/dashboard/support/page.tsx
+- src/app/(erp)/dashboard/system/page.tsx
+- src/app/page.tsx
+- src/app/reset-password/page.tsx
+
+## API routes (197)
+
+- src/app/api/route.ts
+- src/app/api/v1/accounting/period-close/[id]/lock/route.ts
+- src/app/api/v1/accounting/period-close/[id]/route.ts
+- src/app/api/v1/accounting/period-close/[id]/unlock/route.ts
+- src/app/api/v1/accounting/revaluate/route.ts
+- src/app/api/v1/accounting-policies/route.ts
+- src/app/api/v1/account-transfers/route.ts
+- src/app/api/v1/admin/branches/route.ts
+- src/app/api/v1/admin/companies/route.ts
+- src/app/api/v1/admin/health/route.ts
+- src/app/api/v1/admin/permissions/route.ts
+- src/app/api/v1/admin/risk-alerts/evaluate/route.ts
+- src/app/api/v1/admin/risk-alerts/route.ts
+- src/app/api/v1/admin/risk-assessments/[id]/outcome/route.ts
+- src/app/api/v1/admin/risk-assessments/report/route.ts
+- src/app/api/v1/admin/risk-assessments/route.ts
+- src/app/api/v1/admin/risk-config/route.ts
+- src/app/api/v1/admin/risk-threshold-changes/[id]/revert/route.ts
+- src/app/api/v1/admin/risk-threshold-changes/route.ts
+- src/app/api/v1/admin/roles/[id]/route.ts
+- src/app/api/v1/admin/roles/route.ts
+- src/app/api/v1/admin/users/[id]/password-reset/route.ts
+- src/app/api/v1/admin/users/[id]/route.ts
+- src/app/api/v1/admin/users/route.ts
+- src/app/api/v1/advances/route.ts
+- src/app/api/v1/approvals/[id]/resolve/route.ts
+- src/app/api/v1/approvals/route.ts
+- src/app/api/v1/audit-logs/route.ts
+- src/app/api/v1/auth/login/route.ts
+- src/app/api/v1/auth/logout/route.ts
+- src/app/api/v1/auth/mfa/setup/activate/route.ts
+- src/app/api/v1/auth/mfa/setup/route.ts
+- src/app/api/v1/auth/mfa/verify/route.ts
+- src/app/api/v1/auth/password-reset/route.ts
+- src/app/api/v1/auth/refresh/route.ts
+- src/app/api/v1/bank-reconciliations/[id]/auto-match/route.ts
+- src/app/api/v1/bank-reconciliations/[id]/finalize/route.ts
+- src/app/api/v1/bank-reconciliations/[id]/manual-match/route.ts
+- src/app/api/v1/bank-reconciliations/[id]/route.ts
+- src/app/api/v1/bank-reconciliations/[id]/statement-lines/route.ts
+- src/app/api/v1/bank-reconciliations/route.ts
+- src/app/api/v1/branches/route.ts
+- src/app/api/v1/brands/[id]/route.ts
+- src/app/api/v1/brands/route.ts
+- src/app/api/v1/cashier-shifts/[id]/close/route.ts
+- src/app/api/v1/cashier-shifts/open/route.ts
+- src/app/api/v1/cashier-shifts/route.ts
+- src/app/api/v1/categories/[id]/route.ts
+- src/app/api/v1/categories/route.ts
+- src/app/api/v1/chart-of-accounts/route.ts
+- src/app/api/v1/collections/assignees/route.ts
+- src/app/api/v1/collections/bulk-reminders/preview/route.ts
+- src/app/api/v1/collections/bulk-reminders/route.ts
+- src/app/api/v1/collections/calendar/route.ts
+- src/app/api/v1/collections/follow-ups/[id]/close/route.ts
+- src/app/api/v1/collections/follow-ups/route.ts
+- src/app/api/v1/collections/installments/[id]/due-date/route.ts
+- src/app/api/v1/collections/installments/[id]/reminder/route.ts
+- src/app/api/v1/collections/overview/route.ts
+- src/app/api/v1/collections/promises/[id]/cancel/route.ts
+- src/app/api/v1/collections/promises/route.ts
+- src/app/api/v1/collections/reports/route.ts
+- src/app/api/v1/collections/worklist/route.ts
+- src/app/api/v1/communications/campaigns/[id]/cancel/route.ts
+- src/app/api/v1/communications/campaigns/[id]/preview/route.ts
+- src/app/api/v1/communications/campaigns/[id]/send/route.ts
+- src/app/api/v1/communications/campaigns/route.ts
+- src/app/api/v1/communications/messages/[id]/resolve/route.ts
+- src/app/api/v1/communications/messages/route.ts
+- src/app/api/v1/communications/reminder-policy/route.ts
+- src/app/api/v1/communications/sms-account/route.ts
+- src/app/api/v1/communications/templates/[code]/route.ts
+- src/app/api/v1/communications/templates/preview/route.ts
+- src/app/api/v1/communications/templates/route.ts
+- src/app/api/v1/courier-settlements/route.ts
+- src/app/api/v1/cron/risk-alerts/route.ts
+- src/app/api/v1/customers/[id]/collections/route.ts
+- src/app/api/v1/customers/[id]/collection-timeline/route.ts
+- src/app/api/v1/customers/[id]/receivable/route.ts
+- src/app/api/v1/customers/[id]/route.ts
+- src/app/api/v1/customers/[id]/sms-preferences/route.ts
+- src/app/api/v1/customers/route.ts
+- src/app/api/v1/data-subject-requests/[id]/export/route.ts
+- src/app/api/v1/data-subject-requests/[id]/route.ts
+- src/app/api/v1/data-subject-requests/route.ts
+- src/app/api/v1/deliveries/[id]/transition/route.ts
+- src/app/api/v1/deliveries/route.ts
+- src/app/api/v1/employees/[id]/route.ts
+- src/app/api/v1/employees/options/route.ts
+- src/app/api/v1/employees/route.ts
+- src/app/api/v1/exchange-rates/[id]/route.ts
+- src/app/api/v1/exchange-rates/route.ts
+- src/app/api/v1/expense-categories/route.ts
+- src/app/api/v1/expenses/[id]/approve/route.ts
+- src/app/api/v1/expenses/[id]/route.ts
+- src/app/api/v1/expenses/route.ts
+- src/app/api/v1/export-jobs/[id]/download/route.ts
+- src/app/api/v1/export-jobs/route.ts
+- src/app/api/v1/feature-flags/[key]/route.ts
+- src/app/api/v1/feature-flags/route.ts
+- src/app/api/v1/financial-accounts/route.ts
+- src/app/api/v1/fiscal-periods/route.ts
+- src/app/api/v1/fixed-asset-categories/route.ts
+- src/app/api/v1/fixed-assets/[id]/depreciate/route.ts
+- src/app/api/v1/fixed-assets/[id]/dispose/route.ts
+- src/app/api/v1/fixed-assets/[id]/route.ts
+- src/app/api/v1/fixed-assets/route.ts
+- src/app/api/v1/gift-cards/route.ts
+- src/app/api/v1/health/route.ts
+- src/app/api/v1/import-jobs/[id]/commit/route.ts
+- src/app/api/v1/import-jobs/[id]/errors/route.ts
+- src/app/api/v1/import-jobs/[id]/route.ts
+- src/app/api/v1/import-jobs/route.ts
+- src/app/api/v1/installments/route.ts
+- src/app/api/v1/inventory/movements/route.ts
+- src/app/api/v1/inventory/opening-stock/route.ts
+- src/app/api/v1/inventory/stocks/route.ts
+- src/app/api/v1/inventory-reasons/route.ts
+- src/app/api/v1/journal-entries/[id]/route.ts
+- src/app/api/v1/journal-entries/route.ts
+- src/app/api/v1/landed-costs/route.ts
+- src/app/api/v1/leads/[id]/route.ts
+- src/app/api/v1/leads/options/route.ts
+- src/app/api/v1/leads/route.ts
+- src/app/api/v1/legal-holds/[id]/route.ts
+- src/app/api/v1/legal-holds/route.ts
+- src/app/api/v1/me/route.ts
+- src/app/api/v1/notifications/[id]/read/route.ts
+- src/app/api/v1/notifications/route.ts
+- src/app/api/v1/offline/bootstrap/route.ts
+- src/app/api/v1/offline/sync/route.ts
+- src/app/api/v1/onboarding/[id]/activate/route.ts
+- src/app/api/v1/onboarding/route.ts
+- src/app/api/v1/payments/[id]/refund/route.ts
+- src/app/api/v1/payments/[id]/reverse/route.ts
+- src/app/api/v1/payments/[id]/route.ts
+- src/app/api/v1/payments/initiate/route.ts
+- src/app/api/v1/payments/route.ts
+- src/app/api/v1/payroll-runs/route.ts
+- src/app/api/v1/print/escpos/[saleId]/route.ts
+- src/app/api/v1/products/[id]/activate/route.ts
+- src/app/api/v1/products/[id]/barcodes/route.ts
+- src/app/api/v1/products/[id]/route.ts
+- src/app/api/v1/products/route.ts
+- src/app/api/v1/purchase-returns/route.ts
+- src/app/api/v1/purchases/[id]/receivings/route.ts
+- src/app/api/v1/purchases/[id]/route.ts
+- src/app/api/v1/purchases/route.ts
+- src/app/api/v1/quotations/[id]/convert/route.ts
+- src/app/api/v1/quotations/[id]/route.ts
+- src/app/api/v1/quotations/route.ts
+- src/app/api/v1/reconciliations/[id]/route.ts
+- src/app/api/v1/reconciliations/route.ts
+- src/app/api/v1/refunds/route.ts
+- src/app/api/v1/reports/[code]/route.ts
+- src/app/api/v1/reports/trial-balance/route.ts
+- src/app/api/v1/sale-returns/route.ts
+- src/app/api/v1/sales/[id]/route.ts
+- src/app/api/v1/sales/[id]/void/route.ts
+- src/app/api/v1/sales/pricing/route.ts
+- src/app/api/v1/sales/quote/route.ts
+- src/app/api/v1/sales/route.ts
+- src/app/api/v1/security-events/route.ts
+- src/app/api/v1/serials/search/route.ts
+- src/app/api/v1/service-requests/[id]/parts/route.ts
+- src/app/api/v1/service-requests/[id]/route.ts
+- src/app/api/v1/service-requests/route.ts
+- src/app/api/v1/statutory-documents/generate/route.ts
+- src/app/api/v1/stock-adjustments/[id]/route.ts
+- src/app/api/v1/stock-adjustments/route.ts
+- src/app/api/v1/stock-counts/[id]/actions/route.ts
+- src/app/api/v1/stock-counts/[id]/route.ts
+- src/app/api/v1/stock-counts/route.ts
+- src/app/api/v1/suppliers/route.ts
+- src/app/api/v1/tax-codes/route.ts
+- src/app/api/v1/tax-components/[id]/route.ts
+- src/app/api/v1/tax-components/route.ts
+- src/app/api/v1/tax-periods/[id]/route.ts
+- src/app/api/v1/tax-periods/route.ts
+- src/app/api/v1/transfers/[id]/cancel/route.ts
+- src/app/api/v1/transfers/[id]/dispatch/route.ts
+- src/app/api/v1/transfers/[id]/receive/route.ts
+- src/app/api/v1/transfers/[id]/route.ts
+- src/app/api/v1/transfers/route.ts
+- src/app/api/v1/translations/route.ts
+- src/app/api/v1/units/[id]/route.ts
+- src/app/api/v1/units/route.ts
+- src/app/api/v1/warehouses/route.ts
+- src/app/api/v1/warranty-claims/route.ts
+- src/app/api/v1/webauthn/assertion/begin/route.ts
+- src/app/api/v1/webauthn/assertion/finish/route.ts
+- src/app/api/v1/webauthn/credentials/route.ts
+- src/app/api/v1/webauthn/registration/begin/route.ts
+- src/app/api/v1/webauthn/registration/finish/route.ts
+- src/app/api/v1/webhook-endpoints/route.ts
+- src/app/api/v1/webhooks/courier/[provider]/route.ts
+- src/app/api/v1/webhooks/payment/[provider]/route.ts
+
+## Domain (53)
+
+- src/domain/commands/m2/CreateStockCount.ts
+- src/domain/commands/m2/PostLandedCost.ts
+- src/domain/commands/m2/PostOpeningStock.ts
+- src/domain/commands/m2/PostPurchaseReturn.ts
+- src/domain/commands/m2/PostStockAdjustment.ts
+- src/domain/commands/m2/PostStockCount.ts
+- src/domain/commands/m2/ReceivePurchase.ts
+- src/domain/commands/m2/Transfer.ts
+- src/domain/commands/m2/UpdateStockCount.ts
+- src/domain/commands/m3/CashierShift.ts
+- src/domain/commands/m3/Payments.ts
+- src/domain/commands/m3/PostSale.ts
+- src/domain/commands/m3/PostSaleReturn.ts
+- src/domain/commands/m3/VoidSale.ts
+- src/domain/commands/m4/AssetManagement.ts
+- src/domain/commands/m4/BankReconciliation.ts
+- src/domain/commands/m4/PostExpense.ts
+- src/domain/commands/m4/PostJournalEntry.ts
+- src/domain/commands/m5/Delivery.ts
+- src/domain/commands/m5/FulfillWarrantyClaim.ts
+- src/domain/commands/m5/PostCourierCodSettlement.ts
+- src/domain/commands/m5/Service.ts
+- src/domain/commands/m5/ServiceWorkflow.ts
+- src/domain/commands/m6/CompleteServiceRequest.ts
+- src/domain/commands/m6/ConvertLead.ts
+- src/domain/commands/m6/Loyalty.ts
+- src/domain/commands/m6/PayPayrollRun.ts
+- src/domain/commands/m6/PostPayrollRun.ts
+- src/domain/communication/campaigns.ts
+- src/domain/invariants/barcode.ts
+- src/domain/invariants/comboGraph.ts
+- src/domain/invariants/productActivation.ts
+- src/domain/inventory/stockMovement.ts
+- src/domain/inventory/transferBatches.ts
+- src/domain/inventory/valuation.ts
+- src/domain/inventory/varianceJournal.ts
+- src/domain/offline/applyOfflineCommand.ts
+- src/domain/offline/syncOfflineBatch.ts
+- src/domain/receivables/balances.ts
+- src/domain/receivables/calendar.ts
+- src/domain/receivables/CollectCustomerPayment.ts
+- src/domain/receivables/collectionReports.ts
+- src/domain/receivables/collections.ts
+- src/domain/receivables/followUps.ts
+- src/domain/receivables/phone.ts
+- src/domain/receivables/reminderPolicy.ts
+- src/domain/receivables/reminders.ts
+- src/domain/receivables/reminderTemplates.ts
+- src/domain/receivables/schedule.ts
+- src/domain/receivables/smsSegments.ts
+- src/domain/receivables/templateSettings.ts
+- src/domain/tax/computeLineTax.ts
+- src/domain/tax/priceSaleItem.ts
+
+## Libraries and workers (92)
+
+- src/adapters/index.ts
+- src/adapters/mocks/index.ts
+- src/adapters/providers.ts
+- src/adapters/riskProvider.ts
+- src/adapters/slackProvider.ts
+- src/adapters/telegramProvider.ts
+- src/lib/access/http.ts
+- src/lib/access/policy.ts
+- src/lib/access/reset.ts
+- src/lib/access/service.ts
+- src/lib/access/transaction.ts
+- src/lib/accounting/periodClose.ts
+- src/lib/accounting/revaluation.ts
+- src/lib/accounting/seedCoa.ts
+- src/lib/accounting/trialBalance.ts
+- src/lib/api/catalogueMutation.ts
+- src/lib/api/client.ts
+- src/lib/api/employeeInput.ts
+- src/lib/api/leadInput.ts
+- src/lib/api/listPage.ts
+- src/lib/approval/thresholds.ts
+- src/lib/approval/workflow.ts
+- src/lib/audit/index.ts
+- src/lib/auth/cookieNames.ts
+- src/lib/auth/distributedRateLimiter.ts
+- src/lib/auth/enrollment.ts
+- src/lib/auth/jwt.ts
+- src/lib/auth/mfa.ts
+- src/lib/auth/mfaChallenge.ts
+- src/lib/auth/mfaSetup.ts
+- src/lib/auth/middleware.ts
+- src/lib/auth/password.ts
+- src/lib/auth/rateLimiter.ts
+- src/lib/auth/rateLimitRedis.ts
+- src/lib/auth/refreshToken.ts
+- src/lib/auth/requireMfa.ts
+- src/lib/auth/sessions.ts
+- src/lib/auth/webauthn.ts
+- src/lib/compliance/dataSubjectRequests.ts
+- src/lib/config/productionGuards.ts
+- src/lib/crypto/index.ts
+- src/lib/db.ts
+- src/lib/db/branchScope.ts
+- src/lib/db/index.ts
+- src/lib/db/modelBranchScope.ts
+- src/lib/db/tenantClient.ts
+- src/lib/db/transaction.ts
+- src/lib/db/transactionContext.ts
+- src/lib/errors/codes.ts
+- src/lib/escpos/index.ts
+- src/lib/featureFlags/index.ts
+- src/lib/health/contract.ts
+- src/lib/health/runtime.ts
+- src/lib/health/workerHeartbeat.ts
+- src/lib/http/index.ts
+- src/lib/i18n/index.ts
+- src/lib/idempotency/index.ts
+- src/lib/import-export/csv.ts
+- src/lib/import-export/importProcessor.ts
+- src/lib/import-export/templates.ts
+- src/lib/integrations/outboundUrl.ts
+- src/lib/integrations/webhook.ts
+- src/lib/inventory/reservationExpiry.ts
+- src/lib/logging/index.ts
+- src/lib/numbering/index.ts
+- src/lib/offline/syncLimits.ts
+- src/lib/payroll/beftn.ts
+- src/lib/pdf/index.ts
+- src/lib/permissions/catalogue.ts
+- src/lib/permissions/routePolicy.json
+- src/lib/queue/index.ts
+- src/lib/reconciliation/checks.ts
+- src/lib/reconciliation/scheduler.ts
+- src/lib/retention/job.ts
+- src/lib/retention/legalHold.ts
+- src/lib/risk/alerting.ts
+- src/lib/sales/saleRequest.ts
+- src/lib/security/csp.ts
+- src/lib/sms/credentials.ts
+- src/lib/sms/gateway.ts
+- src/lib/sms/mimsms.ts
+- src/lib/storage/index.ts
+- src/lib/tax/statutoryDocuments.ts
+- src/lib/telemetry/index.ts
+- src/lib/telemetry/resource.ts
+- src/lib/utils.ts
+- src/reports/index.ts
+- src/reports/sqlScope.ts
+- src/workers/dueReminders.ts
+- src/workers/index.ts
+- src/workers/outboxWorker.ts
+- src/workers/sentry.ts
+
+## Tests (135)
+
+- tests/e2e/access-control.spec.ts
+- tests/e2e/accessibility.spec.ts
+- tests/e2e/login.spec.ts
+- tests/e2e/module-smoke.spec.ts
+- tests/e2e/presentation.spec.ts
+- tests/e2e/print-routes.spec.ts
+- tests/e2e/pwa-offline.spec.ts
+- tests/e2e/risk-tuning-page.spec.ts
+- tests/e2e/uat-scenario-1-cashier.spec.ts
+- tests/e2e/uat-scenario-2-inventory.spec.ts
+- tests/e2e/uat-scenario-3-accountant.spec.ts
+- tests/e2e/uat-scenario-4-service.spec.ts
+- tests/e2e/uat-scenario-5-manager.spec.ts
+- tests/e2e/uat-scenario-6-offline.spec.ts
+- tests/e2e/uat-scenario-7-delivery.spec.ts
+- tests/e2e/uat-scenarios.md
+- tests/e2e/ui-health.spec.ts
+- tests/e2e/ui-workflows.spec.ts
+- tests/helpers/immutableTeardown.ts
+- tests/integration/accessControl.test.ts
+- tests/integration/accessQueryCount.test.ts
+- tests/integration/cashierShiftClose.test.ts
+- tests/integration/collectionFollowThrough.test.ts
+- tests/integration/collectionsOverview.test.ts
+- tests/integration/customerCollections.test.ts
+- tests/integration/databaseInvariants.test.ts
+- tests/integration/dataSubjectRequestFulfilment.test.ts
+- tests/integration/dueReminders.test.ts
+- tests/integration/generalLedgerCoverage.test.ts
+- tests/integration/giftCardIssuance.test.ts
+- tests/integration/giftCardReconciliation.test.ts
+- tests/integration/giftCardRedemptionAccounting.test.ts
+- tests/integration/giftCardRelationalResume.test.ts
+- tests/integration/helpers/disposableFixtures.ts
+- tests/integration/journalCurrencyScale.test.ts
+- tests/integration/journalNumberBlocks.test.ts
+- tests/integration/ledgerReports.test.ts
+- tests/integration/listPagination.test.ts
+- tests/integration/marketingCampaigns.test.ts
+- tests/integration/mfaSessionAtomicity.test.ts
+- tests/integration/nplus1MariaDb.test.ts
+- tests/integration/offlineSyncScale.test.ts
+- tests/integration/outboxDelivery.test.ts
+- tests/integration/provider-mock-flows.test.ts
+- tests/integration/readinessDatabase.test.ts
+- tests/integration/relationalFeatureValidation.test.ts
+- tests/integration/reportScale.test.ts
+- tests/integration/saleQuoteRoute.test.ts
+- tests/integration/security.test.ts
+- tests/integration/smsAccountRoutes.test.ts
+- tests/integration/stockBucketGuards.test.ts
+- tests/integration/stockCountSave.test.ts
+- tests/integration/stockCountScale.test.ts
+- tests/integration/writeConflictRetry.test.ts
+- tests/load/pos-sale.k6.js
+- tests/load/product-search.k6.js
+- tests/setup/disposableDatabase.ts
+- tests/unit/accessApiAuthorization.test.ts
+- tests/unit/accessOfflineSafety.test.ts
+- tests/unit/accessPolicy.test.ts
+- tests/unit/apiClient.test.ts
+- tests/unit/auth.test.ts
+- tests/unit/barcode.test.ts
+- tests/unit/beftn.test.ts
+- tests/unit/branchScopeCoverage.test.ts
+- tests/unit/cataloguePrinting.test.ts
+- tests/unit/comboGraph.test.ts
+- tests/unit/companyActivate.test.ts
+- tests/unit/crmCommunicationsIntegrity.test.ts
+- tests/unit/deliveryServiceIntegrity.test.ts
+- tests/unit/disposableDatabaseGuard.test.ts
+- tests/unit/distributedRateLimiter.test.ts
+- tests/unit/errorTrackingWiring.test.ts
+- tests/unit/featureFlags.test.ts
+- tests/unit/financialIntegrity.test.ts
+- tests/unit/financialPostingIntegrity.test.ts
+- tests/unit/healthApiAuthorization.test.ts
+- tests/unit/healthContract.test.ts
+- tests/unit/healthRuntime.test.ts
+- tests/unit/hrPayrollIntegrity.test.ts
+- tests/unit/i18n.test.ts
+- tests/unit/idempotency.test.ts
+- tests/unit/idempotencyRetryAndAtomicity.test.ts
+- tests/unit/importCommitIntegrity.test.ts
+- tests/unit/importExport.test.ts
+- tests/unit/inventoryValuationIntegrity.test.ts
+- tests/unit/journalEntry.test.ts
+- tests/unit/journalReversal.test.ts
+- tests/unit/legalHoldEnforcement.test.ts
+- tests/unit/logoutIntegrity.test.ts
+- tests/unit/m5DeliveryService.test.ts
+- tests/unit/m6CrmHr.test.ts
+- tests/unit/m7Integrations.test.ts
+- tests/unit/mariadbMigrationCompatibility.test.ts
+- tests/unit/mfaChallengeIntegrity.test.ts
+- tests/unit/mfaEnrollment.test.ts
+- tests/unit/mfaRedisFailure.test.ts
+- tests/unit/middlewareEdgeSafety.test.ts
+- tests/unit/mimsmsGateway.test.ts
+- tests/unit/noShadowSecurityModules.test.ts
+- tests/unit/nplus1DocumentCreationRegression.test.ts
+- tests/unit/nplus1FinancialRegression.test.ts
+- tests/unit/nplus1PostSaleRegression.test.ts
+- tests/unit/nplus1ReconciliationRegression.test.ts
+- tests/unit/numbering.test.ts
+- tests/unit/offlineSyncApplies.test.ts
+- tests/unit/outboundUrlSsrf.test.ts
+- tests/unit/outboxWorker.test.ts
+- tests/unit/paymentRefundIdempotency.test.ts
+- tests/unit/paymentReversalAccounting.test.ts
+- tests/unit/periodClose.test.ts
+- tests/unit/permissionFailClosed.test.ts
+- tests/unit/postSale.test.ts
+- tests/unit/productionSecurityConfig.test.ts
+- tests/unit/providers.test.ts
+- tests/unit/receivablesDomain.test.ts
+- tests/unit/reconciliationFailure.test.ts
+- tests/unit/removePublicSourcemaps.test.ts
+- tests/unit/revaluation.test.ts
+- tests/unit/riskAlerting.test.ts
+- tests/unit/riskOutcomeReport.test.ts
+- tests/unit/routePermissionCoverage.test.ts
+- tests/unit/routePermissionDenial.test.ts
+- tests/unit/schemaFingerprint.test.ts
+- tests/unit/securityIsolation.test.ts
+- tests/unit/slackProvider.test.ts
+- tests/unit/statutoryDocuments.test.ts
+- tests/unit/stockMovement.test.ts
+- tests/unit/stockOperations.test.ts
+- tests/unit/taxComputation.test.ts
+- tests/unit/tenantContext.test.ts
+- tests/unit/tenantEndpoints.test.ts
+- tests/unit/tenantIsolation.test.ts
+- tests/unit/tenantScopeAudit.test.ts
+- tests/unit/workerHeartbeat.test.ts
+
+## Operations (56)
+
+- docker/docker-compose.yml
+- docker/Dockerfile.web
+- docker/Dockerfile.worker
+- docker/init-roles.sql
+- scripts/add-permissions.ts
+- scripts/audit-production-db.mjs
+- scripts/backup/download-from-s3.ts
+- scripts/backup/first-restore-test.sh
+- scripts/backup/nightly-backup.sh
+- scripts/backup/post-restore-reconciliation.sh
+- scripts/backup/restore-from-backup.sh
+- scripts/backup/upload-to-s3.ts
+- scripts/backup/upload-wal.ts
+- scripts/backup/wal-archive.sh
+- scripts/benchmarks/index-plans.mjs
+- scripts/build-mariadb-schema.mjs
+- scripts/cloudlinux-process-audit.sh
+- scripts/codemods/atomic-idempotency.mjs
+- scripts/cpanel-deploy.sh
+- scripts/cpanel-verify.sh
+- scripts/cron-evaluate-risk-alerts.sh
+- scripts/dr-exercise.sh
+- scripts/e2e-smoke.ts
+- scripts/e2e-staging-suite.ts
+- scripts/gen_migrations.py
+- scripts/generate-mariadb-tenant-fks.mjs
+- scripts/generate-mariadb-triggers.mjs
+- scripts/mariadb/concurrency.ts
+- scripts/mariadb/etl.ts
+- scripts/mariadb/explain.ts
+- scripts/mariadb/phase0-proof.sql
+- scripts/mariadb/reconcile.ts
+- scripts/mariadb/safety.ts
+- scripts/remove-public-sourcemaps.mjs
+- scripts/run-e2e-batch.sh
+- scripts/run-e2e-individual.sh
+- scripts/run-full-e2e.sh
+- scripts/run-postgres-migrations.ts
+- scripts/screenshot-risk-tuning.ts
+- scripts/security/rls-penetration-test.sh
+- scripts/seed.ts
+- scripts/seed-coa.ts
+- scripts/seed-m1.ts
+- scripts/seed-risk-demo-data.ts
+- scripts/seed-staging.sql
+- scripts/smoke-test-providers.ts
+- scripts/ssh-test.mjs
+- scripts/switch-to-postgres.ts
+- scripts/update-readme.py
+- scripts/validate-migrations-dry-run.ts
+- scripts/validate-postgres-migrations.sh
+- scripts/verify-access-migrations.mjs
+- scripts/verify-access-tests.mjs
+- scripts/verify-ui-health.mjs
+- scripts/verify-ui-workflows.mjs
+- scripts/write_migrations.py
+
+## MariaDB migrations (15)
+
+- prisma/mariadb/migrations/20260831180000_initial/migration.sql
+- prisma/mariadb/migrations/20260831180500_tenant_fks/migration.sql
+- prisma/mariadb/migrations/20260831181000_critical_invariants/migration.sql
+- prisma/mariadb/migrations/20260831181500_critical_triggers/migration.sql
+- prisma/mariadb/migrations/20260912000100_refresh_session_assurance/migration.sql
+- prisma/mariadb/migrations/20260912000200_audit_snapshot_capacity/migration.sql
+- prisma/mariadb/migrations/20260924000100_ledger_and_stock_invariants/migration.sql
+- prisma/mariadb/migrations/20260926000100_tenant_leading_composite_indexes/migration.sql
+- prisma/mariadb/migrations/20260927000100_tenant_parent_keys/migration.sql
+- prisma/mariadb/migrations/20260928000100_receivables_reminders/migration.sql
+- prisma/mariadb/migrations/20260929000100_collection_follow_ups/migration.sql
+- prisma/mariadb/migrations/20260930000100_marketing_campaigns/migration.sql
+- prisma/mariadb/migrations/20261001000100_cash_over_short_account/migration.sql
+- prisma/mariadb/migrations/20261001000200_security_events_append_only/migration.sql
+- prisma/mariadb/migrations/migration_lock.toml
+
+## Documentation (36)
+
+- docs/adr/0001-db-roles.md
+- docs/adr/0002-rls-via-middleware.md
+- docs/adr/0003-sqlite-vs-postgres.md
+- docs/adr/0004-idempotency.md
+- docs/adr/0005-auth-mfa.md
+- docs/adr/0006-document-numbering.md
+- docs/adr/0007-mariadb-production-database.md
+- docs/adr/0008-due-reminders.md
+- docs/audits/2026-09-10-model-usage.csv
+- docs/audits/2026-09-10-relation-inventory.csv
+- docs/audits/2026-09-10-remediation.md
+- docs/audits/2026-09-12-access-control.md
+- docs/audits/2026-09-12-historical-dashboard-notes.md
+- docs/audits/2026-09-12-ui-health-contract.md
+- docs/audits/2026-09-16-p1-remediation.md
+- docs/audits/2026-09-17-relational-validation.md
+- docs/audits/2026-09-19-gift-card-issuance.md
+- docs/audits/2026-09-21-audit-context.md
+- docs/audits/2026-09-21-full-bug-hunt.md
+- docs/audits/FINAL-BLUEPRINT-COMPLIANCE-RELATIONAL-VALIDATION.md
+- docs/audits/FULL-CODEBASE-BUG-HUNT-PROMPT.md
+- docs/mariadb-migration-runbook.md
+- docs/master-plan/ERP_Pos_Blueprint_v4.2.md
+- docs/master-plan/MASTER_GAP_AUDIT_PROMPT.md
+- docs/postgres-quickstart.md
+- docs/provider-integration-guide.md
+- docs/provider-sandbox-setup.md
+- docs/runbooks/backup-restore.md
+- docs/runbooks/due-reminders.md
+- docs/runbooks/go-live-checklist.md
+- docs/runbooks/production-migration.md
+- docs/TOKEN-SCOPE.md
+- docs/ui-design-system.md
+- docs/ui-missing-controls-audit.md
+- docs/ui-modernization-audit.md
+- docs/ui-taste-debug-audit.md
+
+## MariaDB models
+
+- Currency (line 24)
+- Company (line 55)
+- Branch (line 258)
+- Warehouse (line 324)
+- ExchangeRate (line 368)
+- CompanyDomain (line 388)
+- User (line 412)
+- Role (line 529)
+- Permission (line 546)
+- RolePermission (line 558)
+- UserRole (line 570)
+- UserBranchAccess (line 582)
+- Device (line 594)
+- RefreshToken (line 629)
+- SecurityEvent (line 659)
+- CashierDevicePin (line 684)
+- WebAuthnCredential (line 713)
+- WebAuthnChallenge (line 738)
+- DocumentSequence (line 762)
+- DocumentNumberLease (line 789)
+- IdempotencyRequest (line 814)
+- BusinessEvent (line 846)
+- DocumentExchangeRate (line 882)
+- AuditLog (line 901)
+- ApprovalRequest (line 931)
+- StatutoryDocument (line 965)
+- TaxReturnPeriod (line 1000)
+- ReconciliationRun (line 1020)
+- ReconciliationFinding (line 1041)
+- RecoveryEpoch (line 1073)
+- IntegrationCredential (line 1087)
+- Category (line 1115)
+- Brand (line 1145)
+- Unit (line 1162)
+- CustomerGroup (line 1185)
+- Product (line 1204)
+- MediaAsset (line 1273)
+- EntityMediaLink (line 1303)
+- ProductBarcode (line 1325)
+- ProductUnitOption (line 1349)
+- ProductComboItem (line 1369)
+- DiscountPolicy (line 1389)
+- ProductPrice (line 1423)
+- TaxCode (line 1458)
+- TaxComponent (line 1480)
+- TaxCodeComponent (line 1512)
+- WithholdingRule (line 1524)
+- ConfigurationDefinition (line 1554)
+- ConfigurationValue (line 1570)
+- PosProfile (line 1592)
+- DocumentTemplate (line 1620)
+- SupportedLanguage (line 1645)
+- CompanyLanguage (line 1659)
+- TranslationOverride (line 1673)
+- FeatureFlag (line 1693)
+- DashboardPreference (line 1711)
+- SalesTarget (line 1726)
+- SavedReportFilter (line 1750)
+- ReportExportJob (line 1770)
+- SupportTicket (line 1796)
+- SupportTicketMessage (line 1823)
+- CommunicationTemplate (line 1843)
+- WarehouseStock (line 1885)
+- StockMovement (line 1909)
+- StockReservation (line 1953)
+- ProductBatch (line 1984)
+- StockMovementBatch (line 2013)
+- ProductSerial (line 2029)
+- SerialEvent (line 2076)
+- InventoryReasonCode (line 2114)
+- StockCount (line 2135)
+- StockCountItem (line 2171)
+- StockCountSerial (line 2197)
+- StockAdjustment (line 2219)
+- StockAdjustmentItem (line 2263)
+- StockAdjustmentItemSerial (line 2291)
+- Customer (line 2308)
+- Supplier (line 2360)
+- Purchase (line 2403)
+- PurchaseItem (line 2449)
+- PurchaseItemTax (line 2482)
+- PurchaseReceiving (line 2504)
+- PurchaseReceivingItem (line 2538)
+- PurchaseReceivingItemSerial (line 2564)
+- LandedCostDocument (line 2576)
+- LandedCostAllocation (line 2607)
+- PurchaseReturn (line 2620)
+- PurchaseReturnItem (line 2664)
+- PurchaseReturnItemSerial (line 2687)
+- Transfer (line 2703)
+- TransferItem (line 2737)
+- TransferItemSerial (line 2763)
+- Quotation (line 2782)
+- QuotationItem (line 2822)
+- Sale (line 2847)
+- SaleItem (line 2918)
+- SaleItemSerial (line 2955)
+- SaleItemTax (line 2967)
+- SaleReturn (line 2988)
+- SaleReturnItem (line 3031)
+- SaleReturnItemSerial (line 3055)
+- CashierShift (line 3071)
+- CashDrawerCount (line 3110)
+- Payment (line 3130)
+- PaymentAllocation (line 3195)
+- ReturnRefundAllocation (line 3227)
+- Installment (line 3248)
+- InstallmentAllocation (line 3274)
+- ChartOfAccount (line 3294)
+- FinancialAccount (line 3340)
+- FiscalPeriod (line 3380)
+- JournalEntry (line 3401)
+- JournalLine (line 3456)
+- AccountingPolicy (line 3498)
+- ExpenseCategory (line 3541)
+- Expense (line 3559)
+- ExpenseItem (line 3604)
+- DeliveryOrder (line 3631)
+- DeliveryItem (line 3675)
+- DeliveryEvent (line 3693)
+- CourierShipment (line 3716)
+- CourierCodSettlement (line 3740)
+- CourierCodSettlementItem (line 3772)
+- ServiceRequest (line 3788)
+- ServiceRequestPart (line 3837)
+- ServiceEvent (line 3861)
+- WarrantyClaim (line 3881)
+- LeadSubject (line 3909)
+- LeadSource (line 3920)
+- LeadStatus (line 3931)
+- Lead (line 3946)
+- LeadActivity (line 3986)
+- GiftCard (line 4010)
+- Department (line 4033)
+- Designation (line 4046)
+- Employee (line 4058)
+- PayrollRun (line 4097)
+- Notification (line 4127)
+- OutboxEvent (line 4154)
+- WebhookEndpoint (line 4183)
+- WebhookDelivery (line 4202)
+- ImportJob (line 4229)
+- ImportJobError (line 4259)
+- OfflineCommand (line 4279)
+- OfflineSyncBatch (line 4304)
+- AccountTransfer (line 4328)
+- CustomerAdvanceLedger (line 4372)
+- SupplierAdvanceLedger (line 4407)
+- WithholdingTransaction (line 4437)
+- ExpenseItemTax (line 4467)
+- ExpenseAttachment (line 4488)
+- GiftCardTransaction (line 4513)
+- Coupon (line 4534)
+- CouponRedemption (line 4559)
+- RewardPointTransaction (line 4578)
+- RewardPointConsumption (line 4602)
+- Holiday (line 4622)
+- LeaveType (line 4641)
+- LeaveRequest (line 4657)
+- PayrollComponent (line 4682)
+- PayrollItemComponent (line 4703)
+- AttendanceRecord (line 4721)
+- PayrollItem (line 4741)
+- CommunicationConsent (line 4768)
+- CommunicationCampaign (line 4791)
+- CommunicationCampaignRecipient (line 4820)
+- OutboundMessage (line 4844)
+- UserNotification (line 4901)
+- PrintJob (line 4918)
+- StockBudgetLease (line 4942)
+- RiskAssessment (line 4969)
+- DataSubjectRequest (line 5000)
+- LegalHold (line 5021)
+- RiskAssessmentOutcome (line 5045)
+- RiskThresholdChange (line 5069)
+- CurrencyRevaluation (line 5092)
+- FixedAsset (line 5119)
+- FixedAssetCategory (line 5160)
+- FixedAssetDepreciation (line 5180)
+- BankReconciliation (line 5207)
+- BankReconciliationLine (line 5237)
+- ReminderPolicy (line 5265)
+- ReminderOccurrence (line 5288)
+- CollectionPromise (line 5318)
+- CollectionFollowUp (line 5351)
+- InstallmentDueDateChange (line 5388)
