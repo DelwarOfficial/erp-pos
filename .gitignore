@@ -41,6 +41,7 @@ blob-report/
 /.zscripts/
 /graphify-out/cache/
 /graphify-out/.graphify_*
+/graphify/
 *.deb
 
 # Captured HTTP artifacts can contain session tokens
