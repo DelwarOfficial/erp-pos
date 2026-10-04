@@ -86,14 +86,18 @@ describe('payment refund idempotency', () => {
       work({
         payment: {
           findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
-          updateMany: mocks.paymentUpdateMany,
+          updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
         },
+        financialAccount: { findFirst: mocks.financialAccountFindFirst },
+        accountingPolicy: { findUnique: mocks.policyFindUnique },
+        idempotencyRequest: { updateMany: mocks.idempotencyUpdateMany },
         auditLog: { create: mocks.auditCreate },
       }));
     mocks.paymentFindFirst.mockResolvedValue({
       id: 'pay-1', companyId: 'company-a', branchId: 'branch-a',
       referenceNo: 'PMT-000001', amount: '1000.00', exchangeRate: 1, businessDate: new Date('2026-09-01'),
       currencyCode: 'BDT', paymentStatus: 'posted', financialAccountId: 'fa-1',
+      paymentMethod: 'bkash', methodReference: 'TXN-1',
       customerId: 'cust-1', saleReturnId: null, cashierShiftId: null,
     });
     mocks.paymentAggregate.mockResolvedValue({ _sum: { amount: null } });

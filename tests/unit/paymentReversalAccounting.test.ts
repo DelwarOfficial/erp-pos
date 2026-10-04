@@ -74,6 +74,7 @@ const PAYMENT = {
   referenceNo: 'PMT-000001', amount: new Prisma.Decimal('1000.00'),
   baseAmount: new Prisma.Decimal('1000.00'), exchangeRate: new Prisma.Decimal(1),
   currencyCode: 'BDT', paymentStatus: 'posted', financialAccountId: 'fa-1',
+  paymentMethod: 'bkash', methodReference: 'TXN-1',
   paymentType: 'sale_receipt', direction: 'incoming',
   customerId: 'cust-1', saleReturnId: null, cashierShiftId: null,
   businessDate: new Date('2026-09-01T00:00:00.000Z'),
@@ -100,8 +101,11 @@ describe('gateway refund', () => {
     mocks.tenant.mockImplementation(async (_ctx: unknown, work: (tx: unknown) => Promise<unknown>) => work({
       payment: {
         findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
-        updateMany: mocks.paymentUpdateMany,
+        updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
       },
+      financialAccount: { findFirst: mocks.financialAccountFindFirst },
+      accountingPolicy: { findUnique: mocks.policyFindUnique },
+      idempotencyRequest: { updateMany: mocks.idempotencyUpdateMany },
       auditLog: { create: mocks.auditCreate },
     }));
     mocks.paymentFindFirst.mockResolvedValue(PAYMENT);
