@@ -26,7 +26,7 @@ describe('i18n', () => {
   });
 
   it('translates a key in English', () => {
-    expect(translate('nav.dashboard', 'en-BD')).toBe('Dashboard');
+    expect(translate('nav.dashboard', 'en-BD')).toBe('Home');
     expect(translate('action.login', 'en-BD')).toBe('Sign In');
   });
 

@@ -21,42 +21,42 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { apiFetch } from '@/lib/api/client';
 
 const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: string }>; label: string; requiresPermission?: string }> = [
-  { href: '/dashboard', icon: Activity, label: 'Overview' },
+  { href: '/dashboard', icon: Activity, label: 'Home' },
   { href: '/dashboard/access/users', icon: Users, label: 'Access Control — Users', requiresPermission: 'user.read' },
   { href: '/dashboard/access/roles', icon: ShieldCheck, label: 'Access Control — Roles', requiresPermission: 'role.read' },
   { href: '/dashboard/access/permissions', icon: ShieldCheck, label: 'Access Control — Permissions', requiresPermission: 'role.read' },
-  { href: '/dashboard/pos', icon: CreditCard, label: 'POS — New Sale' },
+  { href: '/dashboard/pos', icon: CreditCard, label: 'New Sale' },
   { href: '/dashboard/sales', icon: Receipt, label: 'Sales' },
   { href: '/dashboard/cashier', icon: Clock, label: 'Cashier Shifts' },
   { href: '/dashboard/payments', icon: Banknote, label: 'Payments' },
-  { href: '/dashboard/sales/credit', icon: CalendarClock, label: 'Credit Sale' },
-  { href: '/dashboard/collections', icon: HandCoins, label: 'Collections' },
-  { href: '/dashboard/collections/calendar', icon: CalendarDays, label: 'Due Calendar' },
-  { href: '/dashboard/collections/reports', icon: FileBarChart, label: 'Collection Reports' },
+  { href: '/dashboard/sales/credit', icon: CalendarClock, label: 'Sell on Credit' },
+  { href: '/dashboard/collections', icon: HandCoins, label: 'Collect Payments' },
+  { href: '/dashboard/collections/calendar', icon: CalendarDays, label: 'Payment Due Dates' },
+  { href: '/dashboard/collections/reports', icon: FileBarChart, label: 'Payment Collection Reports' },
   { href: '/dashboard/products', icon: Package, label: 'Products' },
-  { href: '/dashboard/catalogue', icon: FolderTree, label: 'Catalogue' },
-  { href: '/dashboard/inventory', icon: Boxes, label: 'Inventory' },
+  { href: '/dashboard/catalogue', icon: FolderTree, label: 'Categories & Brands' },
+  { href: '/dashboard/inventory', icon: Boxes, label: 'Stock & Inventory' },
   { href: '/dashboard/purchases', icon: ShoppingCart, label: 'Purchases' },
   { href: '/dashboard/parties', icon: Users, label: 'Customers & Suppliers' },
   { href: '/dashboard/accounting', icon: Scale, label: 'Accounting' },
-  { href: '/dashboard/assets', icon: Building, label: 'Fixed Assets' },
-  { href: '/dashboard/bank-reconciliation', icon: Landmark, label: 'Bank Reconciliation' },
+  { href: '/dashboard/assets', icon: Building, label: 'Equipment & Assets' },
+  { href: '/dashboard/bank-reconciliation', icon: Landmark, label: 'Match Bank Statements' },
   { href: '/dashboard/deliveries', icon: Truck, label: 'Deliveries' },
-  { href: '/dashboard/service', icon: Wrench, label: 'Service' },
+  { href: '/dashboard/service', icon: Wrench, label: 'Repairs & Service' },
   { href: '/dashboard/crm', icon: Megaphone, label: 'CRM — Leads' },
   { href: '/dashboard/hr', icon: UserCog, label: 'HR — Employees' },
   { href: '/dashboard/gift-cards', icon: Gift, label: 'Gift Cards' },
-  { href: '/dashboard/integrations', icon: Webhook, label: 'Integrations' },
+  { href: '/dashboard/integrations', icon: Webhook, label: 'Connected Apps' },
   { href: '/dashboard/imports', icon: FileText, label: 'Import / Export' },
-  { href: '/dashboard/feature-flags', icon: Flag, label: 'Feature Flags' },
-  { href: '/dashboard/security', icon: ShieldCheck, label: 'Security Events' },
-  { href: '/dashboard/risk-tuning', icon: ShieldAlert, label: 'Risk Tuning' },
-  { href: '/dashboard/audit', icon: BookOpen, label: 'Audit Log' },
-  { href: '/dashboard/onboarding', icon: Building2, label: 'Onboard Tenant', requiresPermission: 'platform.onboarding.execute' },
+  { href: '/dashboard/feature-flags', icon: Flag, label: 'Optional Features' },
+  { href: '/dashboard/security', icon: ShieldCheck, label: 'Security Alerts' },
+  { href: '/dashboard/risk-tuning', icon: ShieldAlert, label: 'Risk Settings' },
+  { href: '/dashboard/audit', icon: BookOpen, label: 'Activity History' },
+  { href: '/dashboard/onboarding', icon: Building2, label: 'Add a Company', requiresPermission: 'platform.onboarding.execute' },
   { href: '/dashboard/system', icon: Server, label: 'System Health', requiresPermission: 'system.config.view' },
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
   { href: '/dashboard/expenses', icon: Wallet, label: 'Expenses' },
-  { href: '/dashboard/communications', icon: MessageSquare, label: 'Communications' },
+  { href: '/dashboard/communications', icon: MessageSquare, label: 'Messages' },
   { href: '/dashboard/communications/sms', icon: MessageSquare, label: 'SMS & Reminders' },
   { href: '/dashboard/communications/campaigns', icon: Megaphone, label: 'SMS Campaigns' },
   { href: '/dashboard/reports', icon: FileBarChart, label: 'Reports' },
@@ -81,14 +81,14 @@ const NAV_PERMISSIONS: Record<string, string> = {
 };
 
 const NAV_GROUPS = [
-  { label: 'Overview', routes: [''] },
+  { label: 'Home', routes: [''] },
   { label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
-  { label: 'Catalogue & stock', routes: ['products', 'catalogue', 'inventory'] },
-  { label: 'Procurement & contacts', routes: ['purchases', 'parties'] },
-  { label: 'Finance', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
-  { label: 'Operations', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'communications/campaigns', 'reports'] },
-  { label: 'Access control', routes: ['access/users', 'access/roles', 'access/permissions'] },
-  { label: 'Administration', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
+  { label: 'Products & stock', routes: ['products', 'catalogue', 'inventory'] },
+  { label: 'Buying & contacts', routes: ['purchases', 'parties'] },
+  { label: 'Money & accounts', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
+  { label: 'Day-to-day work', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'communications/campaigns', 'reports'] },
+  { label: 'People & access', routes: ['access/users', 'access/roles', 'access/permissions'] },
+  { label: 'Setup & admin', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
 ];
 
 function isActiveRoute(pathname: string, href: string) {
@@ -155,12 +155,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 px-4">
         <AlertCircle className="h-10 w-10 text-destructive" />
         <div role="alert" className="text-center max-w-md">
-          <h2 className="text-lg font-semibold">Session error</h2>
+          <h2 className="text-lg font-semibold">We couldn't open your account</h2>
           <p className="text-sm text-muted-foreground mt-1">{authError}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.location.reload()}>Retry</Button>
-          <Button onClick={() => router.push('/login')}>Go to login</Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>Try again</Button>
+          <Button onClick={() => router.push('/login')}>Sign in again</Button>
         </div>
       </div>
     );
@@ -225,7 +225,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               variant="ghost"
               size="icon"
               className="md:hidden flex-shrink-0"
-              aria-label="Open navigation menu"
+              aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </Button></SheetTrigger>

@@ -94,7 +94,7 @@ test.describe('Dashboard Navigation (UAT Scenario 5 — Manager Flow)', () => {
   });
 
   test('can navigate to Feature Flags page', async ({ page }) => {
-    await page.click('a:has-text("Feature Flags")');
+    await page.click('a:has-text("Optional Features")');
     await page.waitForURL('**/dashboard/feature-flags');
     await expect(page.locator('h1')).toContainText('Feature Flags');
   });

@@ -90,7 +90,7 @@ test.describe('Accessibility — axe-core scans', () => {
   });
 
   test('Feature Flags page has no critical violations', async ({ page }) => {
-    await page.click('a:has-text("Feature Flags")');
+    await page.click('a:has-text("Optional Features")');
     await page.waitForURL('**/dashboard/feature-flags');
     const results = await analyzePage(page);
     const critical = results.violations.filter((v) => v.impact === 'critical');

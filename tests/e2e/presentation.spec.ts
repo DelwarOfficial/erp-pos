@@ -219,7 +219,7 @@ test('restricted navigation, exact active route, branch context and keyboard ski
 
 test('platform context and navigation fit all target widths in both themes', async ({ page }) => {
   await fixtures(page, { is_global: true }); await page.goto('/dashboard');
-  await expect(page.locator('main')).toContainText('Platform operations');
+  await expect(page.locator('main')).toContainText('Admin shortcuts');
   for (const theme of ['Light', 'Dark']) {
     await page.getByRole('button', { name: 'Choose appearance' }).click();
     await page.getByRole('menuitem', { name: theme, exact: true }).click();

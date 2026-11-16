@@ -126,7 +126,7 @@ test('malformed health response renders Unknown, never a false database outage',
 });
 test('minimal-data Overview fits mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); await signIn(page); await page.goto('/dashboard');
-  await expect(page.locator('main')).toContainText('Current company');
+  await expect(page.locator('main')).toContainText('Your company');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

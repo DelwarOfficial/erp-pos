@@ -22,7 +22,7 @@ test.describe('Risk Tuning Page — Navigation', () => {
   });
 
   test('risk tuning page loads with title', async ({ page }) => {
-    await page.click('a:has-text("Risk Tuning")');
+    await page.click('a:has-text("Risk Settings")');
     await page.waitForURL('**/dashboard/risk-tuning');
     await expect(page.locator('h1')).toContainText('Risk Threshold Tuning');
   });
