@@ -102,6 +102,7 @@ describe('gateway refund', () => {
       payment: {
         findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
         updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
+        count: vi.fn().mockResolvedValue(0),
       },
       financialAccount: { findFirst: mocks.financialAccountFindFirst },
       accountingPolicy: { findUnique: mocks.policyFindUnique },
@@ -135,18 +136,25 @@ describe('gateway refund', () => {
     expect(ar.debit.toFixed(2)).toBe('500.00');
   });
 
-  it('F-06: marks the original payment reversed before calling the gateway', async () => {
+  it('F-06: reserves a pending refund row before calling the gateway and leaves the original untouched', async () => {
+    mocks.refund.mockImplementation(async () => {
+      expect(mocks.paymentCreate).toHaveBeenCalledTimes(1);
+      expect(mocks.paymentCreate.mock.calls[0][0].data.paymentStatus).toBe('pending');
+      return { refundId: 'RFND-1', status: 'completed' };
+    });
     await refundRoute(refundRequest('500.00'), { params: Promise.resolve({ id: 'pay-1' }) });
 
+    // The only status write settles the refund row; the original payment is
+    // never marked 'reversed', so a failed gateway call cannot strand it.
     expect(mocks.paymentUpdateMany).toHaveBeenCalledTimes(1);
-    const claim = mocks.paymentUpdateMany.mock.calls[0][0];
-    expect(claim.data.paymentStatus).toBe('reversed');
-    // Conditional on the current status, so a concurrent refund loses the race.
-    expect(claim.where.paymentStatus).toEqual({ not: 'reversed' });
+    const settle = mocks.paymentUpdateMany.mock.calls[0][0];
+    expect(settle.where).toMatchObject({ id: 'reversal-1', paymentStatus: 'pending' });
+    expect(settle.data.paymentStatus).toBe('posted');
   });
 
-  it('F-06: refuses when the payment was reversed concurrently', async () => {
-    mocks.paymentUpdateMany.mockResolvedValue({ count: 0 });
+  it('F-06: refuses when another refund of the payment reserved the same reference first', async () => {
+    mocks.paymentCreate.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' }));
     const response = await refundRoute(refundRequest('500.00'), { params: Promise.resolve({ id: 'pay-1' }) });
     expect(response.status).toBe(409);
     expect(mocks.refund).not.toHaveBeenCalled();

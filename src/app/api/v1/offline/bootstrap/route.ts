@@ -9,6 +9,7 @@ import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { hmacSha256 } from '@/lib/crypto';
 import { barcodeSigningKey } from '@/domain/invariants/barcode';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
   await requirePermission(auth, 'device.read');
+    // Offline POS is a pilot: a tenant without the flag must not reach it.
+    await runInTenantContext(auth.ctx, () => requireFeatureFlag('offline_pos_enabled'));
     const body = BootstrapSchema.parse(await req.json());
 
     // Validate device belongs to this company + branch + is active.

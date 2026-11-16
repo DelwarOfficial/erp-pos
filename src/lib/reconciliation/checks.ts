@@ -482,6 +482,10 @@ export async function runReconciliation(companyId: string, runType: 'nightly' | 
     companyId,
     userId: initiatedBy,
     branchIds: [],
+    // A company-wide run has no branch assignment. Without this the tenant
+    // client filters every branch-scoped model to `IN ()` and the checks pass
+    // on zero rows.
+    allBranches: true,
     isGlobal: false,
   });
   return runInTenantContext(ctx, async () => {

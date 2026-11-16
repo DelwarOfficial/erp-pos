@@ -44,14 +44,25 @@ export async function postExpense(
   correlationId: string,
 ): Promise<PostExpenseResult> {
   // Compute totals
-  let subtotal = 0;
-  let taxTotal = 0;
+  // Decimal throughout: summing JS floats and multiplying by the rate drifts
+  // by a cent on multi-line foreign-currency expenses and unbalances the entry.
+  const rate = new Prisma.Decimal(input.exchangeRate);
+  const toBase = (value: Prisma.Decimal) => value.mul(rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  let subtotalDec = new Prisma.Decimal(0);
+  let taxTotalDec = new Prisma.Decimal(0);
+  let baseGrandTotal = new Prisma.Decimal(0);
   for (const item of input.items) {
-    subtotal += item.amount;
-    taxTotal += item.taxAmount;
+    const amount = new Prisma.Decimal(item.amount);
+    const tax = new Prisma.Decimal(item.taxAmount);
+    subtotalDec = subtotalDec.plus(amount);
+    taxTotalDec = taxTotalDec.plus(tax);
+    // The credit is the sum of the per-line debits, so the entry balances by
+    // construction whatever the rounding of each line.
+    baseGrandTotal = baseGrandTotal.plus(toBase(amount.plus(tax)));
   }
-  const grandTotal = subtotal + taxTotal;
-  const baseGrandTotal = grandTotal * input.exchangeRate;
+  const subtotal = subtotalDec.toNumber();
+  const taxTotal = taxTotalDec.toNumber();
+  const grandTotal = subtotalDec.plus(taxTotalDec).toNumber();
 
   // Generate reference number
   const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
@@ -78,7 +89,7 @@ export async function postExpense(
 
   // Create expense items + build journal lines
   let lineNo = 1;
-  const journalLines: Array<{ chartOfAccountId: string; debit: number; credit: number; memo?: string }> = [];
+  const journalLines: Array<{ chartOfAccountId: string; debit: number | Prisma.Decimal; credit: number | Prisma.Decimal; memo?: string }> = [];
 
   const categoryIds = [...new Set(input.items.map(item => item.expenseCategoryId))];
   const categories: Prisma.ExpenseCategoryGetPayload<object>[] = [];
@@ -97,7 +108,12 @@ export async function postExpense(
     const cat = categoryById.get(item.expenseCategoryId);
     if (!cat) throw new DomainError('VALIDATION_FAILED', 'Expense category not found', {}, 404);
 
-    const baseAmount = item.amount * input.exchangeRate;
+    const baseAmount = toBase(new Prisma.Decimal(item.amount));
+    // An expense line carries no tax component, so its tax has no input-VAT
+    // account to go to: it is expensed with the line (non-recoverable). The
+    // debit previously left tax out while the credit included it, so every
+    // taxed expense was rejected as unbalanced.
+    const baseDebit = toBase(new Prisma.Decimal(item.amount).plus(item.taxAmount));
     await tx.expenseItem.create({
       data: {
         companyId: input.companyId, expenseId: expense.id, lineNo,
@@ -109,7 +125,7 @@ export async function postExpense(
     });
     journalLines.push({
       chartOfAccountId: cat.expenseAccountId,
-      debit: baseAmount, credit: 0,
+      debit: baseDebit, credit: 0,
       memo: item.description,
     });
     lineNo++;

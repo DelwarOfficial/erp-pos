@@ -9,6 +9,7 @@ import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { syncOfflineBatch } from '@/domain/offline/syncOfflineBatch';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { OFFLINE_SYNC_MAX_COMMANDS } from '@/lib/offline/syncLimits';
@@ -33,6 +34,8 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, 'sale.post');
+    // Offline POS is a pilot: a tenant without the flag must not reach it.
+    await runInTenantContext(auth.ctx, () => requireFeatureFlag('offline_pos_enabled'));
     const idempotencyKey = requireIdempotencyKey(req);
     const body = SyncSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/offline/sync', body });

@@ -25,7 +25,16 @@ COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/src ./src
 COPY --from=builder --chown=worker:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=worker:nodejs /app/package.json ./
+# tsx resolves the @/ path alias from tsconfig.json; without it every import
+# in src/workers/index.ts fails at startup.
+COPY --from=builder --chown=worker:nodejs /app/tsconfig.json ./
+
+# Installed at build time: npx would otherwise download tsx on every container
+# start, as a non-root user, and fail with no network.
+RUN npm install -g tsx@4
 
 USER worker
 
-CMD ["npx", "tsx", "src/workers/outboxWorker.ts"]
+# src/workers/index.ts is the orchestrator that starts every BullMQ worker.
+# outboxWorker.ts only exports functions and exits immediately when run.
+CMD ["tsx", "src/workers/index.ts"]

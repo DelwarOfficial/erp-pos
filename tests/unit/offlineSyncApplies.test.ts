@@ -33,6 +33,9 @@ vi.mock('@/lib/db/transaction', () => ({
   withTenant: mocks.tenant,
 }));
 vi.mock('@/lib/db', () => ({ db: {} }));
+// The pilot flag is exercised in its own test below.
+const featureFlag = vi.hoisted(() => ({ require: vi.fn() }));
+vi.mock('@/lib/featureFlags', () => ({ requireFeatureFlag: featureFlag.require }));
 vi.mock('@/lib/idempotency', () => ({
   withIdempotency: mocks.idempotency,
   computeRequestHash: () => 'hash',
@@ -190,5 +193,12 @@ describe('offline sync applies the commands it accepts', () => {
     mocks.batchAggregate.mockResolvedValue({ _max: { batchNumber: 41 } });
     await syncRoute(request([{ command_type: 'held_sale_draft', sequence_number: 1, payload: {}, payload_hash: hashOf({}), idempotency_key: 'c'.repeat(16) }]));
     expect(mocks.batchCreate.mock.calls[0][0].data.batchNumber).toBe(42);
+  });
+  it('refuses a tenant without the offline pilot flag before touching the database', async () => {
+    featureFlag.require.mockRejectedValueOnce(Object.assign(new Error('flag off'), { name: 'DomainError' }));
+    const response = await syncRoute(request([{ command_type: 'held_sale_draft', sequence_number: 1, payload: {}, payload_hash: hashOf({}), idempotency_key: 'c'.repeat(16) }]));
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(featureFlag.require).toHaveBeenCalledWith('offline_pos_enabled');
+    expect(mocks.tenant).not.toHaveBeenCalled();
   });
 });

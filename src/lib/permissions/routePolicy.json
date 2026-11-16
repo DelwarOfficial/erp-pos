@@ -1441,7 +1441,8 @@
     "file": "v1/payments/[id]/refund/route.ts",
     "method": "POST",
     "permissions": [
-      "payment.refund.branch"
+      "payment.refund.branch",
+      "approval.resolve"
     ],
     "exception": null
   },

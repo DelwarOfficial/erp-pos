@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { systemDb as db } from '@/lib/db';
 import { recordSecurityEvent } from '@/lib/audit';
@@ -12,7 +13,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   // Auth: courier providers use a shared secret in X-Courier-Token header
   const token = req.headers.get('x-courier-token');
   const expectedToken = process.env.COURIER_WEBHOOK_TOKEN;
-  if (!expectedToken || token !== expectedToken) {
+  const supplied = Buffer.from(token ?? '');
+  const expected = Buffer.from(expectedToken ?? '');
+  if (!expectedToken || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
     // Webhooks are unauthenticated (no tenant context), so wrap in try/catch
     // — recordSecurityEvent requires a companyId which we don't have here.
     try {
@@ -44,22 +47,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     return NextResponse.json({ error: { code: 'NO_SHIPMENT_ID' } }, { status: 400 });
   }
 
-  const shipment = await db.courierShipment.findFirst({
+  // The token is shared by every tenant and the shipment id comes from the
+  // caller, so the lookup is bound to this provider's shipments and refuses
+  // an id that is not unique. An unscoped findFirst let one courier's
+  // callback (or a guessed id) flip another tenant's delivery.
+  const shipments = await db.courierShipment.findMany({
     where: {
       OR: [
         { providerShipmentId },
         { trackingCode: providerShipmentId },
       ],
+      deliveryOrder: { deliveryMethod: 'courier', courierCode: providerCode },
     },
-    include: { deliveryOrder: { include: { company: { select: { id: true } } } } },
+    include: { deliveryOrder: { select: { id: true, status: true } } },
+    take: 2,
   });
-  if (!shipment) {
+  if (shipments.length === 0) {
     return NextResponse.json({ error: { code: 'NOT_FOUND', message: `No delivery for ${providerShipmentId}` } }, { status: 404 });
   }
+  if (shipments.length > 1) {
+    logger.warn('[webhook/courier] ambiguous shipment id ignored', { provider: providerCode });
+    return NextResponse.json({ error: { code: 'AMBIGUOUS_SHIPMENT' } }, { status: 409 });
+  }
+  const shipment = shipments[0];
 
   const delivery = shipment.deliveryOrder;
-  const newStatus = mapCourierStatus(payload.status as string, providerCode);
-  if (newStatus && newStatus !== delivery.status) {
+  const newStatus = mapCourierStatus(payload.status as string);
+  // A finished delivery is not reopened by a late or replayed callback:
+  // 'delivered' is what makes an order eligible for COD settlement.
+  const isFinal = FINAL_DELIVERY_STATUSES.has(delivery.status);
+  if (newStatus && newStatus !== delivery.status && !isFinal) {
     await db.deliveryOrder.update({
       where: { id: delivery.id },
       data: { status: newStatus },
@@ -69,24 +86,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     await db.courierShipment.update({
       where: { id: shipment.id },
       data: {
-        lastProviderStatus: payload.status as string,
+        lastProviderStatus: String(payload.status).slice(0, 100),
         lastSyncedAt: new Date(),
       },
     }).catch(() => {/* best-effort update */});
   }
 
-  return NextResponse.json({ received: true, status: newStatus });
+  return NextResponse.json({ received: true, status: isFinal ? delivery.status : newStatus });
 }
 
-function mapCourierStatus(raw: string | undefined, provider: string): string | null {
-  if (!raw) return null;
+const FINAL_DELIVERY_STATUSES = new Set(['delivered', 'returned', 'cancelled']);
+
+// Maps a provider status onto the delivery_orders status set. Anything
+// unrecognised is ignored: the raw provider string was previously written
+// straight into the status column.
+function mapCourierStatus(raw: string | undefined): string | null {
+  if (typeof raw !== 'string' || !raw) return null;
   const s = raw.toLowerCase();
   // Common statuses across Pathao/RedX
-  if (s.includes('pending') || s.includes('picked_up')) return 'picked_up';
+  if (s.includes('picked_up')) return 'dispatched';
   if (s.includes('transit') || s.includes('on_rider')) return 'in_transit';
   if (s.includes('delivered') || s.includes('completed')) return 'delivered';
-  if (s.includes('cancel') || s.includes('return')) return 'cancelled';
-  if (s.includes('hold') || s.includes('exchange')) return 'on_hold';
+  if (s.includes('return')) return 'returned';
+  if (s.includes('cancel')) return 'cancelled';
   if (s.includes('failed') || s.includes('rejected')) return 'failed';
-  return s;
+  return null;
 }

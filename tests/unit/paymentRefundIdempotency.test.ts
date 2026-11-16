@@ -87,6 +87,7 @@ describe('payment refund idempotency', () => {
         payment: {
           findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
           updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
+          count: vi.fn().mockResolvedValue(0),
         },
         financialAccount: { findFirst: mocks.financialAccountFindFirst },
         accountingPolicy: { findUnique: mocks.policyFindUnique },
@@ -142,7 +143,7 @@ describe('payment refund idempotency', () => {
     expect(mocks.refund).toHaveBeenCalledTimes(1);
     expect(mocks.paymentCreate).toHaveBeenCalledTimes(1);
     // The real outcome replaces the Phase 1 placeholder, so a later replay
-    // returns the refund details rather than `{ ok: true }`.
+    // returns the refund details rather than the pending placeholder.
     expect(mocks.idempotencyUpdateMany).toHaveBeenCalledTimes(1);
     const stored = JSON.parse(mocks.idempotencyUpdateMany.mock.calls[0][0].data.responseBody);
     expect(stored).toMatchObject({ refund_id: 'RFND-1', reversal_payment_id: 'reversal-1' });
