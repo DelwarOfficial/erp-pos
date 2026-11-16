@@ -1,6 +1,6 @@
 # ERP repository inventory
 
-Snapshot: 2026-10-03, revision 0808200. File presence does not establish acceptance. Paths are relative to the repository root.
+Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish acceptance. Paths are relative to the repository root. Counts since 2026-10-03: +1 unit test (`tests/unit/refundCriticalIntegrity.test.ts`), +3 audit documents (2026-10-03 safeguarded-database audit + relation CSV, 2026-10-04 critical integrity audit). The refund route and two existing refund tests changed in commit 05cbc96.
 
 ## Pages (59)
 
@@ -415,7 +415,7 @@ Snapshot: 2026-10-03, revision 0808200. File presence does not establish accepta
 - src/workers/outboxWorker.ts
 - src/workers/sentry.ts
 
-## Tests (135)
+## Tests (136)
 
 - tests/e2e/access-control.spec.ts
 - tests/e2e/accessibility.spec.ts
@@ -534,6 +534,7 @@ Snapshot: 2026-10-03, revision 0808200. File presence does not establish accepta
 - tests/unit/providers.test.ts
 - tests/unit/receivablesDomain.test.ts
 - tests/unit/reconciliationFailure.test.ts
+- tests/unit/refundCriticalIntegrity.test.ts
 - tests/unit/removePublicSourcemaps.test.ts
 - tests/unit/revaluation.test.ts
 - tests/unit/riskAlerting.test.ts
@@ -630,7 +631,7 @@ Snapshot: 2026-10-03, revision 0808200. File presence does not establish accepta
 - prisma/mariadb/migrations/20261001000200_security_events_append_only/migration.sql
 - prisma/mariadb/migrations/migration_lock.toml
 
-## Documentation (36)
+## Documentation (39)
 
 - docs/adr/0001-db-roles.md
 - docs/adr/0002-rls-via-middleware.md
@@ -651,6 +652,9 @@ Snapshot: 2026-10-03, revision 0808200. File presence does not establish accepta
 - docs/audits/2026-09-19-gift-card-issuance.md
 - docs/audits/2026-09-21-audit-context.md
 - docs/audits/2026-09-21-full-bug-hunt.md
+- docs/audits/2026-10-03-relation-inventory.csv
+- docs/audits/2026-10-03-safeguarded-database-audit.md
+- docs/audits/2026-10-04-critical-integrity-audit.md
 - docs/audits/FINAL-BLUEPRINT-COMPLIANCE-RELATIONAL-VALIDATION.md
 - docs/audits/FULL-CODEBASE-BUG-HUNT-PROMPT.md
 - docs/mariadb-migration-runbook.md

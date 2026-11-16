@@ -1,6 +1,6 @@
 # Static review findings
 
-Date: 2026-10-17. Revision: `05cbc96` (three commits after the 2026-10-03 review of `0808200`: `fa1daa0` database-audit inventory, `ad3a39f` refactor, `05cbc96` refund hardening). Application code and configuration were not edited in this review pass. Evidence classes used below: **STATIC** (source inspected today), **TESTED** (executed evidence cited from a dated in-repo audit), **HISTORICAL** (older documents/claims), **UNAVAILABLE** (environment not present), **UNVERIFIED** (requires runtime). This is not a line-by-line review of every file, a penetration test, or production certification. The disposable MariaDB target (127.0.0.1:43318) was not running; no tests, build, or migrations were executed this pass.
+Date: 2026-11-16. Revision: `05cbc96` (three commits after the 2026-10-03 review of `0808200`: `fa1daa0` database-audit inventory, `ad3a39f` refactor, `05cbc96` refund hardening). Application code and configuration were not edited in this review pass. Evidence classes used below: **STATIC** (source inspected today), **TESTED** (executed evidence cited from a dated in-repo audit), **HISTORICAL** (older documents/claims), **UNAVAILABLE** (environment not present), **UNVERIFIED** (requires runtime). This is not a line-by-line review of every file, a penetration test, or production certification. The disposable MariaDB target (127.0.0.1:43318) was not running; no tests, build, or migrations were executed this pass.
 
 ## Change since the 2026-10-03 review
 

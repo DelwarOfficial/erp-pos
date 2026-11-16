@@ -1,6 +1,6 @@
 # Gathered ERP/POS project blueprint
 
-Reviewed 2026-10-03 at revision `0808200`. This is an implementation orientation map, not a replacement for the authoritative v4.2 specification. Review scope: repository-wide inventory and static inspection of key architectural paths, module boundaries, documentation, and test setup. No runtime acceptance certification.
+Reviewed 2026-11-16 at revision `05cbc96` (supersedes the 2026-10-03 pass at `0808200`). This is an implementation orientation map, not a replacement for the authoritative v4.2 specification. Review scope: repository-wide inventory and static inspection of key architectural paths, module boundaries, documentation, and test setup. No runtime acceptance certification.
 
 ## Product and authority
 
@@ -70,8 +70,8 @@ Inspect return, void, payment, inventory and payroll commands independently; thi
 
 ## Test and release blueprint
 
-Observed: 78 unit test files, 34 integration files, 17 browser spec files, plus two k6 load scripts. File counts do not count test cases or passing tests. `vitest.config.ts` uses `tests/setup/disposableDatabase.ts`, requiring loopback mysql on port 43318 with database `readiness_20260912_disposable`.
+Observed: 79 unit test files, 34 integration files, 17 browser spec files, plus two k6 load scripts. File counts do not count test cases or passing tests. `vitest.config.ts` uses `tests/setup/disposableDatabase.ts`, requiring loopback mysql on port 43318 with database `readiness_20260912_disposable`. `node_modules` is present in this checkout (installed with `npm ci --ignore-scripts` during the 2026-10-04 refund hardening); the disposable database itself was not running at the 2026-11-16 review, so no checks were executed then. The 2026-10-04 audit executed mock-based refund regressions (23/23) without a database.
 
 Acceptance sequence for future authorized validation: establish disposable MariaDB and matching generated Prisma client; run appropriate static/unit/integration checks; verify critical browser workflows and tenant denials; demonstrate migrations, worker/provider delivery, stock/GL reconciliation, safe restore, and load targets. Check current scripts and platform compatibility before executing them.
 
-This checkout has no `node_modules`; no tests, build, browser checks, migrations, provider calls, or restore exercises were run during this review. PITR and achieved recovery targets remain unproven in the current backup runbook.
+This checkout has `node_modules`, but no tests, build, browser checks, migrations, provider calls, or restore exercises were run during the 2026-11-16 review (disposable database not running). PITR and achieved recovery targets remain unproven in the current backup runbook.
