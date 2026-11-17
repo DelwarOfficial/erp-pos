@@ -14,10 +14,22 @@ import { toast } from 'sonner';
 
 interface Sale {
   id: string; reference_no: string; sale_status: string; grand_total: string; currency_code: string; exchange_rate: string;
+  subtotal: string; discount_total: string; tax_total: string;
   branch: BusinessEntity; warehouse: BusinessEntity; customer: BusinessEntity | null;
+  // Sale-time snapshots: what was charged then, not today's price.
   items: { id: string; product_name_snapshot: string; qty: string; qty_returned: number; line_total: string;
+    unit_price_snapshot: string; gross_amount: string; discount_amount: string; tax_amount: string;
     product: { isSerialized: boolean }; returnable_serials: string[] }[];
   payments: { id: string; allocated_amount: string; payment: { referenceNo: string; paymentMethod: string; paymentStatus: string } }[];
+}
+const money = (v: string) => Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Discount as a share of the pre-discount amount, exact in paisa, half-up to 2 places; display only. */
+function pct(discount: string, gross: string): string {
+  const paisa = (v: string) => { const [w, d = ''] = Number(v).toFixed(2).split('.'); return BigInt(w) * BigInt(100) + BigInt(d); };
+  const part = paisa(discount), whole = paisa(gross);
+  if (whole <= BigInt(0)) return '';
+  const scaled = (part * BigInt(20000) + whole) / (whole * BigInt(2));
+  return `${scaled / BigInt(100)}.${String(scaled % BigInt(100)).padStart(2, '0')}`.replace(/\.?0+$/, '') + '%';
 }
 interface Return { id: string; reference_no: string; total_credit: string; refunded_amount: string; balance_due: string; refund_status: string }
 interface ReturnLine { qty: string; condition: string; serials: string[] }
@@ -72,7 +84,10 @@ export function SaleDetail({ id, onClose, onChanged }: { id: string; onClose: ()
     {loading ? <p role="status">Loading sale…</p> : null}{error || command.error ? <div role="alert" className="space-y-2"><p>{error || command.error}</p>{error ? <Button variant="outline" onClick={() => void load()}>Retry sale details</Button> : null}</div> : null}
     {sale ? <><div className="flex flex-wrap gap-3"><Badge>{sale.sale_status.replaceAll('_', ' ')}</Badge><span>{sale.customer?.name ?? 'Walk-in customer'}</span><span>{sale.branch.name} / {sale.warehouse.name}</span><strong>{sale.currency_code} {Number(sale.grand_total).toFixed(2)}</strong></div>
       {can('sale.read') ? <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><a href={`/print/invoice/${id}`} target="_blank" rel="noopener noreferrer">Invoice / print</a></Button><Button asChild variant="outline"><a href={`/print/receipt/${id}`} target="_blank" rel="noopener noreferrer">Receipt / print</a></Button></div> : null}
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th>Product</th><th>Sold</th><th>Returned</th><th>Total</th></tr></thead><tbody>{sale.items.map(item => <tr className="border-b" key={item.id}><td className="py-3 pr-3">{item.product_name_snapshot}</td><td>{item.qty}</td><td>{item.qty_returned}</td><td>{item.line_total}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><caption className="sr-only">Items sold, at the prices and discounts of the sale</caption><thead><tr className="border-b text-left"><th>Product</th><th className="text-right">Unit price</th><th className="text-right">Sold</th><th className="text-right">Returned</th><th className="text-right">Before discount</th><th className="text-right">Discount</th><th className="text-right">VAT</th><th className="text-right">Line total</th></tr></thead>
+        <tbody className="tabular-nums">{sale.items.map(item => <tr className="border-b" key={item.id}><td className="py-3 pr-3">{item.product_name_snapshot}</td><td className="text-right">{money(item.unit_price_snapshot)}</td><td className="text-right">{item.qty}</td><td className="text-right">{item.qty_returned}</td><td className="text-right">{money(item.gross_amount)}</td>
+          <td className="text-right">{Number(item.discount_amount) > 0 ? <>{money(item.discount_amount)} <span className="text-xs text-muted-foreground">({pct(item.discount_amount, item.gross_amount)})</span></> : '—'}</td><td className="text-right">{money(item.tax_amount)}</td><td className="text-right font-medium">{money(item.line_total)}</td></tr>)}</tbody>
+        <tfoot className="tabular-nums"><tr><td className="pt-2" colSpan={4}>Subtotal</td><td className="pt-2 text-right">{money(sale.subtotal)}</td><td className="pt-2 text-right">{Number(sale.discount_total) > 0 ? <>{money(sale.discount_total)} <span className="text-xs text-muted-foreground">({pct(sale.discount_total, sale.subtotal)})</span></> : '—'}</td><td className="pt-2 text-right">{money(sale.tax_total)}</td><td className="pt-2 text-right font-semibold">{money(sale.grand_total)}</td></tr></tfoot></table></div>
       <section><h3 className="font-semibold">Payments</h3>{sale.payments.length ? <ul className="divide-y">{sale.payments.map(payment => <li key={payment.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm"><span>{payment.payment.referenceNo}</span><span>{payment.payment.paymentMethod}</span><span>{payment.allocated_amount}</span><Badge variant="secondary">{payment.payment.paymentStatus}</Badge></li>)}</ul> : <p>No payments allocated.</p>}</section>
       {can('sale_return.post') && ['completed', 'partially_returned'].includes(sale.sale_status) && !returning ? <Button onClick={() => setReturning(true)}>Return items</Button> : null}
       {returning ? <form onSubmit={postReturn}><fieldset disabled={command.pending} className="space-y-4 rounded-md border p-4"><h3 className="font-semibold">Return items</h3><div><Label htmlFor="return-reason">Return reason</Label><Textarea id="return-reason" required maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></div>

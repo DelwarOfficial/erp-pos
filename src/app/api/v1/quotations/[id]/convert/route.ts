@@ -8,6 +8,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { postSale } from '@/domain/commands/m3/PostSale';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { db } from '@/lib/db';
 
 const ConvertSchema = z.object({
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'quotation.convert.branch');
+    await requirePermission(auth, 'quotation.convert.branch'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('quotation_enabled'); });
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = ConvertSchema.parse(await req.json());

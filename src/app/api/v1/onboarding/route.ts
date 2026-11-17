@@ -226,6 +226,23 @@ export async function POST(req: NextRequest) {
           // 8. Seed default chart of accounts + accounting policies + financial accounts
           const coaResult = await seedDefaultCoa(tx, company.id);
 
+          // 9. Open the current fiscal year. Every sale, payment and expense
+          // posts to the ledger, which needs an open period; without one a new
+          // company's first sale failed. Bangladesh's fiscal year starts in
+          // July (the company default); a different start month is honoured.
+          const startMonth = company.fiscalYearStartMonth;
+          const now = new Date();
+          const fyStartYear = now.getUTCMonth() + 1 >= startMonth ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+          const periodStart = new Date(Date.UTC(fyStartYear, startMonth - 1, 1));
+          const periodEnd = new Date(Date.UTC(fyStartYear + 1, startMonth - 1, 1) - 1);
+          await tx.fiscalPeriod.create({
+            data: {
+              companyId: company.id,
+              periodName: startMonth === 1 ? `FY ${fyStartYear}` : `FY ${fyStartYear}-${String((fyStartYear + 1) % 100).padStart(2, '0')}`,
+              periodStart, periodEnd, status: 'open',
+            },
+          });
+
           return {
             status: 201,
             body: {

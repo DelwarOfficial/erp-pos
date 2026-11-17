@@ -94,8 +94,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   const localPayment = matches[0];
   const deliveryRequestId = randomUUID();
 
-  // Update payment status — idempotent
-  const newStatus = status === 'success' ? 'completed' : status === 'failed' ? 'failed' : localPayment.paymentStatus;
+  // Only a payment still waiting on the provider ('pending') is settled here.
+  // A payment the till already posted (its sale journal holds the cash) used
+  // to flip to 'completed' -- a status nothing else counts -- and get a second
+  // cash journal; a late 'failed' could also flip a posted payment with no
+  // reversal. Those are now recorded and left alone. Success becomes 'posted',
+  // the status shift close, reconciliation and refunds count.
+  const settled = status === 'success' ? 'posted' : status === 'failed' ? 'failed' : null;
+  if (settled && localPayment.paymentStatus !== 'pending') {
+    if (settled !== localPayment.paymentStatus) {
+      await recordSecurityEvent({
+        eventType: 'payment_webhook_conflicting_status',
+        severity: settled === 'failed' ? 'high' : 'warning',
+        companyId: localPayment.companyId,
+        metadata: { provider: providerCode, reference: providerReference, local_status: localPayment.paymentStatus, provider_status: settled },
+      });
+    }
+    return NextResponse.json({ received: true, status: localPayment.paymentStatus });
+  }
+  const newStatus = settled ?? localPayment.paymentStatus;
   if (newStatus !== localPayment.paymentStatus) {
     // Status change, audit trail and GL posting commit together. Previously
     // the row was flipped to 'completed' on its own: nothing recorded who or
@@ -110,13 +127,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
           where: { id: localPayment.id, companyId: localPayment.companyId, paymentStatus: localPayment.paymentStatus },
           data: {
             paymentStatus: newStatus,
-            receivedOrPaidAt: newStatus === 'completed' ? new Date() : undefined,
+            receivedOrPaidAt: newStatus === 'posted' ? new Date() : undefined,
+            postedAt: newStatus === 'posted' ? new Date() : undefined,
           },
         });
         // Another delivery of the same webhook already applied it.
         if (claimed.count !== 1) return;
 
-        if (newStatus === 'completed') {
+        // Never a second cash journal for the same payment.
+        const alreadyJournaled = await tx.journalEntry.findFirst({
+          where: { companyId: localPayment.companyId, sourceType: 'payment', sourceId: localPayment.id }, select: { id: true },
+        });
+        if (newStatus === 'posted' && !alreadyJournaled) {
           const financialAccount = await tx.financialAccount.findFirst({
             where: { id: localPayment.financialAccountId, companyId: localPayment.companyId },
             select: { chartOfAccountId: true },

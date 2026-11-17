@@ -52,13 +52,15 @@ describe('fail-closed financial posting', () => {
       expect(f.tx.journalEntry.create).not.toHaveBeenCalled();
     });
   }
-  for (const tender of ['gift_card', 'store_credit']) {
-    it(`rejects ${tender} before any persistence, including non-HTTP callers`, async () => {
-      await expect(postSale({} as Prisma.TransactionClient, {
-        companyId: 'tenant-a', branchId: 'branch-a', warehouseId: 'warehouse-a', cashierId: 'user-a',
-        currencyCode: 'BDT', exchangeRate: 1, businessDate: new Date(), items: [],
-        payments: [{ paymentMethod: tender, amount: 100, financialAccountId: 'account' }],
-      }, 'test')).rejects.toThrow(/unavailable until atomic redemption/);
-    });
-  }
+  const sale = (payment: { paymentMethod: string; methodReference?: string }) => postSale({} as Prisma.TransactionClient, {
+    companyId: 'tenant-a', branchId: 'branch-a', warehouseId: 'warehouse-a', cashierId: 'user-a',
+    currencyCode: 'BDT', exchangeRate: 1, businessDate: new Date(), items: [],
+    payments: [{ ...payment, amount: 100, financialAccountId: 'account' }],
+  }, 'test');
+  it('rejects store_credit before any persistence, including non-HTTP callers', async () => {
+    await expect(sale({ paymentMethod: 'store_credit' })).rejects.toThrow(/Store credit is not available/);
+  });
+  it('rejects a gift_card tender without its code before any persistence', async () => {
+    await expect(sale({ paymentMethod: 'gift_card' })).rejects.toThrow(/gift card code/);
+  });
 });

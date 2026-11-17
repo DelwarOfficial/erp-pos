@@ -8,6 +8,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { validateWarrantyReplacement } from '@/domain/commands/m5/Service';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { getCorrelationId } from '@/lib/http';
 
 const WarrantyClaimSchema = z.object({
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'warranty.fulfill');
+  await requirePermission(auth, 'warranty.fulfill'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('service_warranty_enabled'); });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = WarrantyClaimSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/warranty-claims', body });

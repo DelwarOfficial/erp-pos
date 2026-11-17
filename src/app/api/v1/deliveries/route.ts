@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "delivery.read");
+    await requirePermission(auth, "delivery.read"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('delivery_courier_enabled'); });
     const status = req.nextUrl.searchParams.get('status') ?? undefined;
     // Default to last 30 days to bound the result set on large tenant datasets.
     const thirtyDaysAgo = new Date();

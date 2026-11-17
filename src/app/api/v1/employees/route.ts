@@ -11,13 +11,14 @@ import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
 import { EmployeeInput, employeeFields, validateEmployeeReferences } from '@/lib/api/employeeInput';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "employee.read");
+    await requirePermission(auth, "employee.read"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('hr_payroll_enabled'); });
     const page = readListPage(req.nextUrl);
     const search = req.nextUrl.searchParams.get('search')?.trim();
     const employees = await runInTenantContext(auth.ctx, async () => {
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "employee.manage.branch");
+    await requirePermission(auth, "employee.manage.branch"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('hr_payroll_enabled'); });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = EmployeeInput.parse(await req.json());
     await requirePermission(auth, 'employee.manage.branch', body.branch_id);

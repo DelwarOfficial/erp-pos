@@ -7,12 +7,13 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { LeadInput, leadFields, validateLeadReferences } from '@/lib/api/leadInput';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { convertLead } from '@/domain/commands/m6/ConvertLead';
 
 type Context = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Context) {
   try {
-    const auth = await authenticateRequest(); await requirePermission(auth, 'crm.lead.read'); const { id } = await params;
+    const auth = await authenticateRequest(); await requirePermission(auth, 'crm.lead.read'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('crm_enabled'); }); const { id } = await params;
     const lead = await runInTenantContext(auth.ctx, async () => db.lead.findFirst({ where: { id, companyId: auth.companyId }, include: {
       branch: { select: { id: true, name: true, code: true } }, status: true, source: true, subject: true,
       assignee: { select: { id: true, name: true } }, convertedCustomer: { select: { id: true, name: true } },
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest, { params }: Context) {
     const envelope = z.object({ action: z.enum(['update', 'convert']), lead: LeadInput.optional() }).parse(await req.json());
     if (envelope.action === 'convert') await requirePermission(auth, 'lead.convert');
     else await requirePermission(auth, 'crm.lead.update');
+    await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('crm_enabled'); });
     const key = requireIdempotencyKey(req);
     if (envelope.action === 'update' && !envelope.lead) throw new DomainError('VALIDATION_FAILED', 'Provide lead details', {}, 400);
     if (envelope.lead?.branch_id) await requirePermission(auth, 'crm.lead.update', envelope.lead.branch_id);

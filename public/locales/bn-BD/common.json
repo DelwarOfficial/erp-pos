@@ -1,10 +1,9 @@
 {
   "app.name": "ইআরপি পিওএস",
   "app.tagline": "বাংলাদেশ ইলেকট্রনিক্স রিটেইল + সার্ভিস + ওয়ারেন্টি",
-
   "nav.dashboard": "ড্যাশবোর্ড",
-  "nav.pos": "পিওএস — নতুন বিক্রয়",
-  "nav.sales": "বিক্রয়",
+  "nav.pos": "নতুন বিক্রি",
+  "nav.sales": "বিক্রির ইতিহাস",
   "nav.cashier": "ক্যাশিয়ার শিফট",
   "nav.products": "পণ্য",
   "nav.catalogue": "ক্যাটালগ",
@@ -26,7 +25,6 @@
   "nav.onboarding": "টেন্যান্ট অনবোর্ডিং",
   "nav.system": "সিস্টেম স্বাস্থ্য",
   "nav.settings": "সেটিংস",
-
   "action.login": "সাইন ইন",
   "action.logout": "সাইন আউট",
   "action.save": "সংরক্ষণ",
@@ -56,7 +54,6 @@
   "action.post": "পোস্ট",
   "action.void": "বাতিল",
   "action.reverse": "বিপরীত",
-
   "label.email": "ইমেইল",
   "label.password": "পাসওয়ার্ড",
   "label.company_code": "কোম্পানি কোড",
@@ -122,7 +119,6 @@
   "label.recall": "রিকল",
   "label.fn_loss": "মিথ্যা নেতিবাচক ক্ষতি",
   "label.threshold": "থ্রেশহোল্ড",
-
   "pos.scan_barcode": "বারকোড স্ক্যান করুন অথবা পণ্য খুঁজুন",
   "pos.cart": "কার্ট",
   "pos.empty_cart": "কার্ট খালি",
@@ -138,7 +134,6 @@
   "pos.variance_expected": "প্রত্যাশিত",
   "pos.variance_counted": "গণনা করা",
   "pos.supervisor_approval": "সুপারভাইজার অনুমোদন প্রয়োজন",
-
   "accounting.posted": "পোস্ট করা হয়েছে",
   "accounting.draft": "খসড়া",
   "accounting.locked": "লক করা",
@@ -152,7 +147,6 @@
   "accounting.open_period_required": "খোলা সময়কাল প্রয়োজন",
   "accounting.reconciliation_passed": "সমন্বয় সফল",
   "accounting.reconciliation_failed": "সমন্বয় ব্যর্থ",
-
   "delivery.pending": "অপেক্ষমাণ",
   "delivery.packing": "প্যাকিং",
   "delivery.ready": "প্রস্তুত",
@@ -168,7 +162,6 @@
   "delivery.inspection_required": "পরিদর্শন প্রয়োজন",
   "delivery.restock": "পুনরায় স্টকে",
   "delivery.scrap": "স্ক্র্যাপ",
-
   "service.intake": "গ্রহণ",
   "service.diagnosing": "নির্ণয়",
   "service.awaiting_approval": "অনুমোদনের অপেক্ষায়",
@@ -178,7 +171,6 @@
   "service.warranty_claim": "ওয়ারেন্টি দাবি",
   "service.replacement": "প্রতিস্থাপন",
   "service.repair_wip": "মেরামত কাজ-চলমান",
-
   "crm.lead": "লিড",
   "crm.leads": "লিডস",
   "crm.today_actions": "আজকের কাজ",
@@ -188,7 +180,6 @@
   "crm.marketing_campaign": "মার্কেটিং ক্যাম্পেইন",
   "crm.consent_granted": "সম্মতি দেওয়া",
   "crm.consent_withdrawn": "সম্মতি প্রত্যাহার",
-
   "hr.employee": "কর্মী",
   "hr.employees": "কর্মীগণ",
   "hr.payroll": "পেরোল",
@@ -203,7 +194,6 @@
   "hr.overtime": "ওভারটাইম",
   "hr.preparer": "প্রস্তুতকারক",
   "hr.approver": "অনুমোদনকারী",
-
   "import.upload": "সিএসভি আপলোড",
   "import.dry_run": "ড্রাই-রান",
   "import.commit": "কমিট",
@@ -217,7 +207,6 @@
   "import.update": "আপডেট",
   "import.fail": "ব্যর্থ",
   "import.control_totals": "নিয়ন্ত্রণ মোট",
-
   "risk.tuning": "ঝুঁকি টিউনিং",
   "risk.thresholds": "বর্তমান থ্রেশহোল্ড",
   "risk.assessments": "মূল্যায়ন",
@@ -231,7 +220,6 @@
   "risk.tuning_history": "টিউনিং ইতিহাস",
   "risk.alerts": "ঝুঁকি সতর্কতা",
   "risk.no_alerts": "কোন সতর্কতা নেই — থ্রেশহোল্ড ভালভাবে ক্রমাঙ্কিত",
-
   "error.required": "এই ফিল্ডটি আবশ্যক",
   "error.invalid_email": "অবৈধ ইমেইল ঠিকানা",
   "error.invalid_credentials": "ভুল প্রমাণপত্র",
@@ -258,7 +246,6 @@
   "error.cheque_status_invalid": "চেকের অবস্থা অবৈধ",
   "error.delivery_transition_invalid": "ডেলিভারি রূপান্তর অবৈধ",
   "error.internal_error": "অভ্যন্তরীণ ত্রুটি",
-
   "success.saved": "সফলভাবে সংরক্ষিত",
   "success.created": "সফলভাবে তৈরি",
   "success.updated": "সফলভাবে আপডেট",
@@ -267,18 +254,15 @@
   "success.approved": "সফলভাবে অনুমোদিত",
   "success.imported": "সফলভাবে ইমপোর্ট করা",
   "success.exported": "সফলভাবে এক্সপোর্ট করা",
-
   "currency.BDT": "৳",
   "currency.USD": "$",
   "currency.EUR": "€",
   "currency.GBP": "£",
   "currency.INR": "₹",
-
   "date.format": "dd MMM yyyy",
   "date.today": "আজ",
   "date.yesterday": "গতকাল",
   "date.tomorrow": "আগামীকাল",
-
   "common.loading": "লোড হচ্ছে...",
   "common.no_data": "কোন তথ্য নেই",
   "common.confirm_delete": "আপনি কি নিশ্চিত?",
@@ -291,7 +275,6 @@
   "common.total": "মোট",
   "common.grand_total": "মোট পরিমাণ",
   "common.search_placeholder": "অনুসন্ধান করুন...",
-
   "receipt.thank_you": "ধন্যবাদ — Thank you!",
   "receipt.return_policy": "৭ দিন মূল রসিদ সহ ফেরতযোগ্য",
   "receipt.reprint": "পুনর্মুদ্রণ",

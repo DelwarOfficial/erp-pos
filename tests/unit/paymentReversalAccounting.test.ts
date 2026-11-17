@@ -55,6 +55,7 @@ vi.mock('@/lib/db', () => {
     financialAccount: { findFirst: mocks.financialAccountFindFirst },
     accountingPolicy: { findUnique: mocks.policyFindUnique },
     auditLog: { create: mocks.auditCreate },
+    journalEntry: { findFirst: async () => null },
     idempotencyRequest: { updateMany: mocks.idempotencyUpdateMany },
     $transaction: mocks.transaction,
   };
@@ -191,6 +192,7 @@ describe('provider webhook', () => {
     mocks.scope.mockImplementation(async (_ctx: unknown, work: () => Promise<unknown>) => work());
     mocks.transaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work({
       payment: { updateMany: mocks.paymentUpdateMany },
+      journalEntry: { findFirst: async () => null },
       financialAccount: { findFirst: mocks.financialAccountFindFirst },
       accountingPolicy: { findUnique: mocks.policyFindUnique },
       auditLog: { create: mocks.auditCreate },
@@ -233,8 +235,16 @@ describe('provider webhook', () => {
     });
   });
 
-  it('F-09: posts the receipt and writes an audit row when a payment completes', async () => {
-    mocks.paymentFindMany.mockResolvedValue([PAYMENT]);
+  it('leaves a payment the till already posted alone: no second cash journal', async () => {
+    mocks.paymentFindMany.mockResolvedValue([PAYMENT]); // status 'posted'
+    const response = await webhookRoute(webhookRequest(), { params: Promise.resolve({ provider: 'bkash' }) });
+    expect(response.status).toBe(200);
+    expect(mocks.paymentUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.postJournalEntry).not.toHaveBeenCalled();
+  });
+
+  it('F-09: posts the receipt and writes an audit row when a pending payment completes', async () => {
+    mocks.paymentFindMany.mockResolvedValue([{ ...PAYMENT, paymentStatus: 'pending' }]);
 
     const response = await webhookRoute(webhookRequest(), { params: Promise.resolve({ provider: 'bkash' }) });
 
@@ -248,7 +258,7 @@ describe('provider webhook', () => {
   });
 
   it('F-09: a redelivered webhook does not post twice', async () => {
-    mocks.paymentFindMany.mockResolvedValue([PAYMENT]);
+    mocks.paymentFindMany.mockResolvedValue([{ ...PAYMENT, paymentStatus: 'pending' }]);
     mocks.paymentUpdateMany.mockResolvedValue({ count: 0 }); // already applied
 
     await webhookRoute(webhookRequest(), { params: Promise.resolve({ provider: 'bkash' }) });

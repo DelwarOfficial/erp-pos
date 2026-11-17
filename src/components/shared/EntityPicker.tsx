@@ -15,10 +15,13 @@ export interface BusinessEntity {
 }
 
 /** Searches server-supported lists; reference lists can filter the loaded page locally. */
-export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value, onChange, disabled, serverSearch = true, searchParam = 'search', minimumSearch = 0 }: {
+export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value, onChange, disabled, serverSearch = true, searchParam = 'search', minimumSearch = 0, createAction, searchPlaceholder }: {
   label: string; endpoint: string; value: T | null; onChange: (entity: T) => void;
   disabled?: boolean; serverSearch?: boolean;
   searchParam?: string; minimumSearch?: number;
+  /** Optional "add new" action beside the search and in the no-results state; gets the typed text. */
+  createAction?: { label: string; onCreate: (search: string) => void };
+  searchPlaceholder?: string;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -63,13 +66,17 @@ export function EntityPicker<T extends BusinessEntity>({ label, endpoint, value,
         <span className="truncate">{value ? `${value.name}${value.code ? ` (${value.code})` : ''}` : `Select ${label.toLowerCase()}`}</span>
       </Button></PopoverTrigger>
       <PopoverContent align="start" className="w-[min(24rem,calc(100vw-2rem))] space-y-2">
-        <Input aria-label={`Search ${label.toLowerCase()}`} value={search} onChange={event => { setSearch(event.target.value); setPage(null); }} placeholder="Search by name or code" />
+        <div className="flex gap-2">
+          <Input aria-label={`Search ${label.toLowerCase()}`} value={search} onChange={event => { setSearch(event.target.value); setPage(null); }} placeholder={searchPlaceholder ?? 'Search by name or code'} />
+          {createAction ? <Button type="button" variant="outline" className="shrink-0" onClick={() => { setOpen(false); createAction.onCreate(search.trim()); }}>{createAction.label}</Button> : null}
+        </div>
         {error ? <div role="alert" className="space-y-2 text-sm"><p>{error}</p><Button type="button" variant="outline" onClick={() => setAttempt(n => n + 1)}>Retry</Button></div> : null}
         <div role="listbox" aria-label={label} aria-busy={loading} className="max-h-64 space-y-1 overflow-y-auto">
           {visible.map(item => <Button key={item.id} type="button" role="option" aria-selected={item.id === value?.id} variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => { onChange(item); setOpen(false); }}>
             <span>{item.name}{item.code ? ` (${item.code})` : ''}{item.branch ? <span className="block text-xs text-muted-foreground">{item.branch.name}</span> : null}</span>
           </Button>)}
           {!loading && !error && !visible.length ? <p className="p-2 text-sm text-muted-foreground">{search.trim().length < minimumSearch ? `Type at least ${minimumSearch} characters to search.` : 'No matching options.'}</p> : null}
+          {createAction && !loading && !error && !visible.length && search.trim().length >= minimumSearch ? <Button type="button" className="w-full" onClick={() => { setOpen(false); createAction.onCreate(search.trim()); }}>{createAction.label}</Button> : null}
         </div>
         {loading ? <p role="status" className="text-sm">Loading options…</p> : cursor ? <Button type="button" variant="outline" onClick={() => setPage(cursor)}>Load more options</Button> : null}
       </PopoverContent>

@@ -57,7 +57,7 @@ export async function PATCH(
               enabled: body.enabled,
               updatedBy: auth.userId,
               reason: body.reason,
-            });
+            }, tx);
 
             // Audit (toggleFeatureFlag already wrote the row; we add the audit log)
             await tx.auditLog.create({

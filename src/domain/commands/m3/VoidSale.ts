@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { reverseStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
 import { reverseJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
+import { restoreGiftCardTender } from '@/domain/commands/m6/Loyalty';
 
 export interface VoidSaleInput {
   saleId: string;
@@ -57,6 +58,24 @@ export async function voidSale(
       { hours_since_post: Math.floor(hoursSincePost), threshold_hours: thresholds.sale_void_hours },
       409,
     );
+  }
+
+  // A void undoes the sale as it was taken at the till. Money that reached
+  // the sale some other way must be undone first, or the void would reverse
+  // it a second time: a refund already paid out, a later due collection, or
+  // one payment split across several sales.
+  for (const alloc of sale.payments) {
+    const refunded = await tx.payment.count({
+      where: { companyId: input.companyId, reversedPaymentId: alloc.paymentId, paymentStatus: { not: 'failed' } },
+    });
+    if (refunded > 0) {
+      throw new DomainError('VALIDATION_FAILED', 'This sale has a refund on one of its payments. Return the goods instead of voiding.', { payment_id: alloc.paymentId }, 409);
+    }
+    const otherSales = await tx.paymentAllocation.count({ where: { companyId: input.companyId, paymentId: alloc.paymentId, saleId: { not: sale.id } } });
+    const collections = await tx.installmentAllocation.count({ where: { companyId: input.companyId, paymentAllocationId: alloc.id } });
+    if (otherSales > 0 || collections > 0) {
+      throw new DomainError('VALIDATION_FAILED', 'Dues were collected against this sale after it was made. Reverse those collections first, or return the goods instead.', { payment_id: alloc.paymentId }, 409);
+    }
   }
 
   const eventId = randomUUID();
@@ -134,6 +153,12 @@ export async function voidSale(
         where: { id: payment.id },
         data: { paymentStatus: 'reversed' },
       });
+      // A gift card gets back what this sale took from it; reversing the sale
+      // journal below restores the liability to match.
+      if (payment.paymentMethod === 'gift_card' && payment.methodReference) {
+        await restoreGiftCardTender(tx, { companyId: input.companyId, code: payment.methodReference, amount: payment.amount,
+          restoredBy: input.voidedBy, saleReferenceNo: sale.referenceNo }, correlationId);
+      }
       // Create a reversal payment (outgoing)
       await tx.payment.create({
         data: {
@@ -145,6 +170,8 @@ export async function voidSale(
           direction: 'outgoing',
           customerId: payment.customerId,
           financialAccountId: payment.financialAccountId,
+          // Same drawer as the money it gives back, so shift close nets them.
+          cashierShiftId: payment.cashierShiftId,
           currencyCode: payment.currencyCode,
           exchangeRate: payment.exchangeRate,
           amount: payment.amount,
@@ -187,6 +214,9 @@ export async function voidSale(
       reason: `Sale void: ${input.reason}`,
     }, correlationId);
   }
+
+  // Nothing is owed on a voided sale: stop its schedule (and its reminders).
+  await tx.installment.updateMany({ where: { companyId: input.companyId, saleId: sale.id, status: 'scheduled' }, data: { status: 'cancelled' } });
 
   // Mark sale as voided
   await tx.sale.update({

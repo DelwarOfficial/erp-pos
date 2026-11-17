@@ -1,8 +1,8 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { systemDb as db } from '@/lib/db';
 import { recordSecurityEvent } from '@/lib/audit';
 import { errorMeta, logger } from '@/lib/logging';
+import { verifyCourierWebhook } from '@/lib/webhooks/courierAuth';
 
 // POST /api/v1/webhooks/courier/[provider]
 // Receives courier status callbacks (Pathao, RedX) and updates the delivery_order.
@@ -10,19 +10,25 @@ import { errorMeta, logger } from '@/lib/logging';
 export async function POST(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider: providerCode } = await params;
 
-  // Auth: courier providers use a shared secret in X-Courier-Token header
-  const token = req.headers.get('x-courier-token');
-  const expectedToken = process.env.COURIER_WEBHOOK_TOKEN;
-  const supplied = Buffer.from(token ?? '');
-  const expected = Buffer.from(expectedToken ?? '');
-  if (!expectedToken || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+  const rawBody = await req.text();
+
+  // Auth, per courier (src/lib/webhooks/courierAuth.ts): a signed body when
+  // the courier has a signing secret, else that courier's own token. One
+  // shared token for every courier let any of them -- or a leak -- mark any
+  // tenant's delivery as delivered.
+  const auth = verifyCourierWebhook(providerCode, rawBody, {
+    token: req.headers.get('x-courier-token'),
+    timestamp: req.headers.get('x-courier-timestamp'),
+    signature: req.headers.get('x-courier-signature'),
+  });
+  if (!auth.ok) {
     // Webhooks are unauthenticated (no tenant context), so wrap in try/catch
     // — recordSecurityEvent requires a companyId which we don't have here.
     try {
       await recordSecurityEvent({
         eventType: 'courier_webhook_unauthorized',
         severity: 'high',
-        metadata: { provider: providerCode },
+        metadata: { provider: providerCode, reason: auth.reason },
         companyId: undefined as unknown as string, // platform-level event
       });
     } catch (e) {
@@ -31,7 +37,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
     return NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 });
   }
 
-  const rawBody = await req.text();
   let payload: Record<string, unknown>;
   try { payload = JSON.parse(rawBody); } catch {
     return NextResponse.json({ error: { code: 'INVALID_JSON' } }, { status: 400 });

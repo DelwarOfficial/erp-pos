@@ -26,7 +26,9 @@ export type PaymentArrangement =
    * split by the server to the paisa with any remainder in the last. The
    * salesperson never has to know the tax-inclusive total in advance.
    */
-  | { type: 'equal'; count: number; firstDueDate: IsoDate; intervalMonths?: number };
+  | { type: 'equal'; count: number; firstDueDate: IsoDate; intervalMonths?: number;
+      /** Every N days instead of every N months ("every 30 days" is not "monthly"). */
+      intervalDays?: number };
 
 /** A date some months later, clamped to the month's end (31 Jan + 1 month = 28/29 Feb). */
 export function addMonths(date: IsoDate, months: number): IsoDate {
@@ -75,13 +77,19 @@ export function buildSchedule(unpaid: Prisma.Decimal, saleDate: IsoDate, arrange
   if (arrangement.type === 'equal') {
     const { count, firstDueDate } = arrangement;
     const interval = arrangement.intervalMonths ?? 1;
+    const days = arrangement.intervalDays;
     if (!Number.isInteger(count) || count < 1 || count > MAX_INSTALLMENTS) throw invalid(`Between 1 and ${MAX_INSTALLMENTS} installments`);
-    if (!Number.isInteger(interval) || interval < 1 || interval > 12) throw invalid('The interval is 1 to 12 months');
+    if (days !== undefined) {
+      if (arrangement.intervalMonths !== undefined) throw invalid('Choose monthly or every N days, not both');
+      if (!Number.isInteger(days) || days < 1 || days > 365) throw invalid('The interval is 1 to 365 days');
+    } else if (!Number.isInteger(interval) || interval < 1 || interval > 12) throw invalid('The interval is 1 to 12 months');
     parse(firstDueDate);
     const share = unpaid.div(count).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
     if (share.lte(0)) throw invalid('The unpaid amount is too small to split that many ways');
     return buildSchedule(unpaid, saleDate, { type: 'installments', installments: Array.from({ length: count }, (_, i) => ({
-      dueDate: addMonths(firstDueDate, i * interval), amount: i === count - 1 ? 'rest' : share.toFixed(2),
+      // Monthly dates count from the first due date each time, so 31 Jan,
+      // 28 Feb, 31 Mar: a short month never pulls later dates earlier.
+      dueDate: days !== undefined ? addDays(firstDueDate, i * days) : addMonths(firstDueDate, i * interval), amount: i === count - 1 ? 'rest' : share.toFixed(2),
     })) });
   }
 

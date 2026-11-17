@@ -63,7 +63,7 @@ test('a first-time cashier can sell a serial product for cash and close the shif
   await search.fill('Samsung');
   await page.getByRole('group', { name: 'Product search results' }).getByRole('button', { name: /Samsung TV 43 inch/ }).click();
   await expect(page.getByRole('button', { name: 'Remove Samsung TV 43 inch' })).toBeVisible();
-  await page.getByLabel('Serial numbers for Samsung TV 43 inch', { exact: true }).fill('SN-TV43-0001');
+  await page.getByLabel('Serial numbers for Samsung TV 43 inch', { exact: true }).fill('SN-TV43-0002');
   await expect(page.getByText('1 serial', { exact: true })).toBeVisible();
 
   // 4. Cash payment with change. With one open shift the screen picks the
@@ -73,7 +73,7 @@ test('a first-time cashier can sell a serial product for cash and close the shif
   await page.getByRole('combobox', { name: 'Payment account' }).click();
   await page.getByRole('option', { name: /cash/i }).first().click();
   await expect(page.getByRole('radio', { name: 'Cash' })).toHaveAttribute('aria-checked', 'true');
-  const complete = page.getByRole('button', { name: /^Complete sale — / });
+  const complete = page.getByRole('button', { name: /^Complete Sale — / });
   await expect(complete).toBeEnabled({ timeout: 30_000 });
   await expect(complete).toContainText('৳ 38,500.00');
   await page.getByLabel('Cash received from customer', { exact: true }).fill('40000');

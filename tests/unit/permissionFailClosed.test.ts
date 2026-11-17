@@ -27,6 +27,7 @@ vi.mock('@/lib/db/transaction', () => ({
   getTenantContext: () => ({ companyId: 'company-a' }),
   requireTenantContext: () => ({ companyId: 'company-a' }),
 }));
+vi.mock('@/lib/featureFlags', () => ({ requireFeatureFlag: async () => undefined }));
 vi.mock('@/lib/import-export/importProcessor', () => ({ commitImport: mocks.commit }));
 vi.mock('@/lib/import-export/templates', () => ({ getTemplate: mocks.template }));
 

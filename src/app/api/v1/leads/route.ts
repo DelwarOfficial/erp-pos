@@ -11,13 +11,14 @@ import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
 import { LeadInput, leadFields, validateLeadReferences } from '@/lib/api/leadInput';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "crm.lead.read");
+    await requirePermission(auth, "crm.lead.read"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('crm_enabled'); });
     const url = req.nextUrl;
     const page = readListPage(url);
     const search = url.searchParams.get('search')?.trim();
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "crm.lead.create");
+    await requirePermission(auth, "crm.lead.create"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('crm_enabled'); });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = LeadInput.parse(await req.json());
     if (body.branch_id) await requirePermission(auth, 'crm.lead.create', body.branch_id);

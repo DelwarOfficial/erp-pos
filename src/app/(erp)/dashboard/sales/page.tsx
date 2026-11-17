@@ -24,6 +24,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+/** Effective discount as a share of the pre-discount subtotal, for display only (exact paisa, half-up to 2 places). */
+function discountPercent(discount: string, subtotal: string): string {
+  const paisa = (v: string) => { const [w, d = ''] = Number(v).toFixed(2).split('.'); return BigInt(w) * BigInt(100) + BigInt(d); };
+  const part = paisa(discount), whole = paisa(subtotal);
+  if (whole <= BigInt(0)) return '';
+  const scaled = (part * BigInt(20000) + whole) / (whole * BigInt(2));
+  return `${(`${scaled / BigInt(100)}.${String(scaled % BigInt(100)).padStart(2, '0')}`).replace(/\.?0+$/, '')}%`;
+}
+
 interface Sale {
   id: string;
   reference_no: string;
@@ -31,6 +40,10 @@ interface Sale {
   customer: { id: string; name: string } | null;
   biller: { id: string; name: string; email: string } | null;
   currency_code: string;
+  /** Sale-time figures, as posted; never recomputed from today's prices. */
+  subtotal?: string;
+  discount_total?: string;
+  tax_total?: string;
   grand_total: string;
   base_grand_total: string;
   item_count: number;
@@ -156,6 +169,9 @@ export default function SalesPage() {
                   <TableHead>{t('col_customer')}</TableHead>
                   <TableHead>{t('col_sold_by')}</TableHead>
                   <TableHead>{t('col_status')}</TableHead>
+                  <TableHead className="text-right">{t('col_subtotal')}</TableHead>
+                  <TableHead className="text-right">{t('col_discount')}</TableHead>
+                  <TableHead className="text-right">{t('col_tax')}</TableHead>
                   <TableHead className="text-right">{t('col_total')}</TableHead>
                   <TableHead className="text-right">{t('col_items')}</TableHead>
                   <TableHead className="text-right">{t('col_payments')}</TableHead>
@@ -174,7 +190,10 @@ export default function SalesPage() {
                         {statusLabel(s.sale_status)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">{f.money(s.grand_total, s.currency_code)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{s.subtotal !== undefined ? f.money(s.subtotal, s.currency_code) : '—'}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{Number(s.discount_total ?? 0) > 0 ? <>{f.money(s.discount_total!, s.currency_code)}<span className="block text-xs text-muted-foreground">{discountPercent(s.discount_total!, s.subtotal ?? '0')}</span></> : '—'}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{s.tax_total !== undefined ? f.money(s.tax_total, s.currency_code) : '—'}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap font-medium tabular-nums">{f.money(s.grand_total, s.currency_code)}</TableCell>
                     <TableCell className="text-right">{s.item_count}</TableCell>
                     <TableCell className="text-right">{s.payment_count}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{s.posted_at ? f.dateTime(s.posted_at) : '—'}</TableCell>

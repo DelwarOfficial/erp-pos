@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ tx: null as any }));
 
 vi.mock('@/lib/db', () => ({ db: {} }));
+vi.mock('@/lib/featureFlags', () => ({ requireFeatureFlag: vi.fn(async () => undefined) }));
 vi.mock('@/lib/auth/middleware', () => ({
   authenticateRequest: vi.fn(async () => ({
     ctx: { companyId: 'tenant-a' }, companyId: 'tenant-a', userId: 'user-a',

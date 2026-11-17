@@ -127,13 +127,13 @@ export default function CollectionsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Collections</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Collect Payment</h1>
           <p className="text-sm text-muted-foreground">Who owes money, how much, when it is due, and what to do next.{overview ? ` As of ${overview.as_of}.` : ''}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link href="/dashboard/collections/calendar">Calendar</Link></Button>
           <Button variant="outline" asChild><Link href="/dashboard/collections/reports">Reports</Link></Button>
-          {can('sale.post') && <Button variant="outline" asChild><Link href="/dashboard/sales/credit"><CalendarClock className="mr-2 h-4 w-4" />New credit sale</Link></Button>}
+          {can('sale.post') && <Button variant="outline" asChild><Link href="/dashboard/pos?pay=later"><CalendarClock className="mr-2 h-4 w-4" />New sale, pay later</Link></Button>}
           <Button variant="outline" onClick={refresh}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
         </div>
       </div>

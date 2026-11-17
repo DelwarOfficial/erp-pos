@@ -236,7 +236,7 @@ test('service intake → diagnosis → approval → repeated parts → invoice �
   await pos.getByRole('button', { name: new RegExp(labour.name) }).click(); await pick(pos, 'Customer (optional)', customer.name);
   await pick(pos, 'Warehouse', warehouse.name); await pick(pos, 'Payment account', fixture.cash.name);
   const invoicing = pos.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
-  await pos.getByRole('button', { name: /Complete sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close(); await page.goto('/dashboard/service'); await page.getByRole('button', { name: 'View service request', exact: true }).click();
+  await pos.getByRole('button', { name: /Complete Sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close(); await page.goto('/dashboard/service'); await page.getByRole('button', { name: 'View service request', exact: true }).click();
   await pick(page, 'Service invoice', sale.referenceNo); await action('Link service invoice', 'Invoice covers approved service charge'); await action('Deliver device', 'Customer collected repaired device and accessories');
   const completed = await db.serviceRequest.findUniqueOrThrow({ where: { id: service.serviceRequestId }, include: { parts: true } }); expect(completed.status).toBe('delivered'); expect(completed.serviceSaleId).toBe(sale.saleId); expect(completed.parts.map(part => part.lineNo)).toEqual([1, 2]);
   expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('in_stock');
@@ -259,7 +259,7 @@ test('POS customer and split payment use authoritative pricing; receipt/invoice 
   await pick(page, 'Account for payment 1', fixture.cash.name);
   await page.getByLabel('Amount', { exact: true }).fill('40');
   const posting = page.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
-  await page.getByRole('button', { name: /Complete sale/ }).click();
+  await page.getByRole('button', { name: /Complete Sale/ }).click();
   const posted = await posting; expect(posted.status(), await posted.text()).toBe(201);
   const sale = await posted.json();
   await expect(page.getByRole('heading', { name: `Sale saved: ${sale.referenceNo}` })).toBeVisible();

@@ -7,6 +7,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { transitionDeliveryStatus } from '@/domain/commands/m5/Delivery';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { getCorrelationId } from '@/lib/http';
 
 const TransitionSchema = z.object({
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'delivery.dispatch');
+  await requirePermission(auth, 'delivery.dispatch'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('delivery_courier_enabled'); });
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = TransitionSchema.parse(await req.json());

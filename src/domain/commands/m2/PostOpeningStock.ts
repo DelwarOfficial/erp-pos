@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postStockMovement } from '@/domain/inventory/stockMovement';
 import { DomainError } from '@/lib/errors/codes';
+import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 
 export interface PostOpeningStockInput {
   companyId: string;
@@ -136,6 +137,29 @@ export async function postOpeningStock(
     });
 
     eventLineNo++;
+  }
+
+  // The stock brought in has value on the books: Dr Inventory, Cr Opening
+  // Balance Equity. Without it the inventory account started at zero while
+  // the stock ledger held value, so every later sale drove it negative.
+  const openingValue = input.items.reduce((sum, item) => sum.plus(new Prisma.Decimal(item.unitCost).mul(item.quantity)), new Prisma.Decimal(0)).toDecimalPlaces(2);
+  if (openingValue.gt(0)) {
+    const policy = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
+    if (!policy?.openingBalanceEquityAccountId) {
+      throw new DomainError('VALIDATION_FAILED', 'Set the opening balance equity account in accounting policies before posting opening stock', {}, 409);
+    }
+    const warehouse = await tx.warehouse.findFirstOrThrow({ where: { id: input.warehouseId, companyId: input.companyId }, select: { branchId: true } });
+    const company = await tx.company.findUniqueOrThrow({ where: { id: input.companyId }, select: { baseCurrencyCode: true } });
+    await postJournalEntry(tx, {
+      companyId: input.companyId, entryDate: input.businessDate,
+      postingKind: 'opening_stock', sourceType: 'opening_stock', sourceId: eventId,
+      description: `Opening stock ${input.referenceNo}`, currencyCode: company.baseCurrencyCode, exchangeRate: 1,
+      createdBy: input.postedBy,
+      lines: [
+        { chartOfAccountId: policy.inventoryAccountId, branchId: warehouse.branchId, debit: openingValue, credit: 0, memo: `Opening stock ${input.referenceNo}` },
+        { chartOfAccountId: policy.openingBalanceEquityAccountId, branchId: warehouse.branchId, debit: 0, credit: openingValue, memo: `Opening stock ${input.referenceNo}` },
+      ],
+    }, correlationId);
   }
 
   await tx.auditLog.create({

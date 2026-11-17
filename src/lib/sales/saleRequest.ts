@@ -18,7 +18,8 @@ const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 const Money = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/, 'An amount with at most two decimal places, as a string');
 
 const PaymentSchema = z.object({
-  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'other']),
+  // gift_card: method_reference carries the card code.
+  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'gift_card', 'other']),
   amount: z.number().positive(),
   financial_account_id: z.string().uuid(),
   method_reference: z.string().max(120).optional(),
@@ -42,7 +43,10 @@ export const PostSaleSchema = z.object({
   payment_arrangement: z.discriminatedUnion('type', [
     z.object({ type: z.literal('due'), due_date: IsoDate }),
     z.object({ type: z.literal('installments'), installments: z.array(z.object({ due_date: IsoDate, amount: z.union([Money, z.literal('rest')]) })).min(1).max(60) }),
-    z.object({ type: z.literal('equal'), count: z.number().int().min(1).max(60), first_due_date: IsoDate, interval_months: z.number().int().min(1).max(12).default(1) }),
+    // Monthly (interval_months, clamped to month end) or every N days (interval_days); not both.
+    z.object({ type: z.literal('equal'), count: z.number().int().min(1).max(60), first_due_date: IsoDate,
+      interval_months: z.number().int().min(1).max(12).optional(), interval_days: z.number().int().min(1).max(365).optional() })
+      .refine(a => !(a.interval_months && a.interval_days), 'Choose monthly or every N days, not both'),
   ]).optional(),
   reminder_phone: z.string().max(20).optional(),
   due_reminders_enabled: z.boolean().optional(),
@@ -53,7 +57,7 @@ function arrangement(body: PostSaleBody): PaymentArrangement | undefined {
   const a = body.payment_arrangement;
   if (!a) return undefined;
   if (a.type === 'due') return { type: 'due', dueDate: a.due_date };
-  if (a.type === 'equal') return { type: 'equal', count: a.count, firstDueDate: a.first_due_date, intervalMonths: a.interval_months };
+  if (a.type === 'equal') return { type: 'equal', count: a.count, firstDueDate: a.first_due_date, intervalMonths: a.interval_days ? undefined : (a.interval_months ?? 1), intervalDays: a.interval_days };
   return { type: 'installments', installments: a.installments.map(i => ({ dueDate: i.due_date, amount: i.amount })) };
 }
 

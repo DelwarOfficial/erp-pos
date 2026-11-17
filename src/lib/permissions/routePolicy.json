@@ -1609,6 +1609,14 @@
     "exception": null
   },
   {
+    "file": "v1/purchases/[id]/invoice/route.ts",
+    "method": "POST",
+    "permissions": [
+      "purchase.create"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/purchases/[id]/route.ts",
     "method": "GET",
     "permissions": [
@@ -2159,7 +2167,7 @@
     "file": "v1/webhooks/courier/[provider]/route.ts",
     "method": "POST",
     "permissions": [],
-    "exception": "Provider HMAC verification and explicit tenant context."
+    "exception": "Per-courier HMAC signature (or per-courier token); lookup bound to the provider, ambiguous ids refused."
   },
   {
     "file": "v1/webhooks/payment/[provider]/route.ts",

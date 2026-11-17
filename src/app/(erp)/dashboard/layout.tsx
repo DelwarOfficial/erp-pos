@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { House, ArrowLeft } from 'lucide-react';
-import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote, HandCoins, CalendarClock, CalendarDays } from 'lucide-react';
+import { Building2, LogOut, ShieldCheck, Activity, Settings, Server, BookOpen, Package, FolderTree, Flag, Boxes, ShoppingCart, Users, Receipt, Clock, CreditCard, Scale, Truck, Wrench, Gift, UserCog, Megaphone, Webhook, ShieldAlert, FileText, ChevronDown, Menu, Loader2, AlertCircle, Building, Landmark, Wallet, MessageSquare, FileBarChart, LifeBuoy, Banknote, HandCoins, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +31,6 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/sales', icon: Receipt, label: 'Sales' },
   { href: '/dashboard/cashier', icon: Clock, label: 'Cashier Shifts' },
   { href: '/dashboard/payments', icon: Banknote, label: 'Payments' },
-  { href: '/dashboard/sales/credit', icon: CalendarClock, label: 'Sell on Credit' },
   { href: '/dashboard/collections', icon: HandCoins, label: 'Collect Payments' },
   { href: '/dashboard/collections/calendar', icon: CalendarDays, label: 'Payment Due Dates' },
   { href: '/dashboard/collections/reports', icon: FileBarChart, label: 'Payment Collection Reports' },
@@ -84,7 +83,7 @@ const NAV_PERMISSIONS: Record<string, string> = {
 
 const NAV_GROUPS = [
   { key: 'home', label: 'Home', routes: [''] },
-  { key: 'sales', label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
+  { key: 'sales', label: 'Sales', routes: ['pos', 'sales', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
   { key: 'stock', label: 'Products & stock', routes: ['products', 'catalogue', 'inventory'] },
   { key: 'buying', label: 'Buying & contacts', routes: ['purchases', 'parties'] },
   { key: 'money', label: 'Money & accounts', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },

@@ -172,6 +172,32 @@ export async function startWorkers(): Promise<void> {
     captureJobFailure(QUEUE_NAMES.DUE_REMINDERS, 'due-reminder-tick-schedule', e);
   }
 
+  // ── Schedule outbox delivery, reservation expiry and retention ──
+  // Their workers existed but nothing ever put a job on their queues, so
+  // webhooks stayed pending, reservations never released and retention never
+  // ran, while the heartbeat still reported healthy.
+  const schedules: Array<{ queue: string; name: string; id: string; repeat: { every: number } | { pattern: string }; data?: Record<string, unknown> }> = [
+    { queue: QUEUE_NAMES.OUTBOX, name: 'drain', id: 'outbox-drain', repeat: { every: 10_000 } },
+    { queue: QUEUE_NAMES.EXPIRE_RESERVATIONS, name: 'expire', id: 'expire-reservations', repeat: { every: 5 * 60_000 } },
+    // 20:30 UTC = 02:30 Asia/Dhaka, after the business day.
+    { queue: QUEUE_NAMES.RETENTION, name: 'nightly', id: 'nightly-retention', repeat: { pattern: '30 20 * * *' }, data: { policy: 'default' } },
+  ];
+  for (const schedule of schedules) {
+    try {
+      const queue = getQueue(schedule.queue);
+      for (const job of await queue.getRepeatableJobs()) {
+        if (job.id === schedule.id) await queue.removeRepeatableByKey(job.key);
+      }
+      await queue.add(schedule.name, schedule.data ?? {}, {
+        repeat: schedule.repeat, jobId: schedule.id, attempts: 1, removeOnComplete: 100, removeOnFail: 1000,
+      });
+      log('info', `Scheduled ${schedule.id}`);
+    } catch (e) {
+      log('warn', `Failed to schedule ${schedule.id} (Redis may be unavailable)`, { error: e instanceof Error ? e.message : String(e) });
+      captureJobFailure(schedule.queue, `${schedule.id}-schedule`, e);
+    }
+  }
+
   // Graceful shutdown
   const shutdown = async () => {
     log('info', 'Shutting down workers...');

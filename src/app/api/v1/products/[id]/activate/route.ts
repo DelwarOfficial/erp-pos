@@ -42,6 +42,18 @@ export async function POST(
               };
             }
 
+            // A product needs a default sale and purchase unit to be activated,
+            // and nothing in the app let anyone set one, so no product could
+            // ever be activated. Give a product with no unit options its own
+            // stock unit (1:1) as the default for both; products with options
+            // set some other way are left as they are.
+            if (await tx.productUnitOption.count({ where: { companyId: auth.companyId, productId: id } }) === 0) {
+              await tx.productUnitOption.create({
+                data: { companyId: auth.companyId, productId: id, unitId: product.unitId, conversionToStockUnit: 1,
+                  canPurchase: true, canSell: true, isDefaultPurchase: true, isDefaultSale: true },
+              });
+            }
+
             // Run full activation validation
             await validateProductActivation(tx, { productId: id, companyId: auth.companyId });
 

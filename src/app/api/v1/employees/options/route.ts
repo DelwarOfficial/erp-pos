@@ -4,11 +4,12 @@ import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.read');
+    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.read'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('hr_payroll_enabled'); });
     const page = readListPage(req.nextUrl); const kind = req.nextUrl.searchParams.get('kind');
     const where = { companyId: auth.companyId, isActive: true, name: { contains: req.nextUrl.searchParams.get('search') ?? '' } };
     const rows = await runInTenantContext(auth.ctx, async () => {

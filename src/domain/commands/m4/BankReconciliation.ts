@@ -55,19 +55,26 @@ export async function createBankReconciliation(
     throw new DomainError('RESOURCE_NOT_FOUND', 'Financial account not found', {}, 404);
   }
 
-  // Compute system opening balance = sum of journal lines on this account up to (exclusive) statement_date
-  let systemOpening = input.systemOpeningBalance;
-  if (systemOpening === undefined) {
+  // The imported window is [importSince, statementDate]. The system opening
+  // is the ledger balance just before it, so each payment in the window is
+  // counted once (it used to be in the opening and imported again). Reversed
+  // entries count with their reversals, as in the trial balance. Decimal, not
+  // floating point.
+  const importSince = input.importSince ?? new Date(input.statementDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  let systemOpening: Prisma.Decimal;
+  if (input.systemOpeningBalance !== undefined) {
+    systemOpening = new Prisma.Decimal(input.systemOpeningBalance);
+  } else {
     const openingAgg = await tx.journalLine.aggregate({
       where: {
         companyId: input.companyId,
         chartOfAccountId: fa.chartOfAccountId,
-        journalEntry: { entryDate: { lt: input.statementDate }, status: 'posted' },
+        journalEntry: { entryDate: { lt: importSince }, status: { in: ['posted', 'reversed'] } },
       },
       _sum: { debitBase: true, creditBase: true },
     });
     // For an asset account, normal balance is debit → opening = debit − credit
-    systemOpening = parseFloat(openingAgg._sum.debitBase?.toString() ?? '0') - parseFloat(openingAgg._sum.creditBase?.toString() ?? '0');
+    systemOpening = new Prisma.Decimal(openingAgg._sum.debitBase ?? 0).minus(openingAgg._sum.creditBase ?? 0);
   }
 
   // Create the reconciliation header (status = draft; system_closing filled after import)
@@ -86,26 +93,24 @@ export async function createBankReconciliation(
     },
   });
 
-  // Auto-import system lines from payments tied to this financial account
-  // for the period [importSince || statementDate - 30d, statementDate].
-  const importSince = input.importSince ?? new Date(input.statementDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  // Import every payment on this account in the window (no silent cap).
   const payments = await tx.payment.findMany({
     where: {
       companyId: input.companyId,
       financialAccountId: input.financialAccountId,
-      paymentStatus: 'posted',
+      paymentStatus: { in: ['posted', 'reversed'] },
+      // A gift-card tender moves no money through this account.
+      paymentMethod: { not: 'gift_card' },
       businessDate: { gte: importSince, lte: input.statementDate },
     },
     orderBy: { businessDate: 'asc' },
-    take: 1000,
   });
 
   let systemClosing = systemOpening;
   for (const p of payments) {
-    const amount = parseFloat(p.amount.toString());
     // For an asset (cash/bank) account: incoming increases balance (+), outgoing decreases (−)
-    const signedAmount = p.direction === 'incoming' ? amount : -amount;
-    systemClosing += signedAmount;
+    const signedAmount = p.direction === 'incoming' ? new Prisma.Decimal(p.baseAmount) : new Prisma.Decimal(p.baseAmount).neg();
+    systemClosing = systemClosing.plus(signedAmount);
 
     await tx.bankReconciliationLine.create({
       data: {
@@ -123,7 +128,7 @@ export async function createBankReconciliation(
   }
 
   // Update header with final system_closing_balance + initial variance (statement − system)
-  const variance = input.statementClosingBalance - systemClosing;
+  const variance = new Prisma.Decimal(input.statementClosingBalance).minus(systemClosing);
   await tx.bankReconciliation.update({
     where: { id: reconciliation.id },
     data: {

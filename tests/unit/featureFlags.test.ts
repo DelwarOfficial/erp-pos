@@ -126,10 +126,12 @@ describe('featureFlags', () => {
     expect(events.length).toBeGreaterThan(0);
   });
 
-  it('catalogue covers all 10 flags per §20.D02', () => {
-    expect(FEATURE_FLAG_CATALOGUE.length).toBe(10);
+  it('catalogue covers the 10 §20.D02 flags plus credit_sales', () => {
+    expect(FEATURE_FLAG_CATALOGUE.length).toBe(11);
     const keys = FEATURE_FLAG_CATALOGUE.map(f => f.key);
     expect(keys).toContain('crm_enabled');
+    // PostSale reads credit_sales; it must be switchable from Optional Features.
+    expect(keys).toContain('credit_sales');
     expect(keys).toContain('hr_payroll_enabled');
     expect(keys).toContain('delivery_courier_enabled');
     expect(keys).toContain('service_warranty_enabled');

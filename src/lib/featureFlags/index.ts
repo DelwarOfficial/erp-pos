@@ -34,7 +34,8 @@ export type FeatureFlagKey =
   | 'import_csv_enabled'
   | 'offline_pos_enabled'
   | 'quotation_enabled'
-  | 'multilingual_ui_enabled';
+  | 'multilingual_ui_enabled'
+  | 'credit_sales';
 
 export interface FeatureFlagSpec {
   key: FeatureFlagKey;
@@ -54,6 +55,9 @@ export const FEATURE_FLAG_CATALOGUE: FeatureFlagSpec[] = [
   { key: 'offline_pos_enabled', module: 'offline', description: 'Offline-capable POS PWA (pilot only)', defaultValue: false },
   { key: 'quotation_enabled', module: 'sale', description: 'Quotation creation/management — B2B core', defaultValue: true },
   { key: 'multilingual_ui_enabled', module: 'i18n', description: 'bn-BD + en-BD locales both available', defaultValue: true },
+  // Sales that leave money owing (pay part now / pay later). PostSale reads this
+  // flag; without a catalogue entry it could never be switched on in the app.
+  { key: 'credit_sales', module: 'sale', description: 'Credit sales: pay part now or pay later, on a due date or installments', defaultValue: false },
 ];
 
 // Module implementation registry — when a flag is enabled, the system must
@@ -117,7 +121,12 @@ export async function toggleFeatureFlag(params: {
   enabled: boolean;
   updatedBy: string;
   reason?: string;
-}): Promise<{ flagKey: string; enabled: boolean; wasEnabled: boolean }> {
+},
+// The caller's transaction. Writing the flag on a separate connection while
+// the caller's SERIALIZABLE transaction held a read lock on the same row made
+// every toggle wait out the 30 s transaction timeout and fail.
+client: Pick<Prisma.TransactionClient, 'featureFlag'> = db,
+): Promise<{ flagKey: string; enabled: boolean; wasEnabled: boolean }> {
   const spec = FEATURE_FLAG_CATALOGUE.find(s => s.key === params.flagKey);
   if (!spec) {
     throw new DomainError('VALIDATION_FAILED', `Unknown feature flag: ${params.flagKey}`, {}, 404);
@@ -142,12 +151,12 @@ export async function toggleFeatureFlag(params: {
     );
   }
 
-  const existing = await db.featureFlag.findUnique({
+  const existing = await client.featureFlag.findUnique({
     where: { companyId_flagKey: { companyId: params.companyId, flagKey: params.flagKey } },
   });
 
   if (existing) {
-    await db.featureFlag.update({
+    await client.featureFlag.update({
       where: { id: existing.id },
       data: {
         enabled: params.enabled,
@@ -159,7 +168,7 @@ export async function toggleFeatureFlag(params: {
     return { flagKey: params.flagKey, enabled: params.enabled, wasEnabled: existing.enabled };
   }
 
-  await db.featureFlag.create({
+  await client.featureFlag.create({
     data: {
       companyId: params.companyId,
       flagKey: params.flagKey,

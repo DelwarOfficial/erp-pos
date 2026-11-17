@@ -7,6 +7,7 @@ import { DomainError } from '@/lib/errors/codes';
 import { getTemplate } from '@/lib/import-export/templates';
 import { validateImport } from '@/lib/import-export/importProcessor';
 import crypto from 'node:crypto';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { errorMeta, logger } from '@/lib/logging';
 
 // GET /api/v1/import-jobs — list import jobs for the current company
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   
 
   try {
-    await requirePermission(auth, 'import.execute.company');
+    await requirePermission(auth, 'import.execute.company'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('import_csv_enabled'); });
   } catch (e) {
     if (e instanceof DomainError) {
       return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
   
 
   try {
-    await requirePermission(auth, 'import.execute.company');
+    await requirePermission(auth, 'import.execute.company'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('import_csv_enabled'); });
   } catch (e) {
     if (e instanceof DomainError) {
       return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });

@@ -3,12 +3,15 @@
 //
 // Allocates a landed cost document (freight/insurance/customs/etc.) across
 // purchase lines by quantity, value, weight, or manual. Recalculates the
-// moving-average cost for already-received items.
+// moving-average cost of the stock still on hand, sends the part already sold
+// to cost of sales, and posts the journal (Dr Inventory/COGS, Cr AP).
 
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
+import { postStockMovement } from '@/domain/inventory/stockMovement';
+import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
 
 export interface PostLandedCostInput {
   companyId: string;
@@ -65,66 +68,117 @@ export async function postLandedCost(
     },
   });
 
-  // Compute allocations
-  let totalAllocated = 0;
-  const allocations: Array<{ purchaseItemId: string; allocatedBaseAmount: number }> = [];
+  // Compute allocations, in Decimal; the last line takes the rounding.
+  const base = new Prisma.Decimal(baseAmount).toDecimalPlaces(2);
+  const allocations: Array<{ purchaseItemId: string; allocatedBaseAmount: Prisma.Decimal }> = [];
 
   if (input.allocationMethod === 'manual') {
     if (!input.manualAllocations || input.manualAllocations.length === 0) {
       throw new DomainError('VALIDATION_FAILED', 'Manual allocation requires manualAllocations array', {}, 400);
     }
-    allocations.push(...input.manualAllocations);
+    for (const row of input.manualAllocations) {
+      if (!purchase.items.some(pi => pi.id === row.purchaseItemId)) {
+        throw new DomainError('VALIDATION_FAILED', 'A manual allocation names a line that is not on this purchase', { purchase_item_id: row.purchaseItemId }, 400);
+      }
+      if (!(row.allocatedBaseAmount >= 0)) throw new DomainError('VALIDATION_FAILED', 'Allocated amounts must be zero or more', {}, 400);
+      allocations.push({ purchaseItemId: row.purchaseItemId, allocatedBaseAmount: new Prisma.Decimal(row.allocatedBaseAmount) });
+    }
+    const sum = allocations.reduce((t, a) => t.plus(a.allocatedBaseAmount), new Prisma.Decimal(0));
+    if (sum.minus(base).abs().gt('0.01')) {
+      throw new DomainError('VALIDATION_FAILED', `Manual allocations add up to ${sum.toFixed(2)}, not the cost of ${base.toFixed(2)}`, {}, 400);
+    }
   } else {
     // Allocate by quantity or value of received items
-    let totalBasis = 0;
-    const basisMap = new Map<string, number>();
+    const basis: Array<{ id: string; basis: Prisma.Decimal }> = [];
     for (const item of purchase.items) {
-      const qtyReceived = parseFloat(item.qtyReceived.toString());
-      if (qtyReceived <= 0) continue;
-      let basis = qtyReceived;
-      if (input.allocationMethod === 'value') {
-        basis = qtyReceived * parseFloat(item.unitCost.toString());
-      }
-      basisMap.set(item.id, basis);
-      totalBasis += basis;
+      const qty = new Prisma.Decimal(item.qtyReceived);
+      if (qty.lte(0)) continue;
+      basis.push({ id: item.id, basis: input.allocationMethod === 'value' ? qty.mul(item.unitCost) : qty });
     }
-    if (totalBasis === 0) {
+    const totalBasis = basis.reduce((t, b) => t.plus(b.basis), new Prisma.Decimal(0));
+    if (totalBasis.isZero()) {
       throw new DomainError('VALIDATION_FAILED', 'No received items to allocate landed cost to', {}, 400);
     }
-    for (const [itemId, basis] of basisMap) {
-      allocations.push({
-        purchaseItemId: itemId,
-        allocatedBaseAmount: (baseAmount * basis) / totalBasis,
-      });
-    }
+    let left = base;
+    basis.forEach((b, i) => {
+      const share = i === basis.length - 1 ? left : base.mul(b.basis).div(totalBasis).toDecimalPlaces(2);
+      left = left.minus(share);
+      allocations.push({ purchaseItemId: b.id, allocatedBaseAmount: share });
+    });
   }
 
-  // Create allocation records + update purchase_items.allocated_landed_cost_per_unit
-  for (const alloc of allocations) {
-    const purchaseItem = purchase.items.find(pi => pi.id === alloc.purchaseItemId);
-    if (!purchaseItem) continue;
+  // Each line's cost goes onto the stock still on hand where it was received
+  // (raising its moving-average cost), and onto cost of sales for the part
+  // already sold. Stock is revalued through the stock ledger -- one unit
+  // issued at the current average and taken back in carrying the extra cost --
+  // so the stock ledger and the inventory account move together.
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId } });
+  if (!policy) throw new DomainError('VALIDATION_FAILED', 'Accounting policies are not configured', {}, 409);
+  const eventId = randomUUID();
+  await tx.businessEvent.create({ data: { id: eventId, companyId: input.companyId, eventType: 'landed_cost.posted',
+    sourceType: 'landed_cost', sourceId: doc.id, correlationId, occurredAt: new Date() } });
+  let eventLineNo = 1;
+  let toInventory = new Prisma.Decimal(0);
+  let toCogs = new Prisma.Decimal(0);
+  let totalAllocated = 0;
 
+  for (const alloc of allocations) {
+    const purchaseItem = purchase.items.find(pi => pi.id === alloc.purchaseItemId)!;
     await tx.landedCostAllocation.create({
-      data: {
-        landedCostDocumentId: doc.id,
-        purchaseItemId: alloc.purchaseItemId,
-        allocatedBaseAmount: alloc.allocatedBaseAmount,
-      },
+      data: { landedCostDocumentId: doc.id, purchaseItemId: alloc.purchaseItemId, allocatedBaseAmount: alloc.allocatedBaseAmount },
+    });
+    totalAllocated += alloc.allocatedBaseAmount.toNumber();
+    const qtyReceived = new Prisma.Decimal(purchaseItem.qtyReceived);
+    if (qtyReceived.lte(0) || alloc.allocatedBaseAmount.isZero()) { toCogs = toCogs.plus(alloc.allocatedBaseAmount); continue; }
+
+    await tx.purchaseItem.update({
+      where: { id: purchaseItem.id },
+      data: { allocatedLandedCostPerUnit: new Prisma.Decimal(purchaseItem.allocatedLandedCostPerUnit).plus(alloc.allocatedBaseAmount.div(qtyReceived)) },
     });
 
-    // Update the per-unit landed cost on the purchase item
-    const qtyReceived = parseFloat(purchaseItem.qtyReceived.toString());
-    if (qtyReceived > 0) {
-      const perUnitLanded = alloc.allocatedBaseAmount / qtyReceived;
-      const existingLanded = parseFloat(purchaseItem.allocatedLandedCostPerUnit.toString());
-      await tx.purchaseItem.update({
-        where: { id: purchaseItem.id },
-        data: { allocatedLandedCostPerUnit: existingLanded + perUnitLanded },
-      });
+    // Where this line was received, by warehouse.
+    const received = await tx.purchaseReceivingItem.findMany({
+      where: { companyId: input.companyId, purchaseItemId: purchaseItem.id },
+      select: { qtyReceivedNow: true, purchaseReceiving: { select: { warehouseId: true } } },
+    });
+    const byWarehouse = new Map<string, Prisma.Decimal>();
+    for (const r of received) byWarehouse.set(r.purchaseReceiving.warehouseId, (byWarehouse.get(r.purchaseReceiving.warehouseId) ?? new Prisma.Decimal(0)).plus(r.qtyReceivedNow));
+    let lineLeft = alloc.allocatedBaseAmount;
+    const entries = [...byWarehouse];
+    if (entries.length === 0) { toCogs = toCogs.plus(lineLeft); continue; }
+    for (let i = 0; i < entries.length; i++) {
+      const [warehouseId, qtyHere] = entries[i];
+      const share = i === entries.length - 1 ? lineLeft : alloc.allocatedBaseAmount.mul(qtyHere).div(qtyReceived).toDecimalPlaces(2);
+      lineLeft = lineLeft.minus(share);
+      const stock = await tx.warehouseStock.findUnique({ where: { companyId_warehouseId_productId: { companyId: input.companyId, warehouseId, productId: purchaseItem.productId } } });
+      const onHand = new Prisma.Decimal(stock?.qtyOnHand ?? 0);
+      const capitalQty = Prisma.Decimal.min(onHand, qtyHere);
+      const capital = capitalQty.lte(0) ? new Prisma.Decimal(0) : share.mul(capitalQty).div(qtyHere).toDecimalPlaces(2);
+      toCogs = toCogs.plus(share.minus(capital));
+      if (capital.gt(0) && stock) {
+        const unitQty = Prisma.Decimal.min(1, onHand);
+        const mac = new Prisma.Decimal(stock.movingAverageCost);
+        const common = { companyId: input.companyId, eventId, warehouseId, productId: purchaseItem.productId,
+          referenceType: 'landed_cost', referenceId: doc.id, sourceLineId: purchaseItem.id, effectiveAt: new Date(), createdBy: input.postedBy };
+        await postStockMovement(tx, { ...common, eventLineNo: eventLineNo++, movementType: 'adjustment_out', qtyDelta: unitQty.neg().toString(), unitCost: mac.toString() });
+        await postStockMovement(tx, { ...common, eventLineNo: eventLineNo++, movementType: 'adjustment_in', qtyDelta: unitQty.toString(),
+          unitCost: mac.plus(capital.div(unitQty)).toString() });
+        toInventory = toInventory.plus(capital);
+      }
     }
-
-    totalAllocated += alloc.allocatedBaseAmount;
   }
+
+  // Dr Inventory (on hand) + Dr COGS (already sold) / Cr AP to whoever bills the cost.
+  const memo = `Landed cost ${referenceNo} (${input.costType})`;
+  const lines: JournalLineInput[] = [];
+  if (toInventory.gt(0)) lines.push({ chartOfAccountId: policy.inventoryAccountId, branchId: purchase.branchId, debit: toInventory, credit: 0, memo });
+  if (toCogs.gt(0)) lines.push({ chartOfAccountId: policy.cogsAccountId, branchId: purchase.branchId, debit: toCogs, credit: 0, memo });
+  lines.push({ chartOfAccountId: policy.apAccountId, supplierId: input.supplierId ?? purchase.supplierId, branchId: purchase.branchId,
+    debit: 0, credit: toInventory.plus(toCogs), memo });
+  const company = await tx.company.findUniqueOrThrow({ where: { id: input.companyId }, select: { baseCurrencyCode: true } });
+  await postJournalEntry(tx, { companyId: input.companyId, entryDate: new Date(), postingKind: 'landed_cost',
+    sourceType: 'landed_cost', sourceId: doc.id, description: memo, currencyCode: company.baseCurrencyCode, exchangeRate: 1,
+    createdBy: input.postedBy, lines }, correlationId);
 
   await tx.auditLog.create({
     data: {

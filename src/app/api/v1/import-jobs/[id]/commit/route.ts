@@ -5,6 +5,7 @@ import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
 import { getTemplate } from '@/lib/import-export/templates';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { commitImport } from '@/lib/import-export/importProcessor';
 
 // POST /api/v1/import-jobs/[id]/commit — commit a validated import job
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   
 
   try {
-    await requirePermission(auth, 'import.approve.company');
+    await requirePermission(auth, 'import.approve.company'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('import_csv_enabled'); });
   } catch (e) {
     if (e instanceof DomainError) {
       return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });

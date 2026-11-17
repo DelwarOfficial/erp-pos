@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "gift_card.read");
+    await requirePermission(auth, "gift_card.read"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('loyalty_enabled'); });
     const cards = await runInTenantContext(auth.ctx, async () => {
       return db.giftCard.findMany({
         where: { companyId: auth.companyId },

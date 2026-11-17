@@ -209,6 +209,68 @@ export async function redeemGiftCard(
   return { giftCardId: card.id, remainingBalance: remaining.toNumber(), status: remaining.eq(0) ? 'redeemed' : 'active' };
 }
 
+// ── Gift card as a POS tender ──
+// Spends a card's balance inside a sale. Same locking and ledger checks as
+// redeemGiftCard, but no journal here: the sale's own revenue journal debits
+// the gift-card liability for this tender (PostSale), so the money is
+// recognised once, as part of that sale.
+export async function tenderGiftCard(
+  tx: Prisma.TransactionClient,
+  params: { companyId: string; code: string; amount: Prisma.Decimal.Value; redeemedBy: string; saleReferenceNo: string },
+  correlationId: string,
+): Promise<{ giftCardId: string; remainingBalance: string }> {
+  const amount = new Prisma.Decimal(params.amount);
+  if (amount.lte(0) || amount.dp() > 2) throw new DomainError('VALIDATION_FAILED', 'Gift card amount must be positive, to at most 2 decimal places', {}, 400);
+  const card = await tx.giftCard.findFirst({ where: { companyId: params.companyId, code: params.code } });
+  if (!card || card.status !== 'active') throw new DomainError('GIFT_CARD_EXPIRED', 'Gift card not found or not active', {}, 404);
+  if (card.expiresAt && card.expiresAt < new Date()) throw new DomainError('GIFT_CARD_EXPIRED', 'Gift card has expired', {}, 409);
+  await tx.$queryRaw`SELECT id FROM gift_cards WHERE id = ${card.id} FOR UPDATE`;
+  const ledgerRows = await tx.$queryRaw<Array<{ total: string | null }>>`
+    SELECT COALESCE(SUM(amount_delta), 0) AS total FROM gift_card_transactions
+    WHERE gift_card_id = ${card.id} FOR UPDATE`;
+  const balance = new Prisma.Decimal(ledgerRows[0]?.total ?? 0);
+  if (amount.gt(balance)) throw new DomainError('GIFT_CARD_INSUFFICIENT', `This card has ৳${balance.toFixed(2)} left, less than ৳${amount.toFixed(2)}`, {}, 409);
+  const remaining = balance.minus(amount);
+  const event = await tx.businessEvent.create({ data: {
+    companyId: params.companyId, eventType: 'gift_card.tendered', sourceType: 'gift_card_tender', sourceId: randomUUID(), correlationId,
+  } });
+  await tx.giftCardTransaction.create({ data: {
+    companyId: params.companyId, giftCardId: card.id, entryType: 'redeem',
+    amountDelta: amount.negated(), eventId: event.id, createdBy: params.redeemedBy,
+  } });
+  await tx.giftCard.update({ where: { id: card.id }, data: { status: remaining.eq(0) ? 'redeemed' : 'active' } });
+  await tx.auditLog.create({
+    data: { companyId: params.companyId, userId: params.redeemedBy, correlationId,
+      action: 'gift_card.tender', entityType: 'gift_card', entityId: card.id,
+      afterValue: JSON.stringify({ sale: params.saleReferenceNo, amount: amount.toFixed(2), remaining: remaining.toFixed(2) }) },
+  });
+  return { giftCardId: card.id, remainingBalance: remaining.toFixed(2) };
+}
+
+/** A voided sale gives back what it took from the card (its journal reversal restores the liability). */
+export async function restoreGiftCardTender(
+  tx: Prisma.TransactionClient,
+  params: { companyId: string; code: string; amount: Prisma.Decimal.Value; restoredBy: string; saleReferenceNo: string },
+  correlationId: string,
+): Promise<void> {
+  const card = await tx.giftCard.findFirst({ where: { companyId: params.companyId, code: params.code } });
+  if (!card) throw new DomainError('RESOURCE_NOT_FOUND', 'Gift card used on this sale no longer exists', {}, 409);
+  await tx.$queryRaw`SELECT id FROM gift_cards WHERE id = ${card.id} FOR UPDATE`;
+  const event = await tx.businessEvent.create({ data: {
+    companyId: params.companyId, eventType: 'gift_card.tender_voided', sourceType: 'gift_card_tender', sourceId: randomUUID(), correlationId,
+  } });
+  await tx.giftCardTransaction.create({ data: {
+    companyId: params.companyId, giftCardId: card.id, entryType: 'refund',
+    amountDelta: new Prisma.Decimal(params.amount), eventId: event.id, createdBy: params.restoredBy,
+  } });
+  if (card.status === 'redeemed') await tx.giftCard.update({ where: { id: card.id }, data: { status: 'active' } });
+  await tx.auditLog.create({
+    data: { companyId: params.companyId, userId: params.restoredBy, correlationId,
+      action: 'gift_card.tender_void', entityType: 'gift_card', entityId: card.id,
+      afterValue: JSON.stringify({ sale: params.saleReferenceNo, amount: new Prisma.Decimal(params.amount).toFixed(2) }) },
+  });
+}
+
 // ── PostGiftCardRefund ──
 // Same ledger authority: a refund appends a positive 'refund' entry referencing the
 // originating sale return (§7.6/§20.D17); face_value stays immutable. The liability

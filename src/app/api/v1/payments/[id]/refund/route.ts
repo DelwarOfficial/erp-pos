@@ -264,7 +264,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             exchangeRate: payment.exchangeRate,
             createdBy: auth.userId!,
             lines: [
-              { chartOfAccountId: policies.arAccountId, debit: refundBase, credit: 0,
+              // Tagged with the customer so their ledger shows the refund too.
+              { chartOfAccountId: policies.arAccountId, customerId: payment.customerId ?? undefined, debit: refundBase, credit: 0,
                 branchId: payment.branchId, memo: `Refund ${refundResult.refundId}` },
               { chartOfAccountId: financialAccount.chartOfAccountId, debit: 0, credit: refundBase,
                 branchId: payment.branchId, memo: `Cash out for refund ${refundResult.refundId}` },

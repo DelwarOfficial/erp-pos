@@ -24,6 +24,7 @@ import { nextDocumentNumber } from '@/lib/numbering';
 import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/schedule';
 import { installmentBalances } from '@/domain/receivables/balances';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
+import { tenderGiftCard } from '@/domain/commands/m6/Loyalty';
 import { localDate, isoFromDate } from '@/domain/receivables/calendar';
 import { normalizeBdMobile } from '@/domain/receivables/phone';
 
@@ -91,10 +92,20 @@ export async function postSale(
   input: PostSaleInput,
   correlationId: string,
 ): Promise<PostSaleResult> {
-  // Stored-value consumption is not implemented atomically in this command.
-  // Reject at the domain boundary too (offline/import callers bypass HTTP Zod).
-  if (input.payments.some(payment => ['gift_card', 'store_credit'].includes(payment.paymentMethod))) {
-    throw new DomainError('FEATURE_NOT_ENABLED', 'Gift-card and store-credit POS tenders are unavailable until atomic redemption is enabled', {}, 409);
+  // Store credit has no tender yet. A gift card is spent in this same
+  // transaction (tenderGiftCard below), so it needs the card's code and the
+  // gift-card module switched on.
+  if (input.payments.some(payment => payment.paymentMethod === 'store_credit')) {
+    throw new DomainError('FEATURE_NOT_ENABLED', 'Store credit is not available as a POS tender yet', {}, 409);
+  }
+  const giftCardPayments = input.payments.filter(payment => payment.paymentMethod === 'gift_card');
+  if (giftCardPayments.length) {
+    if (giftCardPayments.some(payment => !payment.methodReference)) {
+      throw new DomainError('VALIDATION_FAILED', 'Enter the gift card code for the gift card payment', {}, 400);
+    }
+    const flag = await tx.featureFlag.findFirst({ where: { companyId: input.companyId, flagKey: 'loyalty_enabled' } });
+    if (!flag?.enabled) throw new DomainError('FEATURE_NOT_ENABLED', 'Gift cards are switched off for this company', { flag: 'loyalty_enabled' }, 403);
+    if (input.currencyCode !== 'BDT') throw new DomainError('VALIDATION_FAILED', 'Gift cards pay for BDT sales only', {}, 400);
   }
   if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0) {
     throw new DomainError('VALIDATION_FAILED', 'Exchange rate must be positive and finite', {}, 400);
@@ -535,6 +546,10 @@ export async function postSale(
         receivedOrPaidAt: new Date(), postedAt: new Date(), createdBy: input.cashierId,
       },
     });
+    if (payment.paymentMethod === 'gift_card') {
+      await tenderGiftCard(tx, { companyId: input.companyId, code: payment.methodReference!, amount: payment.amount,
+        redeemedBy: input.cashierId, saleReferenceNo: referenceNo }, correlationId);
+    }
     await tx.paymentAllocation.create({
       data: {
         companyId: input.companyId, paymentId: paymentRecord.id, eventId, eventLineNo,
@@ -589,10 +604,12 @@ export async function postSale(
         throw new DomainError('VALIDATION_FAILED', 'Payment account must be active, tenant-owned and in the sale currency', {}, 409);
       }
       if (fa) {
+        // A gift card pays by using up the liability its sale created, not cash.
+        const giftCard = payment.paymentMethod === 'gift_card';
         revenueJournalLines.push({
-          chartOfAccountId: fa.chartOfAccountId,
+          chartOfAccountId: giftCard ? policies.giftCardLiabilityAccountId : fa.chartOfAccountId,
           debit: payment.amount, credit: 0,
-          memo: `Cash received for ${referenceNo}`,
+          memo: giftCard ? `Gift card ${payment.methodReference} for ${referenceNo}` : `Cash received for ${referenceNo}`,
           branchId: input.branchId,
         });
       }

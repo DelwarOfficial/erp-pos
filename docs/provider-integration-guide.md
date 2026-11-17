@@ -109,12 +109,21 @@ https://your-domain.com/api/v1/webhooks/courier/pathao
 https://your-domain.com/api/v1/webhooks/courier/redx
 ```
 
-Set a shared secret for webhook auth:
-```bash
-COURIER_WEBHOOK_TOKEN=your-random-secret  # at least 32 chars
-```
+Each courier gets its own webhook credential. `<PROVIDER>` is the provider code in upper case (`pathao` becomes `PATHAO`).
 
-The provider must send `X-Courier-Token: <your-secret>` header. The receiver verifies and updates the delivery order status.
+If the courier can sign requests, use a signing secret:
+```bash
+COURIER_WEBHOOK_SECRET_PATHAO=random-secret-at-least-32-chars
+```
+The courier sends `X-Courier-Timestamp` (unix seconds) and `X-Courier-Signature`, the hex HMAC-SHA256 of `<timestamp>.<raw body>`. Requests more than 5 minutes old are refused.
+
+If the courier can only send a fixed header, use a token instead:
+```bash
+COURIER_WEBHOOK_TOKEN_REDX=random-secret-at-least-32-chars
+```
+The courier sends `X-Courier-Token: <token>`.
+
+The old shared `COURIER_WEBHOOK_TOKEN` still works in development, and only for a courier that has no credential of its own. Production ignores it.
 
 ## Payment Providers
 

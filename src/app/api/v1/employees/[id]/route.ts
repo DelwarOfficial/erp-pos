@@ -6,12 +6,13 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { EmployeeInput, employeeFields, validateEmployeeReferences } from '@/lib/api/employeeInput';
 
 type Context = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Context) {
   try {
-    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.read'); const { id } = await params;
+    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.read'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('hr_payroll_enabled'); }); const { id } = await params;
     const data = await runInTenantContext(auth.ctx, async () => {
       const employee = await db.employee.findFirst({ where: { id, companyId: auth.companyId }, select: {
         id: true, employeeNo: true, name: true, phone: true, email: true, address: true, joinDate: true, employmentStatus: true, baseSalary: true,
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest, { params }: Context) {
 export async function POST(req: NextRequest, { params }: Context) {
   const correlationId = getCorrelationId(req);
   try {
-    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.manage.branch'); const { id } = await params;
+    const auth = await authenticateRequest(); await requirePermission(auth, 'employee.manage.branch'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('hr_payroll_enabled'); }); const { id } = await params;
     const body = EmployeeInput.parse(await req.json()); await requirePermission(auth, 'employee.manage.branch', body.branch_id);
     const key = requireIdempotencyKey(req);
     const result = await runInTenantContext(auth.ctx, () => withTenant(auth.ctx, tx => withIdempotency({ companyId: auth.companyId, userId: auth.userId, idempotencyKey: key, operation: 'employee.update', requestHash: computeRequestHash({ method: 'POST', path: '/api/v1/employees/' + id, body }) }, async () => {

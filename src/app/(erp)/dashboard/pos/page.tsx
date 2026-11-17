@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Loader2, PackageX, AlertCircle, CheckCircle2, Printer, FileText } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
 import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
+import { QuickCreateCustomer } from '@/components/customers/QuickCreateCustomer';
 import { useDashboardSession } from '@/components/dashboard/session';
 
 interface Product {
@@ -42,10 +43,44 @@ interface CartItem {
   code: string;
   qty: number;
   unitPrice: number;
+  /** The product's selling price as text, exactly as the server sent it. */
+  unitPriceText: string;
+  /** Line discount in taka, as typed (empty = none). */
+  discount: string;
   serials: string[];
   isSerialized: boolean;
   lineTotal: number;
 }
+
+/** Server-priced line (POST /api/v1/sales/pricing). */
+interface PricedLine { product_id: string; gross_amount: string; discount_amount: string; tax_amount: string; line_total: string }
+interface QuoteResult { grand_total: string; paid_now: string; unpaid: string; schedule: { installment_no: number; due_date: string; amount: string }[] }
+type Timing = 'full' | 'part' | 'later';
+type ScheduleMode = 'due' | 'equal' | 'custom';
+
+// Money on this screen is exact: taka strings converted to whole paisa.
+// Floating point never decides what is owed; the server computes every total
+// and schedule, and these helpers only check and display.
+const MONEY_RE = /^\d{1,15}(\.\d{1,2})?$/;
+const HUNDRED = BigInt(100);
+function toPaisa(value: string | number): bigint | null {
+  const text = typeof value === 'number' ? (Number.isFinite(value) ? value.toFixed(2) : '') : value.trim();
+  if (!MONEY_RE.test(text)) return null;
+  const [whole, frac = ''] = text.split('.');
+  return BigInt(whole) * HUNDRED + BigInt((frac + '00').slice(0, 2));
+}
+function fromPaisa(p: bigint): string {
+  const negative = p < BigInt(0); const a = negative ? -p : p;
+  return `${negative ? '-' : ''}${a / HUNDRED}.${String(a % HUNDRED).padStart(2, '0')}`;
+}
+/** part/whole as a percentage for display, rounded half-up to 2 places; never fed back into money. */
+function percentText(part: bigint, whole: bigint): string | null {
+  if (whole <= BigInt(0) || part <= BigInt(0)) return null;
+  const scaled = (part * BigInt(10000) * BigInt(2) + whole) / (whole * BigInt(2)); // percent × 100
+  const text = `${scaled / HUNDRED}.${String(scaled % HUNDRED).padStart(2, '0')}`.replace(/\.?0+$/, '');
+  return `${text}%`;
+}
+const isoIn = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
 
 interface WarehouseOption {
   id: string;
@@ -72,9 +107,14 @@ interface CashierShiftOption {
 }
 
 const PAYMENT_METHODS = ['cash', 'card', 'bkash', 'nagad', 'rocket', 'bank_transfer'] as const;
+// A split payment can also be a gift card, identified by its code.
+const SPLIT_METHODS = [...PAYMENT_METHODS, 'gift_card'] as const;
 
 export default function POSPage() {
   const session = useDashboardSession();
+  // Add a customer without leaving the sale (needs customer.create; never granted here).
+  const canCreateCustomer = Boolean(session?.is_global || session?.permissions.includes('customer.create'));
+  const [addCustomer, setAddCustomer] = useState<{ prefill: string } | null>(null);
   const t = useTranslations('pos');
   const f = useFormat();
   // Display helpers only: neither value is sent with the sale.
@@ -82,9 +122,22 @@ export default function POSPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [customer, setCustomer] = useState<BusinessEntity | null>(null);
   const [primaryAmount, setPrimaryAmount] = useState('');
-  const [tenders, setTenders] = useState<{ id: string; method: string; account: BusinessEntity | null; amount: string }[]>([]);
+  const [tenders, setTenders] = useState<{ id: string; method: string; account: BusinessEntity | null; amount: string; code?: string }[]>([]);
   const [postedSale, setPostedSale] = useState<{ saleId: string; referenceNo: string; grandTotal: string } | null>(null);
-  const [pricing, setPricing] = useState<{ signature: string; subtotal: string; tax_total: string; grand_total: string } | null>(null);
+  const [pricing, setPricing] = useState<{ signature: string; subtotal: string; discount_total: string; tax_total: string; grand_total: string; lines: PricedLine[] } | null>(null);
+  // When the customer pays: all now, part now, or all later. Separate from how they pay.
+  const [timing, setTiming] = useState<Timing>('full');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('due');
+  const [dueDate, setDueDate] = useState(isoIn(30));
+  const [installmentCount, setInstallmentCount] = useState('3');
+  const [firstDue, setFirstDue] = useState(isoIn(30));
+  const [intervalKind, setIntervalKind] = useState<'months' | 'days'>('months');
+  const [intervalValue, setIntervalValue] = useState('1');
+  const [customRows, setCustomRows] = useState<{ id: string; due_date: string; amount: string }[]>(() => [
+    { id: crypto.randomUUID(), due_date: isoIn(30), amount: '' }, { id: crypto.randomUUID(), due_date: isoIn(60), amount: '' }]);
+  const [reminders, setReminders] = useState(true);
+  const [schedulePreview, setSchedulePreview] = useState<{ signature: string; quote: QuoteResult | null; error: string } | null>(null);
+  const [revised, setRevised] = useState<{ from: string; to: string } | null>(null);
   const [pricingError, setPricingError] = useState('');
   const [pricingAttempt, setPricingAttempt] = useState(0);
   const saleRetry = useRef<{ payload: string; key: string } | null>(null);
@@ -113,11 +166,18 @@ export default function POSPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cartPayload = JSON.stringify({ items: cart.map(item => ({ product_id: item.productId, qty: item.qty, unit_price: item.unitPrice })) });
+  // A discount that is not a valid amount is left out of pricing and blocks checkout.
+  const discountOf = (item: CartItem) => item.discount.trim() === '' ? BigInt(0) : toPaisa(item.discount);
+  const cartPayload = JSON.stringify({ items: cart.map(item => {
+    const d = discountOf(item);
+    return { product_id: item.productId, qty: item.qty, unit_price: item.unitPrice, ...(d && d > BigInt(0) ? { discount_amount: Number(fromPaisa(d)) } : {}) };
+  }) });
   const pricingReady = pricing?.signature === cartPayload;
   const subtotal = pricingReady ? Number(pricing.subtotal) : cart.reduce((sum, item) => sum + item.lineTotal, 0);
+  const discountTotal = pricingReady ? Number(pricing.discount_total) : 0;
   const taxTotal = pricingReady ? Number(pricing.tax_total) : 0;
   const grandTotal = pricingReady ? Number(pricing.grand_total) : subtotal;
+  const grandPaisa = pricingReady ? toPaisa(Number(pricing.grand_total).toFixed(2)) ?? BigInt(0) : BigInt(0);
   useEffect(() => {
     if (!JSON.parse(cartPayload).items.length) return;
     const controller = new AbortController(); let active = true;
@@ -132,6 +192,12 @@ export default function POSPage() {
     }, 200);
     return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [cartPayload, pricingAttempt, t]);
+
+  // Old "Sell on credit" links arrive as ?pay=later (or ?pay=part).
+  useEffect(() => {
+    const pay = new URLSearchParams(window.location.search).get('pay');
+    if (pay === 'later' || pay === 'part') setTiming(pay);
+  }, []);
 
   // Fetch dropdown options on mount.
   useEffect(() => {
@@ -217,6 +283,8 @@ export default function POSPage() {
       if (!existing.isSerialized) updateQty(product.id, existing.qty + 1);
       return;
     }
+    // The product's selling price from the server (never its cost); the
+    // server re-prices it, with tax, before anything is shown as final.
     const price = parseFloat(product.default_price);
     setCart(prev => [...prev, {
       productId: product.id,
@@ -224,6 +292,8 @@ export default function POSPage() {
       code: product.code,
       qty: 1,
       unitPrice: price,
+      unitPriceText: product.default_price,
+      discount: '',
       serials: [],
       isSerialized: product.is_serialized,
       lineTotal: price,
@@ -247,42 +317,111 @@ export default function POSPage() {
     setCart(prev => prev.filter(c => c.productId !== productId));
   }
 
-  const handleCheckout = useCallback(async () => {
-    if (posting) return;
-    if (cart.length === 0) { toast.error(t('err.cart_empty')); return; }
-    if (!warehouseId || !branchId) { toast.error(t('err.warehouse')); return; }
-    if (!pricingReady) { toast.error(t('err.pricing')); return; }
-    if (!financialAccountId) { toast.error(t('err.account')); return; }
+  // The payments for the chosen timing. Only what that timing uses is sent:
+  // a paid-now amount typed before switching to "Pay later" is not.
+  const paymentsFor = useCallback(() => {
+    if (timing === 'later') return [];
+    const primary = timing === 'full' && primaryAmount === '' ? (pricingReady ? Number(pricing!.grand_total) : 0) : Number(primaryAmount);
+    return [{ payment_method: paymentMethod, amount: primary, financial_account_id: financialAccountId },
+      ...tenders.map(tender => tender.method === 'gift_card'
+        // The card is the tender; the drawer account only files the payment record.
+        ? { payment_method: 'gift_card', amount: Number(tender.amount), financial_account_id: financialAccountId, method_reference: tender.code?.trim() ?? '' }
+        : { payment_method: tender.method, amount: Number(tender.amount), financial_account_id: tender.account?.id ?? '' })];
+  }, [timing, primaryAmount, pricingReady, pricing, paymentMethod, financialAccountId, tenders]);
+
+  const paidPaisa = paymentsFor().reduce<bigint | null>((sum, p) => { const v = toPaisa(p.amount); return sum === null || v === null ? null : sum + v; }, BigInt(0));
+  const remainingPaisa = paidPaisa === null ? null : grandPaisa - paidPaisa;
+
+  // The schedule for what is left. The server splits and checks it; equal
+  // installments are never divided here.
+  const arrangement = useCallback(() => {
+    if (timing === 'full') return undefined;
+    if (scheduleMode === 'due') return { type: 'due', due_date: dueDate };
+    if (scheduleMode === 'equal') return { type: 'equal', count: Number(installmentCount), first_due_date: firstDue,
+      ...(intervalKind === 'days' ? { interval_days: Number(intervalValue) } : { interval_months: Number(intervalValue) }) };
+    return { type: 'installments', installments: customRows.map(row => ({ due_date: row.due_date, amount: row.amount.trim() })) };
+  }, [timing, scheduleMode, dueDate, installmentCount, firstDue, intervalKind, intervalValue, customRows]);
+
+  const saleBody = useCallback(() => ({
+    branch_id: branchId,
+    warehouse_id: warehouseId,
+    cashier_shift_id: cashierShiftId || undefined,
+    customer_id: customer?.id,
+    currency_code: 'BDT',
+    exchange_rate: 1,
+    items: cart.map(c => {
+      const d = discountOf(c);
+      return { product_id: c.productId, qty: c.qty, unit_price: c.unitPrice,
+        ...(d && d > BigInt(0) ? { discount_amount: Number(fromPaisa(d)) } : {}),
+        serials: c.isSerialized ? c.serials : undefined };
+    }),
+    payments: paymentsFor(),
+    ...(timing === 'full' ? {} : { payment_arrangement: arrangement(), due_reminders_enabled: reminders }),
+   
+  }), [branchId, warehouseId, cashierShiftId, customer, cart, paymentsFor, timing, arrangement, reminders]);
+
+  /** What is wrong with the sale before it can be sent, or null. */
+  const saleProblem = useCallback((): string | null => {
+    if (cart.length === 0) return t('err.cart_empty');
+    if (!warehouseId || !branchId) return t('err.warehouse');
+    if (!pricingReady) return t('err.pricing');
     for (const item of cart) {
       if (item.qty <= 0 || (item.isSerialized && (item.serials.length !== item.qty || new Set(item.serials).size !== item.qty))) {
-        toast.error(t('err.serials', { name: item.name, count: Math.max(item.qty, 1) }));
-        return;
+        return t('err.serials', { name: item.name, count: Math.max(item.qty, 1) });
       }
+      if (discountOf(item) === null) return t('err.discount_format', { name: item.name });
     }
-    const payments = [{ payment_method: paymentMethod, amount: primaryAmount === '' ? grandTotal : Number(primaryAmount), financial_account_id: financialAccountId },
-      ...tenders.map(tender => ({ payment_method: tender.method, amount: Number(tender.amount), financial_account_id: tender.account?.id ?? '' }))];
-    if (payments.some(payment => !payment.financial_account_id || !Number.isFinite(payment.amount) || payment.amount <= 0)
-      || Math.abs(payments.reduce((sum, payment) => sum + payment.amount, 0) - grandTotal) > 0.00000001) {
-      toast.error(t('err.tenders')); return;
-    }
+    if (timing !== 'full' && !customer) return t('err.credit_customer');
+    const payments = paymentsFor();
+    if (payments.length && !financialAccountId) return t('err.account');
+    if (payments.some(payment => !payment.financial_account_id || toPaisa(payment.amount) === null || payment.amount <= 0
+        || (payment.payment_method === 'gift_card' && !('method_reference' in payment && payment.method_reference)))) return t('err.tenders');
+    if (remainingPaisa === null) return t('err.tenders');
+    if (timing === 'full' && remainingPaisa !== BigInt(0)) return t('err.tenders');
+    if (timing === 'part' && (remainingPaisa <= BigInt(0) || remainingPaisa >= grandPaisa)) return t('err.part_amount');
+    if (timing !== 'full' && scheduleMode === 'custom' && customRows.some(row => !row.due_date || toPaisa(row.amount) === null)) return t('err.custom_rows');
+    return null;
+   
+  }, [cart, warehouseId, branchId, pricingReady, timing, customer, paymentsFor, financialAccountId, remainingPaisa, grandPaisa, scheduleMode, customRows, t]);
+
+  // Schedule preview: the server's own quote of this exact sale, refreshed
+  // whenever the cart, discounts, amount paid now or schedule change.
+  const previewSignature = timing === 'full' ? '' : JSON.stringify(saleBody());
+  const previewProblem = timing === 'full' ? null : saleProblem();
+  useEffect(() => {
+    if (timing === 'full' || previewProblem) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const r = await apiFetch('/api/v1/sales/quote', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `quote-${crypto.randomUUID()}` }, body: previewSignature });
+        const data = await r.json();
+        if (!active) return;
+        setSchedulePreview(r.ok ? { signature: previewSignature, quote: data, error: '' } : { signature: previewSignature, quote: null, error: data?.error?.message ?? t('err.save_generic') });
+      } catch { if (active) setSchedulePreview({ signature: previewSignature, quote: null, error: t('err.network') }); }
+    }, 400);
+    return () => { active = false; clearTimeout(timer); };
+  }, [timing, previewSignature, previewProblem, t]);
+  const preview = schedulePreview?.signature === previewSignature ? schedulePreview : null;
+
+  const handleCheckout = useCallback(async (confirmedTotal?: string) => {
+    if (posting) return;
+    const problem = saleProblem();
+    if (problem) { toast.error(problem); return; }
 
     setPosting(true);
     try {
-      const payload = JSON.stringify({
-          branch_id: branchId,
-          warehouse_id: warehouseId,
-          cashier_shift_id: cashierShiftId || undefined,
-          customer_id: customer?.id,
-          currency_code: 'BDT',
-          exchange_rate: 1,
-          items: cart.map(c => ({
-            product_id: c.productId,
-            qty: c.qty,
-            unit_price: c.unitPrice,
-            serials: c.isSerialized ? c.serials : undefined,
-          })),
-          payments,
-        });
+      const payload = JSON.stringify(saleBody());
+      // Re-check the price on the server right before posting. If it moved
+      // since the cart was priced, show the new total and wait for a yes.
+      const shownTotal = pricing!.grand_total;
+      if (confirmedTotal === undefined) {
+        const q = await apiFetch('/api/v1/sales/quote', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `quote-${crypto.randomUUID()}` }, body: payload });
+        const quote = await q.json();
+        if (!q.ok) { toast.error(t('err.save', { reason: quote?.error?.message ?? t('err.save_generic') })); return; }
+        if (toPaisa(Number(quote.grand_total).toFixed(2)) !== toPaisa(Number(shownTotal).toFixed(2))) {
+          setRevised({ from: shownTotal, to: quote.grand_total }); setPricingAttempt(value => value + 1); return;
+        }
+      }
       if (saleRetry.current?.payload !== payload) saleRetry.current = { payload, key: crypto.randomUUID() };
       const res = await apiFetch('/api/v1/sales', {
         method: 'POST',
@@ -296,14 +435,14 @@ export default function POSPage() {
       }
       toast.success(t('saved_toast', { ref: data.referenceNo, amount: f.money(data.grandTotal) }));
       setPostedSale(data); saleRetry.current = null; setPrimaryAmount(''); setTenders([]); setCustomer(null);
-      setCart([]); setCashReceived('');
+      setCart([]); setCashReceived(''); setTiming('full'); setSchedulePreview(null);
     } catch {
       // The request may have reached the server. Say so instead of inviting a blind retry.
       toast.error(t('err.network'));
     } finally {
       setPosting(false);
     }
-  }, [cart, warehouseId, branchId, cashierShiftId, paymentMethod, financialAccountId, grandTotal, pricingReady, posting, primaryAmount, tenders, customer, t, f]);
+  }, [posting, saleProblem, saleBody, pricing, t, f]);
 
   // When the warehouse selection changes, derive the branch_id from the
   // warehouse's branch relation (if available).
@@ -477,6 +616,13 @@ export default function POSPage() {
                   {cart.map(item => {
                     const serialsMissing = item.isSerialized && item.serials.length === 0;
                     const serialsDuplicate = item.isSerialized && new Set(item.serials).size !== item.serials.length;
+                    // Server figures for this line once priced; the percentage is shown, never sent.
+                    const pricedLine = pricingReady ? pricing!.lines?.find(line => line.product_id === item.productId) : undefined;
+                    const unitPaisa = toPaisa(item.unitPriceText) ?? BigInt(0);
+                    const grossPaisa = unitPaisa * BigInt(Math.round(item.qty));
+                    const discountPaisa = discountOf(item);
+                    const discountTooBig = discountPaisa !== null && discountPaisa > grossPaisa;
+                    const discountPercent = discountPaisa !== null && !discountTooBig ? percentText(discountPaisa, grossPaisa) : null;
                     return (
                     <li key={item.productId} className="border rounded-md p-3 space-y-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -497,11 +643,31 @@ export default function POSPage() {
                             </>
                           )}
                           {item.isSerialized && <Badge variant="secondary" className="text-xs">{t('serial_count', { count: item.serials.length })}</Badge>}
-                          <span className="min-w-24 text-right font-semibold tabular-nums">{f.money(item.lineTotal)}</span>
+                          <span className="min-w-24 text-right font-semibold tabular-nums">{f.money(pricedLine?.line_total ?? item.lineTotal)}</span>
                           <Button type="button" size="icon" variant="ghost" className="size-11" onClick={() => removeFromCart(item.productId)} aria-label={t('remove_item', { name: item.name })} title={t('remove_item', { name: item.name })}>
                             <Trash2 className="text-destructive" aria-hidden="true" />
                           </Button>
                         </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <div className="space-y-1">
+                          <Label htmlFor={`discount-${item.productId}`} className="text-xs">{t('line_discount')}</Label>
+                          <div className="flex items-center gap-2">
+                            <Input id={`discount-${item.productId}`} inputMode="decimal" autoComplete="off" placeholder="0" className="h-11 max-w-40 text-base tabular-nums"
+                              value={item.discount} onChange={e => setCart(prev => prev.map(c => c.productId === item.productId ? { ...c, discount: e.target.value.trim() } : c))}
+                              aria-invalid={discountPaisa === null || discountTooBig} aria-describedby={`discount-help-${item.productId}`} />
+                            {discountPercent ? <span className="text-sm tabular-nums text-muted-foreground">{t('line_discount_percent', { percent: discountPercent })}</span> : null}
+                          </div>
+                          <p id={`discount-help-${item.productId}`} className={`text-xs ${discountPaisa === null || discountTooBig ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            {discountPaisa === null ? t('line_discount_invalid') : discountTooBig ? t('line_discount_too_big') : t('line_discount_help')}
+                          </p>
+                        </div>
+                        <dl className="grid grid-cols-[auto_auto] gap-x-3 text-xs tabular-nums sm:text-right">
+                          <dt className="text-muted-foreground">{t('line_original', { qty: item.qty, price: f.money(item.unitPriceText) })}</dt><dd>{f.money(pricedLine?.gross_amount ?? fromPaisa(grossPaisa))}</dd>
+                          <dt className="text-muted-foreground">{t('line_discount_short')}</dt><dd>{pricedLine ? `− ${f.money(pricedLine.discount_amount)}` : '—'}</dd>
+                          <dt className="text-muted-foreground">{t('vat')}</dt><dd>{pricedLine ? f.money(pricedLine.tax_amount) : '—'}</dd>
+                          <dt className="font-medium">{t('line_final')}</dt><dd className="font-medium">{pricedLine ? f.money(pricedLine.line_total) : t('pricing_wait_short')}</dd>
+                        </dl>
                       </div>
                       {item.isSerialized && (
                         <div className="space-y-1">
@@ -538,6 +704,12 @@ export default function POSPage() {
                   <dt className="text-muted-foreground">{t('subtotal')}</dt>
                   <dd className="tabular-nums">{f.money(subtotal)}</dd>
                 </div>
+                {discountTotal > 0 ? (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">{t('discount_total')}</dt>
+                    <dd className="tabular-nums">− {f.money(discountTotal)}{(() => { const p = pricingReady ? percentText(toPaisa(Number(pricing!.discount_total).toFixed(2)) ?? BigInt(0), toPaisa(Number(pricing!.subtotal).toFixed(2)) ?? BigInt(0)) : null; return p ? ` (${p})` : ''; })()}</dd>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">{t('vat')}</dt>
                   <dd className="tabular-nums">{f.money(taxTotal)}</dd>
@@ -551,8 +723,33 @@ export default function POSPage() {
               <div className="space-y-3 pt-2 border-t">
                 {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
                 {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button></div> : null}
-                <EntityPicker label={t('customer_label')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting} />
-                {customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : <p className="text-xs text-muted-foreground">{t('customer_walk_in')}</p>}
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <EntityPicker label={t(timing === 'full' ? 'customer_label' : 'customer_label_required')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting}
+                      searchPlaceholder={t('customer_search_placeholder')}
+                      createAction={canCreateCustomer ? { label: t('add_customer'), onCreate: prefill => setAddCustomer({ prefill }) } : undefined} />
+                  </div>
+                  {canCreateCustomer ? <Button type="button" variant="outline" className="min-h-10 shrink-0" onClick={() => setAddCustomer({ prefill: '' })}>{t('add_customer')}</Button> : null}
+                </div>
+                {/* Only the customer changes here; the cart, discounts, payments and schedule stay as they are,
+                    and the schedule preview re-checks credit for the newly chosen customer. */}
+                <QuickCreateCustomer open={addCustomer !== null} onOpenChange={open => { if (!open) setAddCustomer(null); }} prefill={addCustomer?.prefill ?? ''}
+                  askCreditLimit={timing !== 'full'} onSelected={created => setCustomer({ id: created.id, name: created.name })} />
+                {customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : <p className={`text-xs ${timing !== 'full' ? 'text-destructive' : 'text-muted-foreground'}`}>{timing !== 'full' ? t('err.credit_customer') : t('customer_walk_in')}</p>}
+                {/* When the customer pays — separate from how they pay. */}
+                <div className="space-y-1.5" role="radiogroup" aria-labelledby="timing-label">
+                  <span id="timing-label" className="text-sm font-medium leading-none">{t('timing')}</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['full', 'part', 'later'] as const).map(option => (
+                      <button key={option} type="button" role="radio" aria-checked={timing === option}
+                        onClick={() => setTiming(option)}
+                        className={`min-h-12 rounded-md border px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${timing === option ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}>
+                        {t(`timing_${option}`)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground text-pretty">{t(`timing_${timing}_help`)}</p>
+                </div>
                 {optionsError && (
                   <div className="space-y-2 border border-destructive/30 bg-destructive/10 rounded-md p-2.5">
                     <p role="alert" className="text-sm text-foreground">{t('options_failed', { reason: optionsError })}</p>
@@ -617,6 +814,7 @@ export default function POSPage() {
                     </p>
                   )}
                 </div>
+                {timing !== 'later' && <>
                 <div className="space-y-1.5" role="radiogroup" aria-labelledby="payment-method-label">
                   <span id="payment-method-label" className="text-sm font-medium leading-none">{t('method')}</span>
                   <div className="grid grid-cols-3 gap-2">
@@ -656,14 +854,16 @@ export default function POSPage() {
                   </Select>
                   <p id="account-help" className="text-xs text-muted-foreground">{t('account_help')}</p>
                 </div>
+                </>}
               </div>
 
+              {timing !== 'later' && (
               <div className="space-y-3 border-t pt-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="primary-payment-amount">{t('amount_now')}</Label>
+                  <Label htmlFor="primary-payment-amount">{t(timing === 'part' ? 'amount_part' : 'amount_now')}{timing === 'part' ? <span aria-hidden="true" className="text-destructive"> *</span> : null}</Label>
                   <Input id="primary-payment-amount" type="number" inputMode="decimal" min="0" step="any" className="h-12 text-base tabular-nums" aria-describedby="amount-now-help"
-                    placeholder={pricingReady ? String(grandTotal) : t('amount_wait')} value={primaryAmount} onChange={e => setPrimaryAmount(e.target.value)} />
-                  <p id="amount-now-help" className="text-xs text-muted-foreground text-pretty">{t('amount_now_help')}</p>
+                    placeholder={timing === 'part' ? '0' : pricingReady ? String(grandTotal) : t('amount_wait')} value={primaryAmount} onChange={e => setPrimaryAmount(e.target.value)} />
+                  <p id="amount-now-help" className="text-xs text-muted-foreground text-pretty">{t(timing === 'part' ? 'amount_part_help' : 'amount_now_help')}</p>
                 </div>
                 {paymentMethod === 'cash' && (
                   <div className="space-y-1.5">
@@ -679,9 +879,16 @@ export default function POSPage() {
                     <h3 className="text-sm font-medium">{t('split_title', { n: index + 1 })}</h3>
                     <Label htmlFor={`tender-method-${tender.id}`}>{t('split_method')}</Label>
                     <select id={`tender-method-${tender.id}`} className="h-11 w-full rounded-md border bg-background px-2 text-base" value={tender.method} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, method: e.target.value } : row))}>
-                      {PAYMENT_METHODS.map(method => <option key={method} value={method}>{t(`method_${method}`)}</option>)}
+                      {SPLIT_METHODS.map(method => <option key={method} value={method}>{t(`method_${method}`)}</option>)}
                     </select>
-                    <EntityPicker label={t('split_account', { n: index + 1 })} endpoint={`/api/v1/financial-accounts?is_active=true${branchId ? `&branch_id=${branchId}` : ''}`} serverSearch={false} value={tender.account} onChange={account => setTenders(current => current.map(row => row.id === tender.id ? { ...row, account } : row))} />
+                    {tender.method === 'gift_card' ? (
+                      <>
+                        <Label htmlFor={`tender-code-${tender.id}`}>{t('split_gift_code')}</Label>
+                        <Input id={`tender-code-${tender.id}`} autoComplete="off" className="h-11 text-base" value={tender.code ?? ''} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, code: e.target.value } : row))} />
+                      </>
+                    ) : (
+                      <EntityPicker label={t('split_account', { n: index + 1 })} endpoint={`/api/v1/financial-accounts?is_active=true${branchId ? `&branch_id=${branchId}` : ''}`} serverSearch={false} value={tender.account} onChange={account => setTenders(current => current.map(row => row.id === tender.id ? { ...row, account } : row))} />
+                    )}
                     <Label htmlFor={`tender-amount-${tender.id}`}>{t('split_amount')}</Label>
                     <Input id={`tender-amount-${tender.id}`} type="number" inputMode="decimal" min="0" step="any" className="h-11 text-base tabular-nums" value={tender.amount} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, amount: e.target.value } : row))} />
                     <Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>{t('split_remove', { n: index + 1 })}</Button>
@@ -689,7 +896,93 @@ export default function POSPage() {
                 ))}
                 <Button type="button" variant="outline" className="w-full" onClick={() => setTenders(current => [...current, { id: crypto.randomUUID(), method: 'card', account: null, amount: '' }])}>{t('split_add')}</Button>
               </div>
-              <Button type="button" onClick={handleCheckout} disabled={posting || cart.length === 0 || !pricingReady || !!optionsError} className="w-full min-h-14 text-base" size="lg">
+              )}
+              {timing !== 'full' && (
+                <section aria-labelledby="schedule-title" className="space-y-3 border-t pt-3">
+                  <h3 id="schedule-title" className="text-sm font-semibold">{t('schedule_title')}</h3>
+                  <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-labelledby="schedule-title">
+                    {(['due', 'equal', 'custom'] as const).map(option => (
+                      <button key={option} type="button" role="radio" aria-checked={scheduleMode === option} onClick={() => setScheduleMode(option)}
+                        className={`min-h-11 rounded-md border px-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${scheduleMode === option ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}>
+                        {t(`schedule_${option}`)}
+                      </button>
+                    ))}
+                  </div>
+                  {scheduleMode === 'due' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="due-date">{t('schedule_due_date')}</Label>
+                      <Input id="due-date" type="date" className="h-11" min={isoIn(0)} value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                    </div>
+                  )}
+                  {scheduleMode === 'equal' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5"><Label htmlFor="inst-count">{t('schedule_count')}</Label>
+                        <Input id="inst-count" type="number" inputMode="numeric" min="1" max="60" className="h-11" value={installmentCount} onChange={e => setInstallmentCount(e.target.value)} /></div>
+                      <div className="space-y-1.5"><Label htmlFor="inst-first">{t('schedule_first_due')}</Label>
+                        <Input id="inst-first" type="date" className="h-11" min={isoIn(0)} value={firstDue} onChange={e => setFirstDue(e.target.value)} /></div>
+                      <div className="space-y-1.5"><Label htmlFor="inst-interval-kind">{t('schedule_interval')}</Label>
+                        <select id="inst-interval-kind" className="h-11 w-full rounded-md border bg-background px-2 text-base" value={intervalKind}
+                          onChange={e => { const kind = e.target.value as 'months' | 'days'; setIntervalKind(kind); setIntervalValue(kind === 'days' ? '30' : '1'); }}>
+                          <option value="months">{t('schedule_interval_months')}</option>
+                          <option value="days">{t('schedule_interval_days')}</option>
+                        </select></div>
+                      <div className="space-y-1.5"><Label htmlFor="inst-interval">{t(intervalKind === 'days' ? 'schedule_every_days' : 'schedule_every_months')}</Label>
+                        <Input id="inst-interval" type="number" inputMode="numeric" min="1" max={intervalKind === 'days' ? 365 : 12} className="h-11" value={intervalValue} onChange={e => setIntervalValue(e.target.value)} /></div>
+                      <p className="text-xs text-muted-foreground text-pretty sm:col-span-2">{t(intervalKind === 'days' ? 'schedule_days_help' : 'schedule_months_help')}</p>
+                    </div>
+                  )}
+                  {scheduleMode === 'custom' && (
+                    <div className="space-y-2">
+                      {customRows.map((row, index) => (
+                        <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                          <div className="space-y-1"><Label htmlFor={`row-date-${row.id}`} className="text-xs">{t('schedule_row_date', { n: index + 1 })}</Label>
+                            <Input id={`row-date-${row.id}`} type="date" className="h-11" value={row.due_date} onChange={e => setCustomRows(rows => rows.map(r => r.id === row.id ? { ...r, due_date: e.target.value } : r))} /></div>
+                          <div className="space-y-1"><Label htmlFor={`row-amount-${row.id}`} className="text-xs">{t('schedule_row_amount', { n: index + 1 })}</Label>
+                            <Input id={`row-amount-${row.id}`} inputMode="decimal" className="h-11 tabular-nums" value={row.amount} aria-invalid={row.amount !== '' && toPaisa(row.amount) === null}
+                              onChange={e => setCustomRows(rows => rows.map(r => r.id === row.id ? { ...r, amount: e.target.value.trim() } : r))} /></div>
+                          <Button type="button" variant="ghost" size="icon" className="size-11" disabled={customRows.length === 1} aria-label={t('schedule_row_remove', { n: index + 1 })}
+                            onClick={() => setCustomRows(rows => rows.filter(r => r.id !== row.id))}><Trash2 aria-hidden="true" /></Button>
+                        </div>
+                      ))}
+                      {(() => {
+                        // Never changed for you: the difference is shown, and filling it is a click.
+                        const entered = customRows.reduce<bigint | null>((sum, r) => { const v = toPaisa(r.amount); return sum === null || v === null ? null : sum + v; }, BigInt(0));
+                        const gap = entered !== null && remainingPaisa !== null ? remainingPaisa - entered : null;
+                        return (
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            {gap !== null && gap !== BigInt(0) ? <span role="status" className="text-destructive tabular-nums">{t(gap > BigInt(0) ? 'schedule_gap_short' : 'schedule_gap_over', { amount: f.money(fromPaisa(gap > BigInt(0) ? gap : -gap)) })}</span>
+                              : gap !== null ? <span role="status" className="text-muted-foreground">{t('schedule_gap_ok')}</span> : null}
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCustomRows(rows => [...rows, { id: crypto.randomUUID(), due_date: rows.length ? rows[rows.length - 1].due_date : isoIn(30), amount: '' }])}>{t('schedule_row_add')}</Button>
+                            {gap !== null && gap !== BigInt(0) && customRows.length > 0 ? (
+                              <Button type="button" variant="outline" size="sm" onClick={() => {
+                                const others = customRows.slice(0, -1).reduce((sum, r) => sum + (toPaisa(r.amount) ?? BigInt(0)), BigInt(0));
+                                const last = remainingPaisa! - others;
+                                if (last > BigInt(0)) setCustomRows(rows => rows.map((r, i) => i === rows.length - 1 ? { ...r, amount: fromPaisa(last) } : r));
+                              }}>{t('schedule_fill_last')}</Button>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={reminders} onChange={e => setReminders(e.target.checked)} />{t('schedule_reminders')}</label>
+                  {preview?.error ? <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm">{preview.error}</p> : null}
+                  {preview?.quote?.schedule?.length ? (
+                    <div className="overflow-x-auto"><table className="w-full text-sm tabular-nums"><caption className="sr-only">{t('schedule_preview')}</caption>
+                      <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="py-1">#</th><th>{t('schedule_col_date')}</th><th className="text-right">{t('schedule_col_amount')}</th></tr></thead>
+                      <tbody>{preview.quote.schedule.map(row => <tr key={row.installment_no} className="border-b last:border-0"><td className="py-1">{row.installment_no}</td><td>{f.date(row.due_date)}</td><td className="text-right">{f.money(row.amount)}</td></tr>)}</tbody>
+                    </table></div>
+                  ) : !preview && !previewProblem ? <p role="status" className="text-xs text-muted-foreground">{t('schedule_checking')}</p> : null}
+                </section>
+              )}
+              <dl className="space-y-1.5 rounded-md border bg-muted/40 p-3 text-sm" aria-label={t('summary_label')}>
+                <div className="flex justify-between"><dt>{t('total')}</dt><dd className="font-semibold tabular-nums">{f.money(grandTotal)}</dd></div>
+                <div className="flex justify-between"><dt>{t('paid_now')}</dt><dd className="tabular-nums">{f.money(paidPaisa === null ? '0' : fromPaisa(paidPaisa))}</dd></div>
+                <div className="flex justify-between"><dt className="font-medium">{t('remaining_due')}</dt>
+                  <dd className={`font-semibold tabular-nums ${remainingPaisa !== null && remainingPaisa > BigInt(0) ? 'text-destructive' : ''}`}>{f.money(remainingPaisa === null || remainingPaisa < BigInt(0) ? '0' : fromPaisa(remainingPaisa))}</dd></div>
+              </dl>
+              {previewProblem && timing !== 'full' && cart.length > 0 ? <p className="text-xs text-muted-foreground" role="status">{previewProblem}</p> : null}
+              <Button type="button" onClick={() => void handleCheckout()} disabled={posting || cart.length === 0 || !pricingReady || !!optionsError} className="w-full min-h-14 text-base" size="lg">
                 {posting ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CreditCard aria-hidden="true" />}
                 {posting ? t('completing') : t('complete', { amount: f.money(grandTotal) })}
               </Button>
@@ -707,13 +1000,27 @@ export default function POSPage() {
               <div className="text-xs text-muted-foreground">{t('items_count', { count: cart.length })}</div>
               <div className="text-xl font-bold tabular-nums">{f.money(grandTotal)}</div>
             </div>
-            <Button type="button" onClick={handleCheckout} disabled={posting || !pricingReady || !!optionsError} className="min-h-12 flex-shrink-0 px-5 text-base">
+            <Button type="button" onClick={() => void handleCheckout()} disabled={posting || !pricingReady || !!optionsError} className="min-h-12 flex-shrink-0 px-5 text-base">
               {posting ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CreditCard aria-hidden="true" />}
               {posting ? t('completing') : t('complete_short')}
             </Button>
           </div>
         </div>
       )}
+
+      {/* The price changed between pricing the cart and posting: show the new total first. */}
+      <AlertDialog open={revised !== null} onOpenChange={open => { if (!open) setRevised(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('revised_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{revised ? t('revised_body', { from: f.money(revised.from), to: f.money(revised.to) }) : null}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('revised_cancel')}</AlertDialogCancel>
+            <AlertDialogAction disabled={!pricingReady} onClick={() => { const to = revised?.to; setRevised(null); void handleCheckout(to); }}>{t('revised_confirm')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
         <AlertDialogContent>

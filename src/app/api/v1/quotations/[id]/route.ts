@@ -5,13 +5,14 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { getCorrelationId } from '@/lib/http';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, 'sale.read'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('quotation_enabled'); });
     const { id } = await params;
 
     const q = await runInTenantContext(auth.ctx, async () => {

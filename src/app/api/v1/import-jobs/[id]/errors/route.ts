@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { generateCsv } from '@/lib/import-export/csv';
 
 // GET /api/v1/import-jobs/[id]/errors — download row-level errors as CSV
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let auth;
   try {
     auth = await authenticateRequest();
-    await requirePermission(auth, 'import.execute.company');
+    await requirePermission(auth, 'import.execute.company'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('import_csv_enabled'); });
   } catch (e) {
     if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });

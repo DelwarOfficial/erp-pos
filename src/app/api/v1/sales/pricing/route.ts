@@ -22,13 +22,19 @@ export async function POST(req: NextRequest) {
       include: { defaultTaxCode: { include: { components: { include: { taxComponent: true } } } } },
     }));
     let subtotal = new Prisma.Decimal(0); let discount = new Prisma.Decimal(0); let tax = new Prisma.Decimal(0);
+    // Per line, as posting would compute it (gross, discount, tax, total), so
+    // the till shows the server's figures rather than its own arithmetic.
+    const lines: Array<Record<string, string>> = [];
     for (const item of body.items) {
       const product = products.find(product => product.id === item.product_id);
       if (!product) throw new DomainError('RESOURCE_NOT_FOUND', 'Product not found or inactive', {}, 404);
       const line = priceSaleItem(product, { qty: item.qty, unitPrice: item.unit_price, discountAmount: item.discount_amount }, new Date());
       subtotal = subtotal.plus(line.grossAmount); discount = discount.plus(line.discountAmount); tax = tax.plus(line.taxAmount);
+      lines.push({ product_id: item.product_id, qty: String(item.qty), unit_price: String(item.unit_price), list_price: product.defaultPrice.toString(),
+        gross_amount: line.grossAmount.toFixed(2), discount_amount: line.discountAmount.toFixed(2), taxable_amount: new Prisma.Decimal(line.taxableAmount).toFixed(2),
+        tax_amount: new Prisma.Decimal(line.taxAmount).toFixed(2), line_total: new Prisma.Decimal(line.lineTotal).toFixed(2) });
     }
-    return NextResponse.json({ subtotal: subtotal.toString(), discount_total: discount.toString(), tax_total: tax.toString(), grand_total: subtotal.minus(discount).plus(tax).toString() });
+    return NextResponse.json({ subtotal: subtotal.toString(), discount_total: discount.toString(), tax_total: tax.toString(), grand_total: subtotal.minus(discount).plus(tax).toString(), lines });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse(new DomainError('VALIDATION_FAILED', 'Invalid cart', { issues: error.issues }, 400), getCorrelationId(req));
     return errorResponse(error, getCorrelationId(req));

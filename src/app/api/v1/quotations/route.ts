@@ -10,6 +10,7 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { nextDocumentNumber } from '@/lib/numbering';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { randomUUID } from 'node:crypto';
 
 const QuotationItemSchema = z.object({
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'sale.read');
+    await requirePermission(auth, 'sale.read'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('quotation_enabled'); });
     const url = req.nextUrl;
     const status = url.searchParams.get('status') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'quotation.create.branch');
+    await requirePermission(auth, 'quotation.create.branch'); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('quotation_enabled'); });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreateQuotationSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/quotations', body });

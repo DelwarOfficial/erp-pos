@@ -8,6 +8,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { postCourierCodSettlement } from '@/domain/commands/m5/PostCourierCodSettlement';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { requireFeatureFlag } from '@/lib/featureFlags';
 import { getCorrelationId } from '@/lib/http';
 
 const SettlementItemSchema = z.object({
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "delivery.read");
+    await requirePermission(auth, "delivery.read"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('delivery_courier_enabled'); });
     const settlements = await runInTenantContext(auth.ctx, async () => {
       return db.courierCodSettlement.findMany({
         where: { companyId: auth.companyId },
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, "courier_cod.settle");
+    await requirePermission(auth, "courier_cod.settle"); await runInTenantContext(auth.ctx, async () => { await requireFeatureFlag('delivery_courier_enabled'); });
     const idempotencyKey = requireIdempotencyKey(req);
     const body = SettlementSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/courier-settlements', body });
