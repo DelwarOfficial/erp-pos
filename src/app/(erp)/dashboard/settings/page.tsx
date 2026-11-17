@@ -11,7 +11,7 @@ import { Loader2, Fingerprint, Key, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirmation } from '@/hooks/useConfirmation';
 import { formatDate, formatDateTime } from '@/lib/i18n/format';
-import { LoadingState, EmptyState } from '@/components/shared/StateList';
+import { LoadingState, EmptyState, ErrorState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import {
   startRegistration,
@@ -32,6 +32,8 @@ export default function SettingsPage() {
   const [creds, setCreds] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
   const [hasWebAuthnSupport, setHasWebAuthnSupport] = useState(false);
 
   useEffect(() => {
@@ -44,11 +46,13 @@ export default function SettingsPage() {
 
   async function loadCreds() {
     setLoading(true);
+    setLoadError('');
     try {
       const res = await apiFetch('/api/v1/webauthn/credentials');
       const data = await res.json();
       setCreds(data.items ?? []);
     } catch (e) {
+      setLoadError('Unable to load passkeys. Please try again.');
       toast.error(e instanceof Error ? e.message : 'Failed to load credentials');
     } finally {
       setLoading(false);
@@ -91,6 +95,7 @@ export default function SettingsPage() {
 
   async function handleRevoke(id: string) {
     if (!await confirm({ title: 'Revoke this passkey?', description: 'You will need another sign-in verification method to access your account. This passkey will no longer work.', action: 'Revoke passkey', destructive: true })) return;
+    setRevoking(id);
     try {
       const res = await apiFetch(`/api/v1/webauthn/credentials?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -99,6 +104,8 @@ export default function SettingsPage() {
       await loadCreds();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Revoke failed');
+    } finally {
+      setRevoking(null);
     }
   }
 
@@ -130,6 +137,8 @@ export default function SettingsPage() {
 
           {loading ? (
             <LoadingState label="Loading passkeys..." />
+          ) : loadError ? (
+            <ErrorState message={loadError} onRetry={() => void loadCreds()} />
           ) : creds.length === 0 ? (
             <EmptyState icon={<Fingerprint aria-hidden="true" className="size-8 text-muted-foreground" />} message="No passkeys registered yet. Add one to verify your sign-in using your device." />
           ) : (
@@ -138,25 +147,28 @@ export default function SettingsPage() {
                 <div key={c.id} className="flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 space-y-2">
                     <div className="break-words font-medium">{c.name ?? 'Unnamed passkey'}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      <span>Credential: <code className="break-all">{c.credentialId}...</code></span>
-                      {c.deviceType && ` • ${c.deviceType}`}
+                    <div className="text-sm text-muted-foreground">
+                      {c.deviceType === 'singleDevice' ? 'Device-bound passkey' : c.deviceType === 'multiDevice' ? 'Multi-device passkey' : 'Registered passkey'}
                       {c.backedUp && <Badge variant="secondary" className="ml-2 text-xs">synced</Badge>}
                     </div>
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="w-fit cursor-pointer rounded py-2 focus-visible:outline-2 focus-visible:outline-ring">Credential details</summary>
+                      <code className="block break-all rounded-md bg-muted/40 p-2">{c.credentialId}</code>
+                    </details>
                     <div className="text-xs text-muted-foreground mt-1">
                       Created: {formatDate(c.createdAt)}
                       {c.lastUsedAt && ` • Last used: ${formatDateTime(c.lastUsedAt)}`}
                     </div>
                   </div>
-                  <Button variant="outline" className="min-h-11 shrink-0 self-start text-destructive hover:text-destructive" aria-label={`Revoke ${c.name ?? 'unnamed passkey'}`} onClick={() => handleRevoke(c.id)}>
-                    <Trash2 aria-hidden="true" className="size-4" />Revoke
+                  <Button variant="outline" className="min-h-11 shrink-0 self-start" disabled={revoking !== null || registering} aria-label={`Revoke ${c.name ?? 'unnamed passkey'}`} onClick={() => handleRevoke(c.id)}>
+                    <Trash2 aria-hidden="true" className="size-4 text-destructive" />{revoking === c.id ? 'Revoking...' : 'Revoke'}
                   </Button>
                 </div>
               ))}
             </div>
           )}
 
-          <Button onClick={handleRegister} disabled={registering || !hasWebAuthnSupport} className="min-h-11 w-full sm:w-auto">
+          <Button onClick={handleRegister} disabled={registering || revoking !== null || !hasWebAuthnSupport} className="min-h-11 w-full sm:w-auto">
             {registering ? <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" /> : <Plus aria-hidden="true" className="h-4 w-4 mr-2" />}
             {registering ? 'Registering passkey...' : 'Register New Passkey'}
           </Button>

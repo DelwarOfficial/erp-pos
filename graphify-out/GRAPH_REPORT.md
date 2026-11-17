@@ -1,17 +1,17 @@
 # Graph Report - erp-pos  (2026-11-17)
 
 ## Corpus Check
-- 830 files · ~704,067 words
+- 830 files · ~704,144 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 29 file(s) not represented in the graph (top: .prisma 12, (none) 6, .example 3)
 
 ## Summary
-- 4947 nodes · 17572 edges · 240 communities (204 shown, 36 thin omitted)
+- 4947 nodes · 17574 edges · 241 communities (205 shown, 36 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 250 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d1ffdd93`
+- Built from commit: `d1b4e242`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -19,7 +19,7 @@
 - getCorrelationId
 - DomainError
 - logging/index.ts
-- Input
+- SelectContent
 - approvals/route.ts
 - react
 - dependencies
@@ -51,7 +51,7 @@
 - CashierShift.ts
 - accessApiAuthorization.test.ts
 - slackProvider.ts
-- payments/page.tsx
+- pos/page.tsx
 - gift-cards/route.ts
 - collectionsOverview.test.ts
 - gen_migrations.py
@@ -120,7 +120,7 @@
 - generate-mariadb-tenant-fks.mjs
 - Decisions
 - index-plans.mjs
-- FollowThrough.tsx
+- payments/page.tsx
 - CourierProvider
 - @prisma/client
 - The prompt
@@ -221,6 +221,7 @@
 - graphify reference: transcribe video and audio
 - graphify reference: GitHub clone and cross-repo merge
 - graphify reference: transcribe video and audio
+- lucide-react
 - 5.6A CRM and Party Engagement
 - §21.5 — Import/Export Jobs
 - Loyalty.ts
@@ -276,7 +277,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (240 total, 36 thin omitted)
+## Communities (241 total, 36 thin omitted)
 
 ### Community 0 - "getCorrelationId"
 Cohesion: 0.05
@@ -290,9 +291,9 @@ Nodes (131): POST(), POST(), POST(), GET(), POST(), POST(), ResolveSchema, POST(
 Cohesion: 0.12
 Nodes (23): POST(), FINAL_DELIVERY_STATUSES, mapCourierStatus(), POST(), getTenantContext(), errorMeta(), log(), LogEntry (+15 more)
 
-### Community 3 - "Input"
-Cohesion: 0.13
-Nodes (44): ChartOfAccount, JournalEntry, JournalPage(), FixedAssetsPage(), BankReconciliationPage(), FinancialAccount, Reconciliation, ReconciliationDetail (+36 more)
+### Community 3 - "SelectContent"
+Cohesion: 0.11
+Nodes (36): OpeningStockPage(), handleSubmit(), loadProducts(), Barcode, Product, ProductDetailPage(), Row(), Brand (+28 more)
 
 ### Community 4 - "approvals/route.ts"
 Cohesion: 0.24
@@ -300,7 +301,7 @@ Nodes (7): Decision, CreateSchema, GET(), POST(), createApprovalRequest(), Creat
 
 ### Community 5 - "react"
 Cohesion: 0.07
-Nodes (66): Implementation progress — 2026-10-01, lucide-react, react, sonner, KNOWN_ERRORS, Period, TrialBalanceAccount, Asset (+58 more)
+Nodes (68): Implementation progress — 2026-10-01, Deliberately not changed, react, sonner, KNOWN_ERRORS, Period, ChartOfAccount, JournalEntry (+60 more)
 
 ### Community 6 - "dependencies"
 Cohesion: 0.02
@@ -308,7 +309,7 @@ Nodes (88): dependencies, argon2, @aws-sdk/client-s3, @aws-sdk/s3-request-presig
 
 ### Community 7 - "apiFetch"
 Cohesion: 0.04
-Nodes (66): Shared components, handleSubmit(), loadEntries(), handleAcquire(), handleDepreciate(), handleDispose(), handleAutoMatch(), handleCreate() (+58 more)
+Nodes (61): handleSubmit(), loadEntries(), handleAcquire(), handleDepreciate(), handleDispose(), handleAutoMatch(), handleCreate(), handleFinalize() (+53 more)
 
 ### Community 8 - "reports/index.ts"
 Cohesion: 0.06
@@ -324,7 +325,7 @@ Nodes (13): @radix-ui/react-menubar, Menubar(), MenubarCheckboxItem(), MenubarCo
 
 ### Community 11 - "CardDescription"
 Cohesion: 0.06
-Nodes (116): addMonths(), Calendar, CollectionCalendarPage(), Day, WEEKDAYS, Applied, CustomerCollectionPage(), collect() (+108 more)
+Nodes (109): Applied, CustomerCollectionPage(), collect(), METHODS, Option, Receivable, TimelineEvent, CollectionsPage() (+101 more)
 
 ### Community 12 - "checks.ts"
 Cohesion: 0.05
@@ -418,9 +419,9 @@ Nodes (23): GET(), GET(), GET(), Context, DELETE(), GET(), PATCH(), GET() (+15 m
 Cohesion: 0.16
 Nodes (8): NotificationProvider, SEVERITY_COLORS, SEVERITY_EMOJI, SlackWebhookProvider, escapeHtml(), SEVERITY_EMOJI, TelegramBotProvider, fetchMock
 
-### Community 35 - "payments/page.tsx"
-Cohesion: 0.08
-Nodes (43): Language, locale and shared page anatomy (added 2026-11-17), next-intl, CashierPage(), Shift, Branch, CreatePaymentForm, DIRECTIONS, EMPTY_FORM (+35 more)
+### Community 35 - "pos/page.tsx"
+Cohesion: 0.11
+Nodes (31): Language, locale and shared page anatomy (added 2026-11-17), next-intl, CashierPage(), Shift, CartItem, CashierShiftOption, FinancialAccountOption, PAYMENT_METHODS (+23 more)
 
 ### Community 36 - "gift-cards/route.ts"
 Cohesion: 0.07
@@ -686,9 +687,9 @@ Nodes (15): 10. Dates are company-local calendar dates, 11. Promises are kept be
 Cohesion: 0.13
 Nodes (12): admin, measure(), OTHERS, planSummary(), QUERIES, root, ROWS, SEED (+4 more)
 
-### Community 105 - "FollowThrough.tsx"
-Cohesion: 0.08
-Nodes (50): Campaign, CampaignsPage(), cancel(), create(), send(), post(), Preview, STATUS (+42 more)
+### Community 105 - "payments/page.tsx"
+Cohesion: 0.07
+Nodes (59): Campaign, CampaignsPage(), cancel(), create(), send(), post(), Preview, STATUS (+51 more)
 
 ### Community 106 - "CourierProvider"
 Cohesion: 0.09
@@ -835,8 +836,8 @@ Cohesion: 0.20
 Nodes (9): M8 — UAT Scenarios, Pass Criteria, Scenario 1: Cashier Flow, Scenario 2: Inventory Flow, Scenario 3: Accountant Flow, Scenario 4: Service Flow, Scenario 5: Manager Flow, Scenario 6: Offline Flow (+1 more)
 
 ### Community 143 - "Button"
-Cohesion: 0.06
-Nodes (77): Deliberately not changed, LoginPage(), handleSubmit(), validate(), MfaPage(), MfaSetupPage(), FiscalPeriodsPage(), AccountingPage() (+69 more)
+Cohesion: 0.07
+Nodes (88): LoginPage(), handleSubmit(), validate(), MfaSetupPage(), FiscalPeriodsPage(), JournalPage(), AccountingPage(), TrialBalanceAccount (+80 more)
 
 ### Community 144 - "tenantScopeAudit.test.ts"
 Cohesion: 0.20
@@ -1058,6 +1059,10 @@ Nodes (3): §21.9 — Period-End Close Workflow, Close Steps, Decision
 Cohesion: 0.29
 Nodes (6): ADR 0002 — RLS via Prisma Client Extension (Sandbox), Blueprint deviation, Context, Decision, Limitations, Production migration path
 
+### Community 207 - "lucide-react"
+Cohesion: 0.19
+Nodes (10): Shared components, lucide-react, MfaPage(), useOfflineSync(), ApprovalBadge(), STATUS_CONFIG, OfflineStatus(), InputOTP() (+2 more)
+
 ### Community 209 - "5.6A CRM and Party Engagement"
 Cohesion: 0.33
 Nodes (6): 5.6A CRM and Party Engagement, `lead_activities`, `lead_sources`, `lead_statuses`, `lead_subjects`, `leads`
@@ -1102,7 +1107,7 @@ Nodes (29): CreateTransferSchema, GET(), POST(), POST(), GET(), Body, GET(), POS
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `next` connect `getCorrelationId` to `DomainError`, `admin/health/route.ts`, `logging/index.ts`, `approvals/route.ts`, `react`, `Input`, `export-jobs/route.ts`, `CardDescription`, `checks.ts`, `Button`, `ref_node_crypto`, `vitest`, `errorResponse`, `package.json`, `users.tsx`, `dashboard/layout.tsx`, `app/layout.tsx`, `accessApiAuthorization.test.ts`, `zod`, `payments/page.tsx`, `gift-cards/route.ts`, `sms-account/route.ts`, `requirePermission`, `sessions.ts`, `dropdown-menu.tsx`, `bank-reconciliations/route.ts`, `tenantEndpoints.test.ts`, `i18n/index.ts`, `accounting-policies/route.ts`, `instrumentation.ts`, `reminder-policy/route.ts`, `verify/route.ts`, `tenantContext.test.ts`, `providers.ts`, `generate/route.ts`, `api/route.ts`, `FollowThrough.tsx`, `app/page.tsx`, `refundCriticalIntegrity.test.ts`, `assertion/finish/route.ts`, `runInTenantContext`, `authenticateRequest`?**
+- **Why does `next` connect `getCorrelationId` to `DomainError`, `admin/health/route.ts`, `logging/index.ts`, `approvals/route.ts`, `react`, `SelectContent`, `export-jobs/route.ts`, `CardDescription`, `checks.ts`, `Button`, `ref_node_crypto`, `vitest`, `errorResponse`, `package.json`, `users.tsx`, `dashboard/layout.tsx`, `app/layout.tsx`, `accessApiAuthorization.test.ts`, `zod`, `pos/page.tsx`, `gift-cards/route.ts`, `sms-account/route.ts`, `requirePermission`, `sessions.ts`, `dropdown-menu.tsx`, `bank-reconciliations/route.ts`, `tenantEndpoints.test.ts`, `i18n/index.ts`, `accounting-policies/route.ts`, `instrumentation.ts`, `reminder-policy/route.ts`, `verify/route.ts`, `lucide-react`, `tenantContext.test.ts`, `providers.ts`, `generate/route.ts`, `api/route.ts`, `payments/page.tsx`, `app/page.tsx`, `refundCriticalIntegrity.test.ts`, `assertion/finish/route.ts`, `runInTenantContext`, `authenticateRequest`?**
   _High betweenness centrality (0.217) - this node is a cross-community bridge._
 - **Why does `@prisma/client` connect `@prisma/client` to `getCorrelationId`, `DomainError`, `approvals/route.ts`, `barcode.ts`, `reports/index.ts`, `export-jobs/route.ts`, `checks.ts`, `CreateStockCount.ts`, `ref_node_crypto`, `vitest`, `nextDocumentNumber`, `errorResponse`, `postJournalEntry`, `package.json`, `reminders.ts`, `collectionFollowThrough.test.ts`, `followUps.ts`, `campaigns.ts`, `BankReconciliation.ts`, `CashierShift.ts`, `zod`, `gift-cards/route.ts`, `collectionsOverview.test.ts`, `outboxWorker.ts`, `templateSettings.ts`, `runtime.ts`, `reconcile.ts`, `requirePermission`, `dataSubjectRequests.ts`, `schedule.ts`, `sessions.ts`, `dueReminders.test.ts`, `tenantEndpoints.test.ts`, `verify-ui-health.mjs`, `mfaChallenge.ts`, `service.ts`, `computeLineTax.ts`, `tenantClient.ts`, `i18n/index.ts`, `reset.ts`, `Loyalty.ts`, `modelBranchScope.ts`, `tenantContext.test.ts`, `providers.ts`, `access-control.spec.ts`, `comboGraph.test.ts`, `customerCollections.test.ts`, `generate-mariadb-tenant-fks.mjs`, `index-plans.mjs`, `refundCriticalIntegrity.test.ts`, `audit-production-db.mjs`, `seed-coa.ts`, `stockMovement.ts`, `crypto/index.ts`, `runInTenantContext`, `authenticateRequest`?**
   _High betweenness centrality (0.118) - this node is a cross-community bridge._
