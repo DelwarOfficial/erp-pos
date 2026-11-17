@@ -2,6 +2,7 @@
 import { apiFetch } from '@/lib/api/client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useDashboardSession } from '@/components/dashboard/session';
 
 export type Company = { id: string; displayName: string; code: string };
@@ -42,10 +43,11 @@ export function useAccess(companyOverride?: string) {
 }
 export function AccessHeading({ title, company }: { title: string; company?: string }) {
   const user = useDashboardSession();
+  const pathname = usePathname();
   const can = (permission: string) => user?.is_global || user?.permissions.includes(permission);
-  return <header className="space-y-3"><h1 className="text-2xl font-bold">{title}</h1><nav aria-label="Access Control" className="flex flex-wrap gap-2 border-b pb-3 [&>a]:rounded-md [&>a]:px-3 [&>a]:py-2 [&>a]:text-sm [&>a]:font-medium [&>a:hover]:bg-accent">
-    {can('user.read') && <Link href={`/dashboard/access/users${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Users</Link>}
-    {can('role.read') && <><Link href={`/dashboard/access/roles${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Roles</Link><Link href={`/dashboard/access/permissions${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Permissions</Link></>}
+  return <header className="space-y-4"><div><p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Access control</p><h1 className="text-2xl font-semibold tracking-tight">{title}</h1></div><nav aria-label="Access Control" className="flex flex-wrap gap-2 border-b pb-3 [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:rounded-md [&_a]:px-4 [&_a]:py-2 [&_a]:text-sm [&_a]:font-medium [&_a:hover]:bg-accent [&_a:focus-visible]:outline-2 [&_a:focus-visible]:outline-ring [&_a[aria-current]]:bg-primary/10 [&_a[aria-current]]:text-primary">
+    {can('user.read') && <Link aria-current={pathname.startsWith('/dashboard/access/users') ? 'page' : undefined} href={`/dashboard/access/users${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Users</Link>}
+    {can('role.read') && <><Link aria-current={pathname.startsWith('/dashboard/access/roles') ? 'page' : undefined} href={`/dashboard/access/roles${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Roles</Link><Link aria-current={pathname.startsWith('/dashboard/access/permissions') ? 'page' : undefined} href={`/dashboard/access/permissions${company ? `?company_id=${encodeURIComponent(company)}` : ''}`}>Permissions</Link></>}
   </nav></header>;
 }
 export function CompanyPicker({ access, disabled = false }: { access: ReturnType<typeof useAccess>; disabled?: boolean }) {

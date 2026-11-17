@@ -13,6 +13,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Wrench, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { formatDateTime } from '@/lib/i18n/format';
+import { LoadingState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 import { ServiceDetail } from '@/components/service/ServiceDetail';
@@ -41,6 +44,7 @@ const STATUS_COLORS: Record<string, 'outline' | 'secondary' | 'default' | 'destr
 };
 
 export default function ServicePage() {
+  const { confirm, confirmation } = useConfirmation();
   const [items, setItems] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -88,23 +92,24 @@ export default function ServicePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6 pb-6 [&_input]:min-h-11 [&_button]:min-h-11">
+      {confirmation}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Wrench className="h-6 w-6" /> Service Requests</h1>
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2"><Wrench aria-hidden="true" className="h-6 w-6" /> Service Requests</h1>
           <p className="text-muted-foreground">Manage device intake, repairs and warranty service.</p>
         </div>
-        <div className="flex gap-2"><Button variant="outline" disabled={loading || posting} onClick={() => void load()}>Refresh</Button>{can('service.intake') ? <Button disabled={showForm || posting} onClick={() => setShowForm(true)}><Plus className="h-4 w-4 mr-2" /> New Intake</Button> : null}</div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading || posting} onClick={() => void load()}>Refresh</Button>{can('service.intake') ? <Button disabled={showForm || posting} onClick={() => setShowForm(true)}><Plus aria-hidden="true" className="h-4 w-4 mr-2" /> New Intake</Button> : null}</div>
       </div>
 
-      {error || command.error ? <div role="alert" className="rounded-md border p-3">{error || command.error}{error ? <Button variant="outline" onClick={() => void load()}>Retry</Button> : null}</div> : null}
+      {error || command.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error || command.error}{error ? <Button variant="outline" onClick={() => void load()}>Retry</Button> : null}</div> : null}
       {selected ? <ServiceDetail key={selected} id={selected} onClose={() => setSelected(null)} onChanged={() => void load()} /> : null}
       {showForm && (
         <Card>
           <form onSubmit={handleSubmit}><fieldset disabled={posting}>
-            <CardHeader><CardTitle className="text-base">New Service Request</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <CardHeader className="border-b bg-muted/20"><CardTitle className="text-base">New Service Request</CardTitle><p className="text-sm text-muted-foreground">Record the device, customer, and repair details. Fields marked * are required.</p></CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 <EntityPicker label="Repair warehouse" endpoint="/api/v1/warehouses" serverSearch={false} value={warehouse} onChange={setWarehouse} />
                 {can('customer.read') ? <div><EntityPicker label="Service customer" endpoint="/api/v1/customers" value={customer} onChange={setCustomer} />{customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>Use walk-in customer</Button> : null}</div> : <p className="text-sm text-muted-foreground">Walk-in intake. Customer selection requires customer read permission.</p>}
                 {can('inventory.read') ? <div><EntityPicker label="Device serial / IMEI" endpoint="/api/v1/serials/search" searchParam="q" minimumSearch={2} value={serial} onChange={setSerial} />{serial ? <Button type="button" variant="ghost" onClick={() => setSerial(null)}>Clear device</Button> : null}</div> : null}
@@ -125,7 +130,7 @@ export default function ServicePage() {
                 <Label htmlFor="field-app-erp-dashboard-service-page-5">Issue Description *</Label>
                 <Textarea id="field-app-erp-dashboard-service-page-5" value={form.issue_description} onChange={e => setForm({ ...form, issue_description: e.target.value })} required />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 <div>
                   <Label htmlFor="field-app-erp-dashboard-service-page-6">Intake Condition</Label>
                   <Input id="field-app-erp-dashboard-service-page-6" value={form.intake_condition} onChange={e => setForm({ ...form, intake_condition: e.target.value })} placeholder="e.g. Screen cracked" />
@@ -140,9 +145,9 @@ export default function ServicePage() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button type="button" variant="ghost" onClick={() => { if (window.confirm('Discard this service intake draft?')) setShowForm(false); }}>Cancel</Button>
-              <Button type="submit" disabled={posting}>{posting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Create Intake</Button>
+            <CardFooter className="flex flex-wrap justify-between gap-3 border-t pt-5">
+              <Button type="button" variant="ghost" onClick={async () => { if (await confirm({ title: 'Discard service intake?', description: 'Your unsaved intake details will be lost.', action: 'Discard draft', destructive: true })) setShowForm(false); }}>Cancel</Button>
+              <Button type="submit" disabled={posting}>{posting ? <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" /> : null}{posting ? 'Creating intake...' : 'Create Intake'}</Button>
             </CardFooter>
           </fieldset></form>
         </Card>
@@ -151,27 +156,27 @@ export default function ServicePage() {
       <Card>
         <CardHeader><CardTitle>Service Requests ({items.length})</CardTitle></CardHeader>
         <CardContent>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : items.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No service requests yet.</div>
+          {loading ? <LoadingState label="Loading service requests..." /> : items.length === 0 ? (
+            <EmptyState message="No service requests yet. New repair and warranty intakes will appear here." />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {items.map(r => (
-                <div key={r.id} className="border rounded p-3">
+                <div key={r.id} className="min-w-0 space-y-3 rounded-lg border p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <code className="font-mono text-sm font-medium">{r.reference_no}</code>
+                      <code className="break-all font-mono text-sm font-semibold">{r.reference_no}</code>
                       <Badge variant={STATUS_COLORS[r.status] ?? 'outline'}>{r.status.replaceAll('_', ' ')}</Badge>
-                      <Badge variant="outline" className="text-xs">{r.service_type}</Badge>
+                      <Badge variant="outline" className="text-xs">{r.service_type.replaceAll('_', ' ')}</Badge>
                       {r.warranty_eligible && <Badge variant="secondary" className="text-xs">warranty</Badge>}
                     </div>
-                    <span className="text-xs text-muted-foreground">{new Date(r.received_at).toLocaleString()}</span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(r.received_at)}</span>
                   </div>
-                  <div className="text-sm mt-1">
+                  <div className="break-words text-sm leading-6">
                     {r.customer ? `${r.customer.name}${r.customer.phone ? ` (${r.customer.phone})` : ''}` : 'Walk-in'}
                     {r.serial && ` • IMEI: ${r.serial.serialNumber}`}
                     {` • ${r.part_count} parts used`}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{r.issue_description}</div>
+                  <div className="break-words text-sm leading-6 text-muted-foreground">{r.issue_description}</div>
                   <Button variant="outline" className="mt-3" disabled={posting} onClick={() => setSelected(r.id)}>View service request</Button>
                 </div>
               ))}

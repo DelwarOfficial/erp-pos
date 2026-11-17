@@ -546,9 +546,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/audit/page.tsx": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054372,
-    "ast_hash": "d6819f46dc670dfcb00813744fe9d9d7",
+    "mtime": 1794915071.6323626,
+    "seen": 1794915328.2899396,
+    "ast_hash": "5fc53d6dea0eab25795f4fb3cf5d3e0b",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/bank-reconciliation/page.tsx": {
@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/hr/page.tsx": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054532,
-    "ast_hash": "8445592a43df309fbac7ef8afe2b5b48",
+    "mtime": 1794915071.6323626,
+    "seen": 1794915328.2909322,
+    "ast_hash": "dabf6455693de781e5cd011ad888080a",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/imports/page.tsx": {
@@ -798,15 +798,15 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/service/page.tsx": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054759,
-    "ast_hash": "de8ed36d318a5038697180a5066f6a4c",
+    "mtime": 1794915018.9516494,
+    "seen": 1794915328.292295,
+    "ast_hash": "088484d5b6d78b74abd0bc8d51e4cefb",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/settings/page.tsx": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054766,
-    "ast_hash": "5d76db4861a1a42815fea2f4e05835fd",
+    "mtime": 1794915018.9516494,
+    "seen": 1794915328.292296,
+    "ast_hash": "5558892c113a5eeda2578c1357d92235",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/support/page.tsx": {
@@ -2040,21 +2040,21 @@
     "semantic_hash": ""
   },
   "src/components/access/common.tsx": {
-    "mtime": 1791030165.841518,
-    "seen": 1791098939.9056683,
-    "ast_hash": "fd223b742259c35c8e3bb6d743e70e1d",
+    "mtime": 1794908036.5598803,
+    "seen": 1794908162.9165165,
+    "ast_hash": "0f61bf9803490e6873be3fcbdaa2aa42",
     "semantic_hash": ""
   },
   "src/components/access/roles.tsx": {
-    "mtime": 1794907250.8368013,
-    "seen": 1794907300.0412607,
-    "ast_hash": "4f265ce821f78212d025537ecb53e3a6",
+    "mtime": 1794908137.1139162,
+    "seen": 1794908162.9165187,
+    "ast_hash": "506fec4cd8e3bbb91a54f4bceedc81f2",
     "semantic_hash": ""
   },
   "src/components/access/users.tsx": {
-    "mtime": 1791030165.8423598,
-    "seen": 1791098939.9056726,
-    "ast_hash": "d61de391c2ad781f09cd8ce4b8dbb635",
+    "mtime": 1794908137.1139162,
+    "seen": 1794908162.9165196,
+    "ast_hash": "bbc4d5a1f00a016f761d96fe9866b260",
     "semantic_hash": ""
   },
   "src/components/catalogue/InlineCrudList.tsx": {
@@ -2136,9 +2136,9 @@
     "semantic_hash": ""
   },
   "src/components/service/ServiceDetail.tsx": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.905685,
-    "ast_hash": "8700975cc711176e434b9356ce7abac1",
+    "mtime": 1794915148.5885217,
+    "seen": 1794915328.3040242,
+    "ast_hash": "b16486fc8f7e8c6f00ba2f7eafa82ed5",
     "semantic_hash": ""
   },
   "src/components/shared/ApprovalBadge.tsx": {
@@ -4662,9 +4662,9 @@
     "semantic_hash": ""
   },
   "docs/ui-ux-v2-audit.md": {
-    "mtime": 1794906338.1543045,
-    "seen": 1794906360.7937481,
-    "ast_hash": "b85010ff50798fabc997033834dc5011",
+    "mtime": 1794907416.8241327,
+    "seen": 1794908162.9372795,
+    "ast_hash": "a4ba020616d4f3def58a207dd519caac",
     "semantic_hash": ""
   },
   "tests/e2e/cashier-journey.spec.ts": {
@@ -4677,6 +4677,12 @@
     "mtime": 1794904960.8532171,
     "seen": 1794906360.7810106,
     "ast_hash": "ce97a1d5f424811cc0ddd2ad6c3e7634",
+    "semantic_hash": ""
+  },
+  "src/hooks/useConfirmation.tsx": {
+    "mtime": 1794914973.8257458,
+    "seen": 1794915328.3095274,
+    "ast_hash": "31fdd929d2389b265824055e62b9f293",
     "semantic_hash": ""
   }
 }

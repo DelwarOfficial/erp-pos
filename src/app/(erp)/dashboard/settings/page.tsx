@@ -9,10 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Fingerprint, Key, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirmation } from '@/hooks/useConfirmation';
+import { formatDate, formatDateTime } from '@/lib/i18n/format';
+import { LoadingState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import {
   startRegistration,
-  startAuthentication,
 } from '@simplewebauthn/browser';
 
 interface Credential {
@@ -26,6 +28,7 @@ interface Credential {
 }
 
 export default function SettingsPage() {
+  const { confirm, confirmation } = useConfirmation();
   const [creds, setCreds] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
@@ -87,7 +90,7 @@ export default function SettingsPage() {
   }
 
   async function handleRevoke(id: string) {
-    if (!confirm('Revoke this passkey? You will need to use another MFA method.')) return;
+    if (!await confirm({ title: 'Revoke this passkey?', description: 'You will need another sign-in verification method to access your account. This passkey will no longer work.', action: 'Revoke passkey', destructive: true })) return;
     try {
       const res = await apiFetch(`/api/v1/webauthn/credentials?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -100,25 +103,25 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Key className="h-6 w-6" /> Settings
+    <div className="min-w-0 space-y-6 pb-6">
+      {confirmation}
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+          <Key aria-hidden="true" className="h-6 w-6" /> Settings
         </h1>
         <p className="text-muted-foreground">Manage your account security and preferences.</p>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="min-w-0 rounded-xl shadow-none">
+        <CardHeader className="border-b bg-muted/20">
           <CardTitle className="flex items-center gap-2">
-            <Fingerprint className="h-5 w-5" /> WebAuthn Passkeys
+            <Fingerprint aria-hidden="true" className="h-5 w-5" /> Passkeys
           </CardTitle>
           <CardDescription>
-            Register a passkey (Face ID, Touch ID, security key) for passwordless MFA.
-            Per §6 rule 2, WebAuthn is mandatory for owners/global_admins in addition to TOTP.
+            Use Face ID, Touch ID, or a security key to verify your sign-in. Owners and global administrators also need an authenticator app.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-5">
           {!hasWebAuthnSupport && (
             <div className="text-sm text-warning-foreground bg-warning p-3 rounded border border-warning-foreground/20">
               Your browser does not support WebAuthn. Use a modern browser (Chrome, Safari, Firefox, Edge) to register passkeys.
@@ -126,38 +129,36 @@ export default function SettingsPage() {
           )}
 
           {loading ? (
-            <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
+            <LoadingState label="Loading passkeys..." />
           ) : creds.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No passkeys registered yet.
-            </div>
+            <EmptyState icon={<Fingerprint aria-hidden="true" className="size-8 text-muted-foreground" />} message="No passkeys registered yet. Add one to verify your sign-in using your device." />
           ) : (
             <div className="space-y-2">
               {creds.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 border rounded-md">
-                  <div>
-                    <div className="font-medium">{c.name ?? 'Unnamed passkey'}</div>
+                <div key={c.id} className="flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="break-words font-medium">{c.name ?? 'Unnamed passkey'}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      <code>{c.credentialId}...</code>
+                      <span>Credential: <code className="break-all">{c.credentialId}...</code></span>
                       {c.deviceType && ` • ${c.deviceType}`}
                       {c.backedUp && <Badge variant="secondary" className="ml-2 text-xs">synced</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Created: {new Date(c.createdAt).toLocaleDateString()}
-                      {c.lastUsedAt && ` • Last used: ${new Date(c.lastUsedAt).toLocaleString()}`}
+                      Created: {formatDate(c.createdAt)}
+                      {c.lastUsedAt && ` • Last used: ${formatDateTime(c.lastUsedAt)}`}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleRevoke(c.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                  <Button variant="outline" className="min-h-11 shrink-0 self-start text-destructive hover:text-destructive" aria-label={`Revoke ${c.name ?? 'unnamed passkey'}`} onClick={() => handleRevoke(c.id)}>
+                    <Trash2 aria-hidden="true" className="size-4" />Revoke
                   </Button>
                 </div>
               ))}
             </div>
           )}
 
-          <Button onClick={handleRegister} disabled={registering || !hasWebAuthnSupport} className="w-full">
-            {registering ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-            Register New Passkey
+          <Button onClick={handleRegister} disabled={registering || !hasWebAuthnSupport} className="min-h-11 w-full sm:w-auto">
+            {registering ? <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" /> : <Plus aria-hidden="true" className="h-4 w-4 mr-2" />}
+            {registering ? 'Registering passkey...' : 'Register New Passkey'}
           </Button>
         </CardContent>
       </Card>

@@ -153,7 +153,10 @@ Strings moved: 36 (`inventory.*`). The table keeps every stock and cost column a
 - Full unit and integration suite: 116 files, 1,441 tests passed. TypeScript and ESLint clean on changed files.
 - Worker entrypoint: `src/workers/index.ts` starts all six BullMQ workers (then retries Redis, which is not running locally).
 
-**Still not run:** `ui-health.spec.ts` and `ui-workflows.spec.ts`. Their harness launches Playwright's pinned browser build (`chromium_headless_shell-1234`), which is not installed. The worker Docker image was not built (no Docker on this machine).
+- `ui-health.spec.ts` (harness `scripts/verify-ui-health.mjs`, production build): 16/16 after updating two assertions that still used the pre-pass wording.
+- `ui-workflows.spec.ts` (harness `scripts/verify-ui-workflows.mjs`, production build): 11/11, including POS split payment, purchases, transfers, counts, adjustments, service, CRM and HR.
+
+**Still not run:** the worker Docker image (no Docker on this machine).
 
 **Product gaps found (not fixed, need a decision):**
 - **Company activation deadlock.** Onboarding creates the company `suspended`; activation requires an owner with two-step sign-in; login is refused for a suspended company, so the owner can never set it up. The demo company was activated directly in the local database.
