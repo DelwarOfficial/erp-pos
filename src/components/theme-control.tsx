@@ -2,21 +2,23 @@
 
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export function ThemeControl() {
   const { setTheme } = useTheme();
+  const t = useTranslations('shell');
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" aria-label="Choose appearance" title="Choose appearance">
+      <Button variant="ghost" size="icon" aria-label={t('appearance')} title={t('appearance')}>
         <Sun className="dark:hidden" aria-hidden="true" /><Moon className="hidden dark:block" aria-hidden="true" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuItem onSelect={() => setTheme('light')}><Sun aria-hidden="true" />Light</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setTheme('dark')}><Moon aria-hidden="true" />Dark</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => setTheme('system')}><Monitor aria-hidden="true" />Use system setting</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setTheme('light')}><Sun aria-hidden="true" />{t('theme_light')}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setTheme('dark')}><Moon aria-hidden="true" />{t('theme_dark')}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setTheme('system')}><Monitor aria-hidden="true" />{t('theme_system')}</DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>;
 }

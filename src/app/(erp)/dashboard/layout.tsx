@@ -17,6 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTitle, SheetHeader, SheetDescription, SheetTrigger } from '@/components/ui/sheet';
 import { DashboardSession, type DashboardUser } from '@/components/dashboard/session';
 import { ThemeControl } from '@/components/theme-control';
+import { LanguageControl } from '@/components/i18n/LanguageControl';
+import { useTranslations } from 'next-intl';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { apiFetch } from '@/lib/api/client';
 
@@ -81,15 +83,20 @@ const NAV_PERMISSIONS: Record<string, string> = {
 };
 
 const NAV_GROUPS = [
-  { label: 'Home', routes: [''] },
-  { label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
-  { label: 'Products & stock', routes: ['products', 'catalogue', 'inventory'] },
-  { label: 'Buying & contacts', routes: ['purchases', 'parties'] },
-  { label: 'Money & accounts', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
-  { label: 'Day-to-day work', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'communications/campaigns', 'reports'] },
-  { label: 'People & access', routes: ['access/users', 'access/roles', 'access/permissions'] },
-  { label: 'Setup & admin', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
+  { key: 'home', label: 'Home', routes: [''] },
+  { key: 'sales', label: 'Sales', routes: ['pos', 'sales', 'sales/credit', 'cashier', 'payments', 'collections', 'collections/calendar', 'collections/reports', 'gift-cards'] },
+  { key: 'stock', label: 'Products & stock', routes: ['products', 'catalogue', 'inventory'] },
+  { key: 'buying', label: 'Buying & contacts', routes: ['purchases', 'parties'] },
+  { key: 'money', label: 'Money & accounts', routes: ['accounting', 'assets', 'bank-reconciliation', 'expenses'] },
+  { key: 'daily', label: 'Day-to-day work', routes: ['deliveries', 'service', 'crm', 'hr', 'communications', 'communications/sms', 'communications/campaigns', 'reports'] },
+  { key: 'people', label: 'People & access', routes: ['access/users', 'access/roles', 'access/permissions'] },
+  { key: 'admin', label: 'Setup & admin', routes: ['integrations', 'imports', 'feature-flags', 'security', 'risk-tuning', 'audit', 'onboarding', 'system', 'settings', 'support'] },
 ];
+
+/** '/dashboard/access/users' -> 'access_users'; the catalog key under shell.nav. */
+function navKey(href: string) {
+  return href.replace(/^\/dashboard\/?/, '').replace(/[\/-]/g, '_') || 'home';
+}
 
 function isActiveRoute(pathname: string, href: string) {
   return pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
@@ -98,6 +105,7 @@ function isActiveRoute(pathname: string, href: string) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('shell');
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -113,23 +121,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           router.replace('/login');
           throw new Error('Not authenticated');
         }
-        if (!r.ok) throw new Error(`Failed to load user (HTTP ${r.status})`);
+        if (!r.ok) throw new Error('load_failed');
         return r.json();
       })
       .then(d => {
         if (cancelled) return;
-        if (!d?.user) throw new Error('Invalid /me response');
+        if (!d?.user) throw new Error('load_failed');
         setUser(d.user);
       })
       .catch(e => {
         if (cancelled) return;
         if (e?.message !== 'Not authenticated') {
-          setAuthError(e instanceof Error ? e.message : 'Failed to load session');
+          setAuthError(t('error_generic'));
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [router]);
+  }, [router, t]);
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -143,8 +151,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p role="status" className="text-sm text-muted-foreground">Loading dashboard…</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
+        <p role="status" className="text-sm text-muted-foreground">{t('loading')}</p>
       </div>
     );
   }
@@ -153,14 +161,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (authError && !user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 px-4">
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden="true" />
         <div role="alert" className="text-center max-w-md">
-          <h2 className="text-lg font-semibold">We couldn't open your account</h2>
+          <h2 className="text-lg font-semibold">{t('error_title')}</h2>
           <p className="text-sm text-muted-foreground mt-1">{authError}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => window.location.reload()}>Try again</Button>
-          <Button onClick={() => router.push('/login')}>Sign in again</Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>{t('try_again')}</Button>
+          <Button onClick={() => router.push('/login')}>{t('sign_in_again')}</Button>
         </div>
       </div>
     );
@@ -184,9 +192,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         });
         if (!items.length) return null;
         const groupActive = items.some(item => isActiveRoute(pathname, item.href));
-        return <Collapsible key={group.label} defaultOpen className="group/nav">
+        return <Collapsible key={group.key} defaultOpen className="group/nav">
           <CollapsibleTrigger className={`flex min-h-9 w-full items-center justify-between rounded-md px-3 text-xs font-semibold transition-colors hover:bg-sidebar-accent ${groupActive ? 'text-sidebar-primary' : 'text-muted-foreground'}`}>
-            {group.label}<ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=closed]/nav:-rotate-90" aria-hidden="true" />
+            {t(`group.${group.key}`)}<ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=closed]/nav:-rotate-90" aria-hidden="true" />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5">
             {items.map(item => {
@@ -195,7 +203,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
                 className={`flex min-h-10 items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors ${active ? 'border-sidebar-primary bg-sidebar-accent font-semibold text-sidebar-accent-foreground' : 'border-transparent text-sidebar-foreground hover:bg-sidebar-accent'}`}>
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{item.label.replace('Access Control \u2014 ', '').replace('CRM \u2014 ', '').replace('HR \u2014 ', '')}</span>
+                <span>{t(`nav.${navKey(item.href)}`)}</span>
               </Link>;
             })}
           </CollapsibleContent>
@@ -210,13 +218,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Product details already render their own return control.
     .filter(item => item.href !== '/dashboard/products' || pathname === '/dashboard/products/new')
     .sort((a, b) => b.href.length - a.href.length)[0];
-  const branchLabel = user.is_global ? 'Platform / Global' : user.access_scope === 'global' ? 'All company branches'
-    : branches.length === 1 ? branches[0].name : `${user.branch_ids.length} assigned branches`;
+  const branchLabel = user.is_global ? t('scope_platform') : user.access_scope === 'global' ? t('scope_all_branches')
+    : branches.length === 1 ? branches[0].name : t('scope_branches', { count: user.branch_ids.length });
 
   return (
     <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
     <div className="min-h-dvh flex flex-col bg-background">
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to content</a>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">{t('skip')}</a>
       <header className="border-b bg-card sticky top-0 z-30">
         <div className="flex min-h-16 items-center justify-between px-3 py-2 sm:px-5 gap-2">
           <div className="flex items-center gap-3 min-w-0">
@@ -225,9 +233,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               variant="ghost"
               size="icon"
               className="md:hidden flex-shrink-0"
-              aria-label="Open menu"
+              aria-label={t('open_menu')}
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-5 w-5" aria-hidden="true" />
             </Button></SheetTrigger>
             <Building2 className="hidden sm:block h-5 w-5 text-primary flex-shrink-0" aria-hidden="true" />
             <div className="min-w-0"><div className="font-semibold truncate" title={user.company_name}>{user.company_name}</div>
@@ -236,14 +244,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             
             {user.mfa_enabled && user.mfa_verified && (
               <Badge variant="secondary" className="text-xs gap-1 hidden md:inline-flex">
-                <ShieldCheck className="h-3 w-3" /> MFA
+                <ShieldCheck className="h-3 w-3" aria-hidden="true" /> {t('mfa_on')}
               </Badge>
             )}
           </div>
           <div className="flex items-center gap-1 sm:gap-3 shrink-0">
             <Button asChild variant="ghost" className="gap-1.5 px-2" aria-current={pathname === '/dashboard' ? 'page' : undefined}>
-              <Link href="/dashboard"><House className="h-4 w-4" aria-hidden="true" />Home</Link>
+              <Link href="/dashboard"><House className="h-4 w-4" aria-hidden="true" />{t('home')}</Link>
             </Button>
+            <LanguageControl />
             <ThemeControl />
             <div className="text-right text-sm hidden sm:block">
               <div className="font-medium truncate max-w-[160px]">{user.name}</div>
@@ -252,8 +261,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Avatar className="hidden sm:flex flex-shrink-0">
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
-            <Button variant="ghost" size="icon" onClick={handleLogout} title="Sign out" aria-label="Sign out">
-              <LogOut className="h-4 w-4" />
+            <Button variant="ghost" size="icon" onClick={handleLogout} title={t('sign_out')} aria-label={t('sign_out')}>
+              <LogOut className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -271,7 +280,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <SheetContent side="left" className="w-72 p-0 max-w-[85vw]">
             <SheetHeader className="border-b">
               <SheetTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-primary" />
+                <Building2 className="h-5 w-5 text-primary" aria-hidden="true" />
                 <span className="truncate">{user.company_name}</span>
               </SheetTitle>
               <SheetDescription>{branchLabel}</SheetDescription>
@@ -283,7 +292,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <main id="main-content" tabIndex={-1} className="flex-1 p-3 sm:p-5 lg:p-6 min-w-0">
           {parentPage && <nav aria-label="Page navigation" className="mx-auto mb-4 w-full max-w-[1600px]">
-            <Button asChild variant="outline"><Link href={parentPage.href}><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to {parentPage.label}</Link></Button>
+            <Button asChild variant="outline"><Link href={parentPage.href}><ArrowLeft className="h-4 w-4" aria-hidden="true" />{t('back_to', { page: t(`nav.${navKey(parentPage.href)}`) })}</Link></Button>
           </nav>}
           <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div></DashboardSession.Provider>
         </main>

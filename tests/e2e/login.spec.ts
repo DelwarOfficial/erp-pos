@@ -82,7 +82,7 @@ test.describe('Dashboard Navigation (UAT Scenario 5 — Manager Flow)', () => {
   });
 
   test('can navigate to POS page', async ({ page }) => {
-    await page.click('a:has-text("POS")');
+    await page.click('a:has-text("New Sale")');
     await page.waitForURL('**/dashboard/pos');
     await expect(page.locator('h1')).toContainText('POS');
   });
@@ -116,15 +116,15 @@ test.describe('POS Sale Flow (UAT Scenario 1 — Cashier)', () => {
   });
 
   test('POS page loads with search and cart', async ({ page }) => {
-    await page.click('a:has-text("POS")');
+    await page.click('a:has-text("New Sale")');
     await page.waitForURL('**/dashboard/pos');
     await expect(page.locator('input[placeholder*="Scan barcode"], input[placeholder*="barcode"], input[placeholder*="Search"]')).toBeVisible();
     await expect(page.locator('text=Cart').first()).toBeVisible();
-    await expect(page.locator('text=Checkout').first()).toBeVisible();
+    await expect(page.locator('text=Payment').first()).toBeVisible();
   });
 
   test('POS page supports keyboard navigation', async ({ page }) => {
-    await page.click('a:has-text("POS")');
+    await page.click('a:has-text("New Sale")');
     await page.waitForURL('**/dashboard/pos');
     // Tab into the page
     await page.keyboard.press('Tab');

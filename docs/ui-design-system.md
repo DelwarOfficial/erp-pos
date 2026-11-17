@@ -52,3 +52,19 @@ Always pair status color with a label or meaningful icon. Do not replace a faile
 `playwright.presentation.config.ts` runs isolated response-fixture checks without database access. These cover route rendering, viewport overflow, theme persistence, focus, selected failure/empty/populated states and automated overview accessibility. They do not prove business authorization or successful transaction workflows.
 
 Use the existing `scripts/verify-ui-health.mjs` workflow for authenticated health/access/module checks against its explicitly guarded disposable database. Run independent TypeScript checks as well as the production build; the current Next configuration blocks build-time type errors. Repository-wide lint can include generated local artifacts and unrelated legacy issues; scoped UI lint is a separate result, not a replacement for that finding. See `ui-taste-debug-audit.md` for expanded form/accessibility coverage and temporary development-preview limitations.
+
+## Language, locale and shared page anatomy (added 2026-11-17)
+
+- **Strings come from the catalog.** Client components call `useTranslations('<namespace>')` from `next-intl`. Catalogs are the flat JSON files `public/locales/{en-BD,bn-BD}/common.json` (existing keys, also read by the server) and `ui.json` (screen copy). `en-BD` is authoritative; a key missing from `bn-BD` falls back to English. Do not add hardcoded English to JSX.
+- **Locale** is a display preference in the `erp-locale` cookie, set by `LanguageControl`. English is the default until the Bengali catalog has been reviewed.
+- **Money, quantities and dates** use `useFormat()` from `src/components/i18n/I18nProvider.tsx`: `f.money(value, currency?)` renders `৳ 1,25,000.00`, `f.date` and `f.dateTime` always render in Asia/Dhaka. Do not call `toFixed`, `toLocaleString` or `new Date().toLocaleString()` in a page. `src/lib/i18n/index.ts` is server-only (it reads the database); client code imports `src/lib/i18n/format.ts`.
+- **Bengali type.** Noto Sans Bengali is loaded through `next/font` and listed in the body font stack before the generic families, so Bengali glyphs no longer depend on the device. Note: the body renders in the system font stack, not Geist. Geist is loaded and `--font-sans` points at it, but nothing applies it to the body; this predates this pass and was left as found.
+- **Page header.** Use `PageHeader` (`src/components/shared/PageHeader.tsx`): icon, `h1`, one sentence saying what the page is for, primary actions on the right. Card titles inside a page are `h2`.
+- **States.** `LoadingState`, `ErrorState` and `EmptyState` from `StateList`. An empty state says what to do next and carries the action; a filtered-empty state is worded differently from a nothing-yet state.
+- **Destructive or irreversible actions** use `AlertDialog` or `Dialog`, never `window.confirm`/`prompt`. The title names the object ("Cancel sale SALE-000123?"), the body says what will happen, and the safe button is worded as the safe outcome ("Keep the sale").
+- **Mutating buttons** show a spinner and a progress label ("Saving sale…") and are disabled while the request runs.
+- **Status** is never colour alone: pair it with a word and, where useful, an icon. `--success` and `--warning` are background tints; for icons and text on a normal surface use `text-success-foreground` / `text-warning-foreground`.
+- **Touch surfaces** (POS, cashier): controls are at least 44px, primary inputs 48px tall with 16px text, and the main action 56px.
+- **Errors** say what happened and what to do next. After a network failure on a money or stock mutation, tell the user to check the record before repeating the action.
+
+Terminology and the audit behind these rules are in `ui-ux-v2-audit.md`.

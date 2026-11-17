@@ -11,6 +11,10 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { useFormat } from '@/components/i18n/I18nProvider';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Loader2, PackageX, AlertCircle } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Loader2, PackageX, AlertCircle, CheckCircle2, Printer, FileText } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
 import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 import { useDashboardSession } from '@/components/dashboard/session';
@@ -67,8 +71,15 @@ interface CashierShiftOption {
   opened_at: string;
 }
 
+const PAYMENT_METHODS = ['cash', 'card', 'bkash', 'nagad', 'rocket', 'bank_transfer'] as const;
+
 export default function POSPage() {
   const session = useDashboardSession();
+  const t = useTranslations('pos');
+  const f = useFormat();
+  // Display helpers only: neither value is sent with the sale.
+  const [cashReceived, setCashReceived] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
   const [customer, setCustomer] = useState<BusinessEntity | null>(null);
   const [primaryAmount, setPrimaryAmount] = useState('');
   const [tenders, setTenders] = useState<{ id: string; method: string; account: BusinessEntity | null; amount: string }[]>([]);
@@ -115,12 +126,12 @@ export default function POSPage() {
       try {
         const response = await apiFetch('/api/v1/sales/pricing', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `pricing-${crypto.randomUUID()}` }, body: cartPayload, signal: controller.signal });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message ?? 'Unable to price cart');
+        if (!response.ok) throw new Error(data.error?.message ?? t('err.options'));
         if (active) setPricing({ ...data, signature: cartPayload });
-      } catch (cause) { if (active) setPricingError(cause instanceof Error ? cause.message : 'Unable to price cart'); }
+      } catch (cause) { if (active) setPricingError(cause instanceof Error ? cause.message : t('err.options')); }
     }, 200);
     return () => { active = false; clearTimeout(timer); controller.abort(); };
-  }, [cartPayload, pricingAttempt]);
+  }, [cartPayload, pricingAttempt, t]);
 
   // Fetch dropdown options on mount.
   useEffect(() => {
@@ -131,21 +142,21 @@ export default function POSPage() {
       apiFetch('/api/v1/warehouses').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
-          throw new Error(d?.error?.message ?? `Failed to load warehouses (HTTP ${r.status})`);
+          throw new Error(d?.error?.message ?? t('err.options'));
         }
         return r.json();
       }),
       apiFetch('/api/v1/financial-accounts').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
-          throw new Error(d?.error?.message ?? `Failed to load financial accounts (HTTP ${r.status})`);
+          throw new Error(d?.error?.message ?? t('err.options'));
         }
         return r.json();
       }),
       apiFetch('/api/v1/cashier-shifts?status=open').then(async r => {
         if (!r.ok) {
           const d = await r.json().catch(() => ({}));
-          throw new Error(d?.error?.message ?? `Failed to load cashier shifts (HTTP ${r.status})`);
+          throw new Error(d?.error?.message ?? t('err.options'));
         }
         return r.json();
       }),
@@ -165,13 +176,13 @@ export default function POSPage() {
       })
       .catch(e => {
         if (cancelled) return;
-        const msg = e instanceof Error ? e.message : 'Failed to load POS options';
+        const msg = e instanceof Error ? e.message : t('err.options');
         setOptionsError(msg);
-        toast.error(msg);
+        toast.error(t('options_failed', { reason: msg }));
       })
       .finally(() => { if (!cancelled) setOptionsLoading(false); });
     return () => { cancelled = true; };
-  }, [optionsAttempt]);
+  }, [optionsAttempt, t]);
 
   // Debounced product search — no N+1 (single fetch per query).
   useEffect(() => {
@@ -189,16 +200,16 @@ export default function POSPage() {
         .then(async r => {
           if (!r.ok) {
             const d = await r.json().catch(() => ({}));
-            throw new Error(d?.error?.message ?? `HTTP ${r.status}`);
+            throw new Error(d?.error?.message ?? t('err.search'));
           }
           return r.json();
         })
         .then(d => { setProducts(d.items ?? []); setHasSearched(true); })
-        .catch(e => { setSearchError(e instanceof Error ? e.message : 'Search failed'); setProducts([]); })
+        .catch(e => { setSearchError(e instanceof Error ? e.message : t('err.search')); setProducts([]); })
         .finally(() => setSearching(false));
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, searchAttempt]);
+  }, [search, searchAttempt, t]);
 
   function addToCart(product: Product) {
     const existing = cart.find(c => c.productId === product.id);
@@ -238,13 +249,13 @@ export default function POSPage() {
 
   const handleCheckout = useCallback(async () => {
     if (posting) return;
-    if (cart.length === 0) { toast.error('Cart is empty'); return; }
-    if (!warehouseId || !branchId) { toast.error('Select a warehouse with a valid branch'); return; }
-    if (!pricingReady) { toast.error('Wait for current cart pricing or retry pricing.'); return; }
-    if (!financialAccountId) { toast.error('Financial account is required'); return; }
+    if (cart.length === 0) { toast.error(t('err.cart_empty')); return; }
+    if (!warehouseId || !branchId) { toast.error(t('err.warehouse')); return; }
+    if (!pricingReady) { toast.error(t('err.pricing')); return; }
+    if (!financialAccountId) { toast.error(t('err.account')); return; }
     for (const item of cart) {
       if (item.qty <= 0 || (item.isSerialized && (item.serials.length !== item.qty || new Set(item.serials).size !== item.qty))) {
-        toast.error(`${item.name} requires ${item.qty} serial(s)`);
+        toast.error(t('err.serials', { name: item.name, count: Math.max(item.qty, 1) }));
         return;
       }
     }
@@ -252,7 +263,7 @@ export default function POSPage() {
       ...tenders.map(tender => ({ payment_method: tender.method, amount: Number(tender.amount), financial_account_id: tender.account?.id ?? '' }))];
     if (payments.some(payment => !payment.financial_account_id || !Number.isFinite(payment.amount) || payment.amount <= 0)
       || Math.abs(payments.reduce((sum, payment) => sum + payment.amount, 0) - grandTotal) > 0.00000001) {
-      toast.error('Every tender needs an account and positive amount. Applied payments must equal the sale total.'); return;
+      toast.error(t('err.tenders')); return;
     }
 
     setPosting(true);
@@ -280,18 +291,19 @@ export default function POSPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Sale failed');
+        toast.error(t('err.save', { reason: data?.error?.message ?? t('err.save_generic') }));
         return;
       }
-      toast.success(`Sale ${data.referenceNo} posted — ৳${Number(data.grandTotal).toFixed(2)}`);
+      toast.success(t('saved_toast', { ref: data.referenceNo, amount: f.money(data.grandTotal) }));
       setPostedSale(data); saleRetry.current = null; setPrimaryAmount(''); setTenders([]); setCustomer(null);
-      setCart([]);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      setCart([]); setCashReceived('');
+    } catch {
+      // The request may have reached the server. Say so instead of inviting a blind retry.
+      toast.error(t('err.network'));
     } finally {
       setPosting(false);
     }
-  }, [cart, warehouseId, branchId, cashierShiftId, paymentMethod, financialAccountId, grandTotal, pricingReady, posting, primaryAmount, tenders, customer]);
+  }, [cart, warehouseId, branchId, cashierShiftId, paymentMethod, financialAccountId, grandTotal, pricingReady, posting, primaryAmount, tenders, customer, t, f]);
 
   // When the warehouse selection changes, derive the branch_id from the
   // warehouse's branch relation (if available).
@@ -328,18 +340,38 @@ export default function POSPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [cart, posting, search, handleCheckout]);
 
+  const canReadSales = session?.is_global || session?.permissions.includes('sale.read');
+  const canReadShifts = session?.is_global || session?.permissions.includes('shift.read');
+  const cashReceivedNumber = Number(cashReceived);
+  const cashDue = paymentMethod === 'cash' ? (primaryAmount === '' ? grandTotal : Number(primaryAmount)) : 0;
+  const changeDue = cashReceived !== '' && Number.isFinite(cashReceivedNumber) ? cashReceivedNumber - cashDue : null;
+
   return (
     <fieldset disabled={posting} className="min-w-0 space-y-4 pb-28 md:pb-4">
-      {postedSale ? <Card><CardHeader><CardTitle><h2>Sale posted: {postedSale.referenceNo}</h2></CardTitle></CardHeader><CardContent className="space-y-3"><p role="status">Payment recorded. Total: BDT {Number(postedSale.grandTotal).toFixed(2)}</p>{session?.is_global || session?.permissions.includes('sale.read') ? <div className="flex flex-wrap gap-2"><Button variant="outline" asChild><a href={`/print/invoice/${postedSale.saleId}`} target="_blank" rel="noopener noreferrer">Invoice / print</a></Button><Button variant="outline" asChild><a href={`/print/receipt/${postedSale.saleId}`} target="_blank" rel="noopener noreferrer">Receipt / print</a></Button></div> : null}<Button variant="ghost" onClick={() => setPostedSale(null)}>Dismiss confirmation</Button></CardContent></Card> : null}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ShoppingCart className="h-6 w-6" /> POS — Point of Sale
+      {postedSale ? (
+        <Card className="border-success/40 bg-success/5">
+          <CardHeader><CardTitle><h2 className="flex items-center gap-2 text-lg"><CheckCircle2 className="size-5 text-success-foreground" aria-hidden="true" />{t('saved_title', { ref: postedSale.referenceNo })}</h2></CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p role="status" className="text-sm text-pretty">{t('saved_body', { amount: f.money(postedSale.grandTotal) })}</p>
+            <div className="flex flex-wrap gap-2">
+              {canReadSales ? <>
+                <Button size="lg" asChild><a href={`/print/receipt/${postedSale.saleId}`} target="_blank" rel="noopener noreferrer"><Printer aria-hidden="true" />{t('print_receipt')}</a></Button>
+                <Button size="lg" variant="outline" asChild><a href={`/print/invoice/${postedSale.saleId}`} target="_blank" rel="noopener noreferrer"><FileText aria-hidden="true" />{t('print_invoice')}</a></Button>
+              </> : null}
+              <Button size="lg" variant={canReadSales ? 'ghost' : 'default'} onClick={() => { setPostedSale(null); searchInputRef.current?.focus(); }}>{t('next_sale')}</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+          <ShoppingCart className="h-6 w-6" aria-hidden="true" /> {t('title')}
         </h1>
-        <p className="text-muted-foreground text-sm">
-          Scan or search products, build the cart, checkout with payment.
+        <p className="text-muted-foreground text-sm text-pretty">
+          {t('subtitle')}
           <span className="hidden md:inline ml-2 text-xs">
-            <kbd className="px-1.5 py-0.5 border rounded bg-muted">Enter</kbd> to checkout •
-            <kbd className="px-1.5 py-0.5 border rounded bg-muted ml-1">Esc</kbd> to clear search
+            <kbd className="px-1.5 py-0.5 border rounded bg-muted">Enter</kbd> {t('shortcut_checkout')}
+            <kbd className="px-1.5 py-0.5 border rounded bg-muted ml-2">Esc</kbd> {t('shortcut_clear')}
           </span>
         </p>
       </div>
@@ -348,39 +380,43 @@ export default function POSPage() {
         {/* Left: product search + cart */}
         <div className="lg:col-span-2 space-y-4 min-w-0">
           <Card>
-            <CardHeader><CardTitle className="text-base">Search Products</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base"><h2>{t('find_title')}</h2></CardTitle></CardHeader>
             <CardContent>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" aria-hidden="true" />
                 <Input
                   ref={searchInputRef}
-                  placeholder="Scan barcode or search by name/code (min 2 chars)…"
+                  placeholder={t('search_placeholder')}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="pl-9"
+                  className="h-12 pl-11 text-base"
                   autoComplete="off"
+                  autoFocus
                   inputMode="search"
-                  aria-label="Search products"
+                  enterKeyHint="search"
+                  aria-label={t('search_label')}
+                  aria-describedby="pos-search-hint"
                 />
                 {searching && (
-                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin motion-reduce:animate-none text-muted-foreground" aria-hidden="true" />
                 )}
               </div>
+              <p id="pos-search-hint" className="mt-1.5 text-xs text-muted-foreground">{t('search_hint')}</p>
 
               {/* Search error state */}
               {searchError && (
-                <div className="mt-2 flex items-center gap-2 text-sm text-destructive bg-destructive/5 border border-destructive/20 rounded p-2">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  <span className="flex-1">{searchError}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setSearchAttempt(attempt => attempt + 1)}>Retry</Button>
+                <div role="alert" className="mt-2 flex items-center gap-2 text-sm text-foreground bg-destructive/10 border border-destructive/30 rounded-md p-2.5">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 text-destructive" aria-hidden="true" />
+                  <span className="flex-1">{t('search_failed', { reason: searchError })}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setSearchAttempt(attempt => attempt + 1)}>{t('try_again')}</Button>
                 </div>
               )}
 
               {/* Loading skeleton */}
               {searching && (
-                <div className="mt-2 border rounded divide-y" aria-busy="true">
+                <div className="mt-2 border rounded-md divide-y" role="status" aria-busy="true" aria-label={t('searching')}>
                   {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="p-2 flex items-center justify-between animate-pulse">
+                    <div key={i} className="p-3 flex items-center justify-between animate-pulse motion-reduce:animate-none">
                       <div className="space-y-1.5">
                         <div className="h-3 w-40 bg-muted rounded" />
                         <div className="h-2 w-24 bg-muted rounded" />
@@ -393,30 +429,30 @@ export default function POSPage() {
 
               {/* Empty state — search returned no results */}
               {!searching && !searchError && hasSearched && products.length === 0 && (
-                <div className="mt-2 border rounded p-6 text-center text-muted-foreground flex flex-col items-center gap-2">
-                  <PackageX className="h-8 w-8 text-muted-foreground/50" />
-                  <div className="text-sm">No products match &ldquo;{search}&rdquo;.</div>
-                  <Button size="sm" variant="outline" onClick={() => setSearch('')}>Clear search</Button>
+                <div className="mt-2 border rounded-md p-6 text-center text-muted-foreground flex flex-col items-center gap-2">
+                  <PackageX className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
+                  <div className="text-sm text-pretty">{t('no_match', { query: search })}</div>
+                  <Button type="button" variant="outline" onClick={() => { setSearch(''); searchInputRef.current?.focus(); }}>{t('clear_search')}</Button>
                 </div>
               )}
 
               {/* Results list */}
               {!searching && !searchError && products.length > 0 && (
-                <div className="mt-2 border rounded max-h-72 overflow-y-auto" role="group" aria-label="Product search results">
+                <div className="mt-2 border rounded-md max-h-80 overflow-y-auto" role="group" aria-label={t('results_label')}>
                   {products.map(p => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => addToCart(p)}
-                      className="w-full flex items-center justify-between p-2.5 hover:bg-muted border-b last:border-b-0 text-left min-h-[44px] transition-colors"
+                      className="w-full flex items-center justify-between gap-3 p-3 hover:bg-accent focus-visible:bg-accent border-b last:border-b-0 text-left min-h-14 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-sm truncate">{p.name}</div>
-                        <div className="text-xs text-muted-foreground font-mono truncate">{p.code}</div>
+                        <div className="font-medium truncate">{p.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{p.code}</div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {p.is_serialized && <Badge variant="secondary" className="text-xs">serialized</Badge>}
-                        <span className="font-mono text-sm">৳ {parseFloat(p.default_price).toFixed(2)}</span>
+                        {p.is_serialized && <Badge variant="secondary" className="text-xs">{t('needs_serial')}</Badge>}
+                        <span className="font-medium tabular-nums">{f.money(p.default_price)}</span>
                       </div>
                     </button>
                   ))}
@@ -426,189 +462,238 @@ export default function POSPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Cart ({cart.length})</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base"><h2>{t('cart_title', { count: cart.length })}</h2></CardTitle>
+              {cart.length > 0 && <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>{t('clear_cart')}</Button>}
+            </CardHeader>
             <CardContent>
               {cart.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ShoppingCart className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                  <div className="text-sm">Scan or search a product to start.</div>
+                <div className="text-center py-10 text-muted-foreground">
+                  <ShoppingCart className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" aria-hidden="true" />
+                  <div className="text-sm text-pretty">{t('cart_empty')}</div>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {cart.map(item => (
-                    <div key={item.productId} className="border rounded p-2.5 space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                <ul className="space-y-2">
+                  {cart.map(item => {
+                    const serialsMissing = item.isSerialized && item.serials.length === 0;
+                    const serialsDuplicate = item.isSerialized && new Set(item.serials).size !== item.serials.length;
+                    return (
+                    <li key={item.productId} className="border rounded-md p-3 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm truncate">{item.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono truncate">{item.code}</div>
+                          <div className="font-medium truncate">{item.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{item.code} · {f.money(item.unitPrice)} {t('each')}</div>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           {!item.isSerialized && (
                             <>
-                              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => updateQty(item.productId, item.qty - 1)} aria-label="Decrease quantity">
-                                <Minus className="h-3 w-3" />
+                              <Button type="button" size="icon" variant="outline" className="size-11" onClick={() => updateQty(item.productId, item.qty - 1)} aria-label={t('decrease')}>
+                                <Minus aria-hidden="true" />
                               </Button>
-                              <span className="font-mono w-8 text-center text-sm">{item.qty}</span>
-                              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => updateQty(item.productId, item.qty + 1)} aria-label="Increase quantity">
-                                <Plus className="h-3 w-3" />
+                              <span className="w-10 text-center font-medium tabular-nums" aria-label={t('quantity_of', { qty: item.qty, name: item.name })}>{item.qty}</span>
+                              <Button type="button" size="icon" variant="outline" className="size-11" onClick={() => updateQty(item.productId, item.qty + 1)} aria-label={t('increase')}>
+                                <Plus aria-hidden="true" />
                               </Button>
                             </>
                           )}
-                          {item.isSerialized && <Badge variant="secondary" className="text-xs">{item.serials.length} serials</Badge>}
-                          <span className="font-mono text-sm min-w-20 text-right tabular-nums">৳ {item.lineTotal.toFixed(2)}</span>
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => removeFromCart(item.productId)} aria-label="Remove item">
-                            <Trash2 className="h-3 w-3 text-destructive" />
+                          {item.isSerialized && <Badge variant="secondary" className="text-xs">{t('serial_count', { count: item.serials.length })}</Badge>}
+                          <span className="min-w-24 text-right font-semibold tabular-nums">{f.money(item.lineTotal)}</span>
+                          <Button type="button" size="icon" variant="ghost" className="size-11" onClick={() => removeFromCart(item.productId)} aria-label={t('remove_item', { name: item.name })} title={t('remove_item', { name: item.name })}>
+                            <Trash2 className="text-destructive" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
                       {item.isSerialized && (
-                        <Input
-                          placeholder="Enter serial numbers (comma-separated)"
-                          value={item.serials.join(', ')}
-                          onChange={e => updateSerials(item.productId, e.target.value)}
-                          className="text-xs"
-                          aria-label={`Serial numbers for ${item.name}`}
-                        />
+                        <div className="space-y-1">
+                          <Label htmlFor={`serials-${item.productId}`} className="text-xs">{t('serial_label', { name: item.name })}</Label>
+                          <Input
+                            id={`serials-${item.productId}`}
+                            placeholder={t('serial_placeholder')}
+                            value={item.serials.join(', ')}
+                            onChange={e => updateSerials(item.productId, e.target.value)}
+                            autoComplete="off"
+                            aria-invalid={serialsMissing || serialsDuplicate}
+                            aria-describedby={`serials-help-${item.productId}`}
+                          />
+                          <p id={`serials-help-${item.productId}`} className={`text-xs ${serialsDuplicate ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            {serialsDuplicate ? t('serial_duplicate') : serialsMissing ? t('serial_missing') : t('serial_help')}
+                          </p>
+                        </div>
                       )}
-                    </div>
-                  ))}
-                </div>
+                    </li>
+                  ); })}
+                </ul>
               )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right: checkout panel (desktop) */}
+        {/* Right: payment panel */}
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card>
-            <CardHeader><CardTitle className="text-base">Checkout</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base"><h2>{t('payment_title')}</h2></CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm">
+              <dl className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-mono">৳ {subtotal.toFixed(2)}</span>
+                  <dt className="text-muted-foreground">{t('subtotal')}</dt>
+                  <dd className="tabular-nums">{f.money(subtotal)}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax</span>
-                  <span className="font-mono">৳ {taxTotal.toFixed(2)}</span>
+                  <dt className="text-muted-foreground">{t('vat')}</dt>
+                  <dd className="tabular-nums">{f.money(taxTotal)}</dd>
                 </div>
-                <div className="flex justify-between text-lg font-bold border-t pt-2">
-                  <span>Grand Total</span>
-                  <span className="font-mono">৳ {grandTotal.toFixed(2)}</span>
+                <div className="flex items-baseline justify-between border-t pt-2">
+                  <dt className="text-base font-semibold">{t('total')}</dt>
+                  <dd className="text-2xl font-bold tabular-nums">{f.money(grandTotal)}</dd>
                 </div>
-              </div>
+              </dl>
 
               <div className="space-y-3 pt-2 border-t">
-                {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm">Calculating current prices and tax…</p> : null}
-                {pricingError ? <div role="alert" className="space-y-2 text-sm"><p>{pricingError}</p><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>Retry pricing</Button></div> : null}
-                <EntityPicker label="Customer (optional)" endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting} />
-                {customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>Use walk-in customer</Button> : <p className="text-xs text-muted-foreground">Walk-in sale</p>}
+                {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
+                {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button></div> : null}
+                <EntityPicker label={t('customer_label')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting} />
+                {customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : <p className="text-xs text-muted-foreground">{t('customer_walk_in')}</p>}
                 {optionsError && (
-                  <div className="space-y-2 border border-destructive/20 bg-destructive/5 rounded p-2">
-                    <p role="alert" className="text-sm text-foreground">{optionsError}</p>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setOptionsAttempt(attempt => attempt + 1)}>Retry checkout options</Button>
+                  <div className="space-y-2 border border-destructive/30 bg-destructive/10 rounded-md p-2.5">
+                    <p role="alert" className="text-sm text-foreground">{t('options_failed', { reason: optionsError })}</p>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setOptionsAttempt(attempt => attempt + 1)}>{t('options_retry')}</Button>
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label htmlFor="warehouse-id" className="text-xs">Warehouse *</Label>
+                  <Label htmlFor="warehouse-id">{t('warehouse')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
                   <Select
                     value={warehouseId}
                     onValueChange={handleWarehouseChange}
                     disabled={optionsLoading || !!optionsError || warehouses.length === 0}
+                    required
                   >
-                    <SelectTrigger id="warehouse-id" className="text-xs">
+                    <SelectTrigger id="warehouse-id" className="w-full" aria-required="true" aria-describedby="warehouse-help">
                       <SelectValue
                         placeholder={
-                          optionsLoading ? 'Loading...' :
-                          warehouses.length === 0 ? 'No warehouses' :
-                          'Select warehouse'
+                          optionsLoading ? t('loading') :
+                          warehouses.length === 0 ? t('warehouse_none') :
+                          t('warehouse_placeholder')
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
                       {warehouses.map(w => (
                         <SelectItem key={w.id} value={w.id}>
-                          {w.code} - {w.name}
-                          {w.branch ? ` (${w.branch.code})` : ''}
+                          {w.name} ({w.code}){w.branch ? ` · ${w.branch.name}` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p id="warehouse-help" className="text-xs text-muted-foreground">{t('warehouse_help')}</p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="shift-id" className="text-xs">Cashier Shift (optional)</Label>
+                  <Label htmlFor="shift-id">{t('shift')}</Label>
                   <Select
                     value={cashierShiftId}
                     onValueChange={setCashierShiftId}
                     disabled={optionsLoading || cashierShifts.length === 0}
                   >
-                    <SelectTrigger id="shift-id" className="text-xs">
+                    <SelectTrigger id="shift-id" className="w-full" aria-describedby={!optionsLoading && cashierShifts.length === 0 ? 'shift-help' : undefined}>
                       <SelectValue
                         placeholder={
-                          optionsLoading ? 'Loading...' :
-                          cashierShifts.length === 0 ? 'No open shifts' :
-                          'Select open shift'
+                          optionsLoading ? t('loading') :
+                          cashierShifts.length === 0 ? t('shift_none') :
+                          t('shift_placeholder')
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
                       {cashierShifts.map(s => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.cashier?.name ?? 'Unknown'} - {new Date(s.opened_at).toLocaleString()}
+                          {s.cashier?.name ?? t('shift_unknown_cashier')} · {f.dateTime(s.opened_at)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {!optionsLoading && !optionsError && cashierShifts.length === 0 && (
+                    <p id="shift-help" className="text-xs text-muted-foreground text-pretty">
+                      {t('shift_none_help')}{' '}
+                      {canReadShifts && <Link href="/dashboard/cashier" className="font-medium text-foreground underline underline-offset-4">{t('shift_open_link')}</Link>}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5" role="radiogroup" aria-labelledby="payment-method-label">
+                  <span id="payment-method-label" className="text-sm font-medium leading-none">{t('method')}</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PAYMENT_METHODS.map(method => (
+                      <button key={method} type="button" role="radio" aria-checked={paymentMethod === method}
+                        onClick={() => setPaymentMethod(method)}
+                        className={`min-h-12 rounded-md border px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.97] motion-reduce:active:scale-100 ${paymentMethod === method ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}>
+                        {t(`method_${method}`)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="payment-method" className="text-xs">Payment Method</Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                    <SelectTrigger id="payment-method" className="text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="card">Card</SelectItem>
-                      <SelectItem value="bkash">bKash</SelectItem>
-                      <SelectItem value="nagad">Nagad</SelectItem>
-                      <SelectItem value="rocket">Rocket</SelectItem>
-                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="fin-account-id" className="text-xs">Financial Account *</Label>
+                  <Label htmlFor="fin-account-id">{t('account')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
                   <Select
                     value={financialAccountId}
                     onValueChange={setFinancialAccountId}
                     disabled={optionsLoading || !!optionsError || financialAccounts.length === 0}
+                    required
                   >
-                    <SelectTrigger id="fin-account-id" className="text-xs">
+                    <SelectTrigger id="fin-account-id" className="w-full" aria-required="true" aria-describedby="account-help">
                       <SelectValue
                         placeholder={
-                          optionsLoading ? 'Loading...' :
-                          financialAccounts.length === 0 ? 'No accounts' :
-                          'Select account'
+                          optionsLoading ? t('loading') :
+                          financialAccounts.length === 0 ? t('account_none') :
+                          t('account_placeholder')
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
                       {financialAccounts.map(a => (
                         <SelectItem key={a.id} value={a.id}>
-                          {a.name} ({a.account_type})
+                          {a.name} ({a.account_type.replaceAll('_', ' ')})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p id="account-help" className="text-xs text-muted-foreground">{t('account_help')}</p>
                 </div>
               </div>
 
-              <div className="space-y-3 border-t pt-3"><div><Label htmlFor="primary-payment-amount">Applied payment amount</Label><Input id="primary-payment-amount" type="number" min="0" step="any" placeholder={pricingReady ? String(grandTotal) : 'Waiting for price'} value={primaryAmount} onChange={e => setPrimaryAmount(e.target.value)} /><p className="text-xs text-muted-foreground">Blank applies the full total. For split payment, enter each tender amount. Give cash change separately.</p></div>
-                {tenders.map((tender, index) => <div key={tender.id} className="space-y-2 rounded-md border p-3"><h3 className="text-sm font-medium">Additional payment {index + 1}</h3><Label htmlFor={`tender-method-${tender.id}`}>Method</Label><select id={`tender-method-${tender.id}`} className="h-11 w-full rounded-md border bg-background px-2" value={tender.method} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, method: e.target.value } : row))}>{['cash', 'card', 'bkash', 'nagad', 'rocket', 'bank_transfer'].map(method => <option key={method} value={method}>{method.replaceAll('_', ' ')}</option>)}</select><EntityPicker label={`Account for payment ${index + 1}`} endpoint={`/api/v1/financial-accounts?is_active=true${branchId ? `&branch_id=${branchId}` : ''}`} serverSearch={false} value={tender.account} onChange={account => setTenders(current => current.map(row => row.id === tender.id ? { ...row, account } : row))} /><Label htmlFor={`tender-amount-${tender.id}`}>Amount</Label><Input id={`tender-amount-${tender.id}`} type="number" min="0" step="any" value={tender.amount} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, amount: e.target.value } : row))} /><Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>Remove payment {index + 1}</Button></div>)}
-                <Button type="button" variant="outline" onClick={() => setTenders(current => [...current, { id: crypto.randomUUID(), method: 'card', account: null, amount: '' }])}>Add split payment</Button>
+              <div className="space-y-3 border-t pt-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="primary-payment-amount">{t('amount_now')}</Label>
+                  <Input id="primary-payment-amount" type="number" inputMode="decimal" min="0" step="any" className="h-12 text-base tabular-nums" aria-describedby="amount-now-help"
+                    placeholder={pricingReady ? String(grandTotal) : t('amount_wait')} value={primaryAmount} onChange={e => setPrimaryAmount(e.target.value)} />
+                  <p id="amount-now-help" className="text-xs text-muted-foreground text-pretty">{t('amount_now_help')}</p>
+                </div>
+                {paymentMethod === 'cash' && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cash-received">{t('cash_received')}</Label>
+                    <Input id="cash-received" type="number" inputMode="decimal" min="0" step="any" className="h-12 text-base tabular-nums" value={cashReceived} onChange={e => setCashReceived(e.target.value)} aria-describedby="cash-change" />
+                    <p id="cash-change" role="status" className={`text-sm tabular-nums ${changeDue !== null && changeDue < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {changeDue === null ? t('cash_change_hint') : changeDue < 0 ? t('cash_short', { amount: f.money(-changeDue) }) : t('cash_change', { amount: f.money(changeDue) })}
+                    </p>
+                  </div>
+                )}
+                {tenders.map((tender, index) => (
+                  <div key={tender.id} className="space-y-2 rounded-md border p-3">
+                    <h3 className="text-sm font-medium">{t('split_title', { n: index + 1 })}</h3>
+                    <Label htmlFor={`tender-method-${tender.id}`}>{t('split_method')}</Label>
+                    <select id={`tender-method-${tender.id}`} className="h-11 w-full rounded-md border bg-background px-2 text-base" value={tender.method} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, method: e.target.value } : row))}>
+                      {PAYMENT_METHODS.map(method => <option key={method} value={method}>{t(`method_${method}`)}</option>)}
+                    </select>
+                    <EntityPicker label={t('split_account', { n: index + 1 })} endpoint={`/api/v1/financial-accounts?is_active=true${branchId ? `&branch_id=${branchId}` : ''}`} serverSearch={false} value={tender.account} onChange={account => setTenders(current => current.map(row => row.id === tender.id ? { ...row, account } : row))} />
+                    <Label htmlFor={`tender-amount-${tender.id}`}>{t('split_amount')}</Label>
+                    <Input id={`tender-amount-${tender.id}`} type="number" inputMode="decimal" min="0" step="any" className="h-11 text-base tabular-nums" value={tender.amount} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, amount: e.target.value } : row))} />
+                    <Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>{t('split_remove', { n: index + 1 })}</Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" className="w-full" onClick={() => setTenders(current => [...current, { id: crypto.randomUUID(), method: 'card', account: null, amount: '' }])}>{t('split_add')}</Button>
               </div>
-              <Button onClick={handleCheckout} disabled={posting || cart.length === 0 || !pricingReady || !!optionsError} className="w-full min-h-[44px]" size="lg">
-                {posting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                Complete Sale — ৳ {grandTotal.toFixed(2)}
+              <Button type="button" onClick={handleCheckout} disabled={posting || cart.length === 0 || !pricingReady || !!optionsError} className="w-full min-h-14 text-base" size="lg">
+                {posting ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CreditCard aria-hidden="true" />}
+                {posting ? t('completing') : t('complete', { amount: f.money(grandTotal) })}
               </Button>
+              {cart.length === 0 && <p className="text-center text-xs text-muted-foreground">{t('complete_hint')}</p>}
             </CardContent>
           </Card>
         </div>
@@ -619,18 +704,29 @@ export default function POSPage() {
         <div className="fixed bottom-0 left-0 right-0 z-20 md:hidden bg-card border-t shadow-lg pb-[env(safe-area-inset-bottom)]">
           <div className="flex items-center justify-between p-3 gap-3">
             <div className="min-w-0">
-              <div className="text-xs text-muted-foreground">
-                {cart.length} item{cart.length !== 1 ? 's' : ''} • <button className="text-primary underline" onClick={() => setCart([])}>Clear</button>
-              </div>
-              <div className="text-lg font-bold font-mono">৳ {grandTotal.toFixed(2)}</div>
+              <div className="text-xs text-muted-foreground">{t('items_count', { count: cart.length })}</div>
+              <div className="text-xl font-bold tabular-nums">{f.money(grandTotal)}</div>
             </div>
-            <Button onClick={handleCheckout} disabled={posting || !pricingReady || !!optionsError} className="min-h-[44px] flex-shrink-0">
-              {posting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              Checkout
+            <Button type="button" onClick={handleCheckout} disabled={posting || !pricingReady || !!optionsError} className="min-h-12 flex-shrink-0 px-5 text-base">
+              {posting ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <CreditCard aria-hidden="true" />}
+              {posting ? t('completing') : t('complete_short')}
             </Button>
           </div>
         </div>
       )}
+
+      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('clear_title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('clear_body', { count: cart.length })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('clear_keep')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setCart([]); setCashReceived(''); searchInputRef.current?.focus(); }}>{t('clear_confirm')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </fieldset>
   );
 }

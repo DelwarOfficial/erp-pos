@@ -232,11 +232,11 @@ test('service intake → diagnosis → approval → repeated parts → invoice �
   }
   await action('Mark ready', 'Repair tested successfully');
   const blocked = await page.request.post(`/api/v1/service-requests/${service.serviceRequestId}`, { headers: { Origin: new URL(page.url()).origin, 'Idempotency-Key': randomUUID() }, data: { action: 'transition', status: 'delivered', note: 'Missing invoice must block delivery' } }); expect(blocked.status()).toBe(409);
-  const pos = await page.context().newPage(); await pos.goto('/dashboard/pos'); await pos.getByPlaceholder(/Scan barcode or search/).fill(labour.name);
+  const pos = await page.context().newPage(); await pos.goto('/dashboard/pos'); await pos.getByPlaceholder(/Scan a barcode/).fill(labour.name);
   await pos.getByRole('button', { name: new RegExp(labour.name) }).click(); await pick(pos, 'Customer (optional)', customer.name);
-  await pick(pos, 'Warehouse *', warehouse.name); await pick(pos, 'Financial Account *', fixture.cash.name);
+  await pick(pos, 'Warehouse', warehouse.name); await pick(pos, 'Payment account', fixture.cash.name);
   const invoicing = pos.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
-  await pos.getByRole('button', { name: /Complete Sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close(); await page.goto('/dashboard/service'); await page.getByRole('button', { name: 'View service request', exact: true }).click();
+  await pos.getByRole('button', { name: /Complete sale/ }).click(); const invoiceResponse = await invoicing; expect(invoiceResponse.status(), await invoiceResponse.text()).toBe(201); const sale = await invoiceResponse.json(); await pos.close(); await page.goto('/dashboard/service'); await page.getByRole('button', { name: 'View service request', exact: true }).click();
   await pick(page, 'Service invoice', sale.referenceNo); await action('Link service invoice', 'Invoice covers approved service charge'); await action('Deliver device', 'Customer collected repaired device and accessories');
   const completed = await db.serviceRequest.findUniqueOrThrow({ where: { id: service.serviceRequestId }, include: { parts: true } }); expect(completed.status).toBe('delivered'); expect(completed.serviceSaleId).toBe(sale.saleId); expect(completed.parts.map(part => part.lineNo)).toEqual([1, 2]);
   expect((await db.productSerial.findUniqueOrThrow({ where: { id: serial.id } })).status).toBe('in_stock');
@@ -248,21 +248,21 @@ test('POS customer and split payment use authoritative pricing; receipt/invoice 
   await db.warehouseStock.upsert({ where: { companyId_warehouseId_productId: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id } },
     create: { companyId: fixture.companyId, warehouseId: warehouse.id, productId: product.id, qtyOnHand: 10, movingAverageCost: 50 }, update: { qtyOnHand: 10 } });
   await login(page); await page.goto('/dashboard/pos');
-  await page.getByPlaceholder(/Scan barcode or search/).fill('Browser receiving');
+  await page.getByPlaceholder(/Scan a barcode/).fill('Browser receiving');
   await page.getByRole('button', { name: new RegExp(product.name) }).click();
   await pick(page, 'Customer (optional)', customer.name);
-  await pick(page, 'Warehouse *', warehouse.name);
-  await pick(page, 'Financial Account *', fixture.cash.name);
-  await page.getByLabel('Applied payment amount', { exact: true }).fill('60');
+  await pick(page, 'Warehouse', warehouse.name);
+  await pick(page, 'Payment account', fixture.cash.name);
+  await page.getByLabel('Amount paid now', { exact: true }).fill('60');
   await page.getByRole('button', { name: 'Add split payment', exact: true }).click();
   await page.getByLabel('Method', { exact: true }).selectOption('cash');
   await pick(page, 'Account for payment 1', fixture.cash.name);
   await page.getByLabel('Amount', { exact: true }).fill('40');
   const posting = page.waitForResponse(response => response.url().endsWith('/api/v1/sales') && response.request().method() === 'POST');
-  await page.getByRole('button', { name: /Complete Sale/ }).click();
+  await page.getByRole('button', { name: /Complete sale/ }).click();
   const posted = await posting; expect(posted.status(), await posted.text()).toBe(201);
   const sale = await posted.json();
-  await expect(page.getByRole('heading', { name: `Sale posted: ${sale.referenceNo}` })).toBeVisible();
+  await expect(page.getByRole('heading', { name: `Sale saved: ${sale.referenceNo}` })).toBeVisible();
   const persisted = await db.sale.findUniqueOrThrow({ where: { id: sale.saleId }, include: { payments: { include: { payment: true } } } });
   expect(persisted.customerId).toBe(customer.id); expect(persisted.grandTotal.toString()).toBe('100');
   expect(persisted.payments.map(row => row.allocatedAmount.toString()).sort()).toEqual(['40', '60']);

@@ -77,10 +77,10 @@ test('checkout options retry preserves populated POS cart', async ({ page }) => 
   await page.goto('/dashboard/pos');
   await page.getByRole('textbox', { name: 'Search products' }).fill('Retry');
   await page.getByRole('group', { name: 'Product search results' }).getByRole('button').click();
-  await expect(page.getByRole('button', { name: 'Remove item' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Remove / })).toBeVisible();
   recovered = true; await page.getByRole('button', { name: 'Retry checkout options' }).click();
   await expect(page.getByRole('button', { name: 'Retry checkout options' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Remove item' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Remove / })).toBeVisible();
   expect(posts).toBe(0);
 });
 
@@ -183,7 +183,7 @@ test('webhook failure stays distinct from empty data and one-time secret remains
 });
 
 for (const [route, button] of [
-  ['accounting/journal', 'New Entry'], ['assets', 'Acquire Asset'], ['payments', 'New Payment'],
+  ['accounting/journal', 'New Entry'], ['assets', 'Acquire Asset'], ['payments', 'Record a payment'],
   ['expenses', 'New Expense'], ['purchases', 'New Purchase'], ['service', 'New Intake'],
   ['inventory/opening-stock', ''], ['products/new', ''],
 ]) {
@@ -227,7 +227,7 @@ test('platform context and navigation fit all target widths in both themes', asy
     for (const width of [320, 375, 430, 768, 1024, 1280, 1440, 1920]) {
       await page.setViewportSize({ width, height: 900 });
       await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
-      await expect(page.locator('header').first().getByText('Platform / Global', { exact: true })).toBeVisible();
+      await expect(page.locator('header').first().getByText('Platform admin', { exact: true })).toBeVisible();
       await fits(page);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -257,9 +257,9 @@ test('session failure has retry and login actions', async ({ page }) => {
   await fixtures(page);
   await page.route('**/api/v1/me', route => route.fulfill({ status: 503, json: {} }));
   await page.goto('/dashboard');
-  await expect(page.getByRole('alert').filter({ hasText: 'Session error' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Go to login' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: "We couldn't open your account" })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in again' })).toBeVisible();
 });
 
 test('sign-in keeps validation and shows server error inline and in Sonner', async ({ page }) => {
@@ -284,8 +284,8 @@ test('POS retry repeats failed search without changing the query', async ({ page
   });
   await page.goto('/dashboard/pos');
   await page.getByRole('textbox', { name: 'Search products' }).fill('Keyboard');
-  await expect(page.getByText('Search unavailable.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText(/Search unavailable./)).toBeVisible();
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Product search results' }).getByRole('button')).toHaveCount(1);
   expect(attempts).toBe(2);
 });
@@ -409,8 +409,8 @@ test('POS populated cart keeps quantity actions visible on phones', async ({ pag
   await page.getByRole('button', { name: 'Increase quantity' }).click();
   await expect(page.getByRole('button', { name: 'Decrease quantity' })).toBeVisible();
   // Enter on a focused action must activate that action, not global checkout.
-  await page.getByRole('button', { name: 'Remove item' }).focus();
+  await page.getByRole('button', { name: /^Remove / }).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByText('Scan or search a product to start.', { exact: true })).toBeVisible();
+  await expect(page.getByText('The cart is empty. Scan or search a product to start this sale.', { exact: true })).toBeVisible();
   await fits(page);
 });

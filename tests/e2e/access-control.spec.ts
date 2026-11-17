@@ -45,12 +45,12 @@ async function privateFill(locator: Locator, value: string) {
 async function login(page: Page, persona: Persona) {
   await page.goto('/login'); await page.getByLabel('Email', { exact: true }).fill(persona.email);
   await privateFill(page.getByLabel('Password', { exact: true }), password);
-  await page.getByLabel('Company Code (optional)', { exact: true }).fill(persona.code);
+  await page.getByLabel('Company code (optional)', { exact: true }).fill(persona.code);
   await page.getByRole('button', { name: 'Sign In', exact: true }).click();
   if (persona.secret) {
     await page.waitForURL('**/mfa');
     await privateFill(page.locator('input').first(), authenticator.generate(persona.secret));
-    await page.getByRole('button', { name: 'Verify', exact: true }).click();
+    await page.getByRole('button', { name: 'Verify code', exact: true }).click();
   }
   await page.waitForURL('**/dashboard');
 }

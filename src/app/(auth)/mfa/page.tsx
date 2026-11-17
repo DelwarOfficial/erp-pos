@@ -9,9 +9,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 export default function MfaPage() {
   const router = useRouter();
+  const t = useTranslations('auth');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +27,7 @@ export default function MfaPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (code.length !== 6) {
-      toast.error('Enter all 6 digits');
+      toast.error(t('mfa.incomplete'));
       return;
     }
     setLoading(true);
@@ -37,13 +39,13 @@ export default function MfaPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'MFA verification failed');
+        toast.error(data?.error?.message ?? t('mfa.failed'));
         return;
       }
-      toast.success('MFA verified');
+      toast.success(t('mfa.success'));
       router.push('/dashboard');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      toast.error(t('error.network'));
     } finally {
       setLoading(false);
     }
@@ -53,12 +55,12 @@ export default function MfaPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Two-Factor Authentication</CardTitle>
-          <CardDescription>Enter the 6-digit code from your authenticator app</CardDescription>
+          <CardTitle><h1 className="text-2xl font-semibold tracking-tight text-balance">{t('mfa.title')}</h1></CardTitle>
+          <CardDescription className="text-pretty">{t('mfa.subtitle')}</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit} className="space-y-6" aria-busy={loading}>
           <CardContent className="flex justify-center py-6">
-            <InputOTP aria-label="6-digit authentication code" autoComplete="one-time-code" maxLength={6} value={code} onChange={(v) => setCode(v)}>
+            <InputOTP aria-label={t('mfa.code_label')} autoFocus autoComplete="one-time-code" maxLength={6} value={code} onChange={(v) => setCode(v)}>
               <InputOTPGroup>
                 <InputOTPSlot index={0} />
                 <InputOTPSlot index={1} />
@@ -71,7 +73,7 @@ export default function MfaPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={loading || code.length !== 6}>
-              {loading ? 'Verifying…' : 'Verify'}
+              {loading ? t('mfa.submitting') : t('mfa.submit')}
             </Button>
             <Button
               type="button"
@@ -79,7 +81,7 @@ export default function MfaPage() {
               className="w-full"
               onClick={() => router.push('/login')}
             >
-              Back to login
+              {t('mfa.back')}
             </Button>
           </CardFooter>
         </form>

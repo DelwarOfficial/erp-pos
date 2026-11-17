@@ -50,7 +50,7 @@ test.describe('Accessibility — axe-core scans', () => {
   });
 
   test('POS page has no critical violations', async ({ page }) => {
-    await page.click('a:has-text("POS")');
+    await page.click('a:has-text("New Sale")');
     await page.waitForURL('**/dashboard/pos');
     const results = await analyzePage(page);
     const critical = results.violations.filter((v) => v.impact === 'critical');
@@ -124,7 +124,7 @@ test.describe('Accessibility — keyboard navigation', () => {
   });
 
   test('POS page supports keyboard navigation', async ({ page }) => {
-    await page.click('a:has-text("POS")');
+    await page.click('a:has-text("New Sale")');
     await page.waitForURL('**/dashboard/pos');
     await page.keyboard.press('Tab');
     const focused = await page.evaluate(() => document.activeElement?.tagName);

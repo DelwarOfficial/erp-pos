@@ -6,6 +6,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { useFormat } from '@/components/i18n/I18nProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,13 +70,9 @@ interface CreatePaymentForm {
   notes: string;
 }
 
-const STATUS_FILTERS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'posted', label: 'Completed' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'reversed', label: 'Reversed' },
-];
+// Labels for these lists live in the catalog under payments.*
+const STATUS_FILTERS = ['all', 'pending', 'posted', 'failed', 'reversed'];
+const KNOWN_STATUSES = ['pending', 'posted', 'completed', 'failed', 'reversed'];
 
 const PAYMENT_METHODS: Array<{ value: string; label: string }> = [
   { value: 'cash', label: 'Cash' },
@@ -127,6 +127,9 @@ const EMPTY_FORM: CreatePaymentForm = {
 };
 
 export default function PaymentsPage() {
+  const t = useTranslations('payments');
+  const f = useFormat();
+  const [optionsFailed, setOptionsFailed] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,16 +146,16 @@ export default function PaymentsPage() {
     try {
       const res = await apiFetch('/api/v1/payments?limit=100');
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load payments');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('load_failed'));
       setPayments(data.items ?? []);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Network error';
+      const msg = e instanceof Error && e.message && !(e instanceof TypeError) ? e.message : t('load_failed');
       setError(msg);
       toast.error(msg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadFormData = useCallback(async () => {
     try {
@@ -160,6 +163,7 @@ export default function PaymentsPage() {
         apiFetch('/api/v1/financial-accounts'),
         apiFetch('/api/v1/branches'),
       ]);
+      setOptionsFailed(!faRes.ok || !brRes.ok);
       if (faRes.ok) {
         const faData = await faRes.json();
         setFinancialAccounts((faData.items ?? []).filter((a: FinancialAccount) => a.is_active));
@@ -168,9 +172,9 @@ export default function PaymentsPage() {
         const brData = await brRes.json();
         setBranches(brData.items ?? []);
       }
-    } catch (e) {
-      // Non-fatal — form will still let user paste UUIDs
-      console.warn('Failed to load form options', e);
+    } catch {
+      // Not fatal for the list, but the form cannot be filled in: say so there.
+      setOptionsFailed(true);
     }
   }, []);
 
@@ -193,15 +197,15 @@ export default function PaymentsPage() {
     e.preventDefault();
     const amount = Number(createForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Amount must be a positive number');
+      toast.error(t('err_amount'));
       return;
     }
     if (!createForm.branch_id) {
-      toast.error('Branch is required');
+      toast.error(t('err_branch'));
       return;
     }
     if (!createForm.financial_account_id) {
-      toast.error('Financial account is required');
+      toast.error(t('err_account'));
       return;
     }
     setCreating(true);
@@ -225,123 +229,113 @@ export default function PaymentsPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Failed to create payment');
+        toast.error(t('err_save', { reason: data?.error?.message ?? t('err_generic') }));
         return;
       }
-      toast.success(`Payment ${data.reference_no ?? 'created'} - ৳ ${Number(data.amount).toFixed(2)}`);
+      toast.success(t('saved', { ref: data.reference_no ?? '', amount: f.money(data.amount) }));
       setCreateForm(EMPTY_FORM);
       setCreateOpen(false);
       await loadPayments();
-    } catch (e) {
-      toast.error('Failed to create payment: ' + (e instanceof Error ? e.message : 'Unknown error'));
+    } catch {
+      toast.error(t('err_network'));
     } finally {
       setCreating(false);
     }
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CreditCard className="h-6 w-6" /> Payments
-          </h1>
-          <p className="text-muted-foreground">
-            Record standalone payments, advances and refunds. Posted payments hit the GL automatically.
-          </p>
-        </div>
-        <Button className="min-h-[44px]" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New Payment
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader icon={<CreditCard className="h-6 w-6" aria-hidden="true" />} title={t('title')} description={t('subtitle')}
+        actions={<Button type="button" className="min-h-11" onClick={() => setCreateOpen(true)}><Plus aria-hidden="true" />{t('new')}</Button>} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>New Payment</DialogTitle>
-            <DialogDescription>
-              Record a standalone payment. Sale-receipt payments are created automatically from the POS.
-            </DialogDescription>
+            <DialogTitle>{t('dialog_title')}</DialogTitle>
+            <DialogDescription>{t('dialog_help')}</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form onSubmit={handleCreate} className="space-y-4" aria-busy={creating}>
+            {optionsFailed && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">{t('options_failed')}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-1" className="text-xs">Payment Type</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-1" >{t('type')}</Label>
                 <Select
                   value={createForm.payment_type}
                   onValueChange={v => setCreateForm({ ...createForm, payment_type: v })}
                 >
-                  <SelectTrigger id="field-app-erp-dashboard-payments-page-1" className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-1" className="min-h-11 w-full data-[placeholder]:text-foreground"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    {PAYMENT_TYPES.map(item => <SelectItem key={item.value} value={item.value}>{t(`type_${item.value}`)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-2" className="text-xs">Direction</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-2" >{t('direction')}</Label>
                 <Select
                   value={createForm.direction}
                   onValueChange={v => setCreateForm({ ...createForm, direction: v })}
                 >
-                  <SelectTrigger id="field-app-erp-dashboard-payments-page-2" className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-2" className="min-h-11 w-full data-[placeholder]:text-foreground"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {DIRECTIONS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                    {DIRECTIONS.map(d => <SelectItem key={d.value} value={d.value}>{t(`direction_${d.value}`)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-3" className="text-xs">Branch</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-3" >{t('branch')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
                 <Select
                   value={createForm.branch_id}
                   onValueChange={v => setCreateForm({ ...createForm, branch_id: v })}
                 >
-                  <SelectTrigger id="field-app-erp-dashboard-payments-page-3" className="min-h-[40px]"><SelectValue placeholder="Select branch" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-3" className="min-h-11 w-full data-[placeholder]:text-foreground"><SelectValue placeholder={t('branch_placeholder')} /></SelectTrigger>
                   <SelectContent>
                     {branches.length === 0 ? (
-                      <SelectItem value="_none" disabled>No branches available</SelectItem>
+                      <SelectItem value="_none" disabled>{t('branch_none')}</SelectItem>
                     ) : (
-                      branches.map(b => <SelectItem key={b.id} value={b.id}>{b.code} - {b.name}</SelectItem>)
+                      branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name} ({b.code})</SelectItem>)
                     )}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-4" className="text-xs">Financial Account</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-4" >{t('account')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
                 <Select
                   value={createForm.financial_account_id}
                   onValueChange={v => setCreateForm({ ...createForm, financial_account_id: v })}
                 >
-                  <SelectTrigger id="field-app-erp-dashboard-payments-page-4" className="min-h-[40px]"><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-4" className="min-h-11 w-full data-[placeholder]:text-foreground"><SelectValue placeholder={t('account_placeholder')} /></SelectTrigger>
                   <SelectContent>
                     {financialAccounts.length === 0 ? (
-                      <SelectItem value="_none" disabled>No accounts available</SelectItem>
+                      <SelectItem value="_none" disabled>{t('account_none')}</SelectItem>
                     ) : (
                       financialAccounts.map(a => (
-                        <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_type})</SelectItem>
+                        <SelectItem key={a.id} value={a.id}>{a.name} ({a.account_type.replaceAll('_', ' ')})</SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-5" className="text-xs">Payment Method</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-5" >{t('method')}</Label>
                 <Select
                   value={createForm.payment_method}
                   onValueChange={v => setCreateForm({ ...createForm, payment_method: v })}
                 >
-                  <SelectTrigger id="field-app-erp-dashboard-payments-page-5" className="min-h-[40px]"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-payments-page-5" className="min-h-11 w-full data-[placeholder]:text-foreground"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    {PAYMENT_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{t(`method_${m.value}`)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-6" className="text-xs">Amount (BDT) *</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-6" >{t('amount')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
                 <Input id="field-app-erp-dashboard-payments-page-6"
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0.01"
                   placeholder="0.00"
+                  aria-required="true"
                   value={createForm.amount}
                   onChange={e => setCreateForm({ ...createForm, amount: e.target.value })}
                   required
@@ -349,9 +343,9 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-7" className="text-xs">Method Reference (optional)</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-7" >{t('reference')}</Label>
                 <Input id="field-app-erp-dashboard-payments-page-7"
-                  placeholder="Txn ID, cheque no., gateway ref..."
+                  placeholder={t('reference_placeholder')}
                   value={createForm.method_reference}
                   onChange={e => setCreateForm({ ...createForm, method_reference: e.target.value })}
                   maxLength={120}
@@ -359,9 +353,9 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="field-app-erp-dashboard-payments-page-8" className="text-xs">Notes (optional)</Label>
+                <Label htmlFor="field-app-erp-dashboard-payments-page-8" >{t('notes')}</Label>
                 <Input id="field-app-erp-dashboard-payments-page-8"
-                  placeholder="Notes"
+                  placeholder={t('notes_placeholder')}
                   value={createForm.notes}
                   onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}
                   maxLength={500}
@@ -371,11 +365,11 @@ export default function PaymentsPage() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
-                Cancel
+                {t('cancel')}
               </Button>
-              <Button type="submit" disabled={creating} className="min-h-[44px]">
-                {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Record Payment
+              <Button type="submit" disabled={creating} className="min-h-11">
+                {creating ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+                {creating ? t('saving') : t('save')}
               </Button>
             </DialogFooter>
           </form>
@@ -385,34 +379,34 @@ export default function PaymentsPage() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Payments ({filtered.length})</CardTitle>
-            <CardDescription>
-              Filter by status. Total shown reflects current filter: ৳ {totalAmount.toLocaleString('en-BD', { maximumFractionDigits: 2 })}
-            </CardDescription>
+            <CardTitle className="text-base"><h2>{t('list_title', { count: filtered.length })}</h2></CardTitle>
+            <CardDescription className="tabular-nums">{t('list_total', { amount: f.money(totalAmount) })}</CardDescription>
           </div>
           {!loading && !error && (
-            <Button size="sm" variant="ghost" onClick={loadPayments} className="min-h-[40px]">
-              <RefreshCw className="h-3 w-3 mr-1" /> Refresh
+            <Button type="button" size="sm" variant="ghost" onClick={loadPayments} className="min-h-10">
+              <RefreshCw aria-hidden="true" /> {t('refresh')}
             </Button>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map(f => (
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t('filter_label')}>
+            {STATUS_FILTERS.map(status => (
               <Button
-                key={f.value}
+                key={status}
+                type="button"
                 size="sm"
-                variant={statusFilter === f.value ? 'default' : 'outline'}
-                onClick={() => setStatusFilter(f.value)}
-                className="min-h-[36px]"
+                variant={statusFilter === status ? 'default' : 'outline'}
+                aria-pressed={statusFilter === status}
+                onClick={() => setStatusFilter(status)}
+                className="min-h-10"
               >
-                {f.label}
+                {status === 'all' ? t('filter_all') : t(`status.${status}`)}
               </Button>
             ))}
           </div>
 
           {loading ? (
-            <div className="space-y-2">
+            <div className="space-y-2" role="status" aria-label={t('loading')}>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <Skeleton className="h-4 w-24" />
@@ -427,21 +421,22 @@ export default function PaymentsPage() {
             <ErrorState message={error} onRetry={loadPayments} />
           ) : filtered.length === 0 ? (
             <EmptyState
-              icon={<CreditCard className="h-8 w-8 text-muted-foreground/50" />}
-              message="No payments match the selected filter."
+              icon={<CreditCard className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />}
+              message={statusFilter === 'all' ? t('empty') : t('empty_filtered')}
+              action={statusFilter === 'all' ? <Button type="button" onClick={() => setCreateOpen(true)}><Plus aria-hidden="true" />{t('new')}</Button> : undefined}
             />
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Counterparty</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t('col_date')}</TableHead>
+                    <TableHead>{t('col_reference')}</TableHead>
+                    <TableHead>{t('col_method')}</TableHead>
+                    <TableHead>{t('col_party')}</TableHead>
+                    <TableHead className="text-right">{t('col_amount')}</TableHead>
+                    <TableHead>{t('col_status')}</TableHead>
+                    <TableHead className="text-right"><span className="sr-only">{t('col_actions')}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -450,46 +445,37 @@ export default function PaymentsPage() {
                     const counterparty = p.customer?.name ?? p.supplier?.name ?? '—';
                     return (
                       <TableRow key={p.id}>
-                        <TableCell className="text-xs whitespace-nowrap">
-                          {dateStr ? new Date(dateStr).toLocaleDateString() : '—'}
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {f.date(dateStr)}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className="font-medium whitespace-nowrap">
                           {p.reference_no}
                           {p.reversed_payment_id && (
-                            <span className="ml-1 text-destructive">(rev)</span>
+                            <Badge variant="outline" className="ml-1.5 text-xs">{t('reversal_tag')}</Badge>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {p.payment_method}
-                          </Badge>
-                          {p.direction === 'outgoing' ? (
-                            <ArrowUpRight className="inline-block ml-1 h-3 w-3 text-destructive" aria-label="Outgoing" />
-                          ) : (
-                            <ArrowDownToLine className="inline-block ml-1 h-3 w-3 text-success-foreground" aria-label="Incoming" />
-                          )}
+                          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                            {p.direction === 'outgoing'
+                              ? <ArrowUpRight className="size-4 text-destructive" aria-hidden="true" />
+                              : <ArrowDownToLine className="size-4 text-success-foreground" aria-hidden="true" />}
+                            {PAYMENT_METHODS.some(m => m.value === p.payment_method) ? t(`method_${p.payment_method}`) : p.payment_method}
+                            <span className="text-xs text-muted-foreground">· {p.direction === 'outgoing' ? t('out') : t('in')}</span>
+                          </span>
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate text-sm" title={counterparty}>
                           {counterparty}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          ৳ {Number(p.amount).toFixed(2)}
-                          {p.currency_code !== 'BDT' && (
-                            <span className="ml-1 text-muted-foreground">{p.currency_code}</span>
-                          )}
+                        <TableCell className="text-right whitespace-nowrap">
+                          {f.money(p.amount, p.currency_code)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={statusBadgeVariant(p.payment_status)}>{p.payment_status}</Badge>
+                          <Badge variant={statusBadgeVariant(p.payment_status)}>{KNOWN_STATUSES.includes(p.payment_status) ? t(`status.${p.payment_status}`) : p.payment_status}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <a
-                            href={`/dashboard/payments/${p.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline"
-                          >
-                            View
-                          </a>
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/dashboard/payments/${p.id}`} aria-label={t('view_named', { ref: p.reference_no })}>{t('view')}</Link>
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
