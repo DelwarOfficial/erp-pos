@@ -2046,9 +2046,9 @@
     "semantic_hash": ""
   },
   "src/components/access/roles.tsx": {
-    "mtime": 1791030165.8423598,
-    "seen": 1791098939.9056695,
-    "ast_hash": "c4492f457ccbfa22e1c61db1386e0616",
+    "mtime": 1794907250.8368013,
+    "seen": 1794907300.0412607,
+    "ast_hash": "4f265ce821f78212d025537ecb53e3a6",
     "semantic_hash": ""
   },
   "src/components/access/users.tsx": {
@@ -3468,9 +3468,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/ui-health.spec.ts": {
-    "mtime": 1794878513.051559,
-    "seen": 1794906360.7681177,
-    "ast_hash": "10a7c226840515827c812e11bbdb2030",
+    "mtime": 1794907177.1546545,
+    "seen": 1794907300.1037004,
+    "ast_hash": "fd2e29c340ecdc972fc88927df822076",
     "semantic_hash": ""
   },
   "tests/e2e/ui-workflows.spec.ts": {

@@ -59,7 +59,7 @@ test('Overview shows authoritative company/branch context, no invented KPIs', as
   await expect(page.locator('main')).toContainText('Branch A only');
   await expect(page.locator('main')).not.toContainText('Denied branch must not appear');
   await expect(page.locator('main')).not.toContainText('Company B operational workspace');
-  await expect(page.locator('main')).toContainText('No quick actions are available for your current access level.');
+  await expect(page.locator('main')).toContainText('No shortcuts yet. Ask your admin for access and they will appear here.');
   await noEngineering(page);
   const me = await (await page.request.get('/api/v1/me')).json();
   expect(me.user.branch_ids).toEqual([branchA]);
@@ -72,7 +72,7 @@ test('Company B has its own workspace, never company A data', async ({ page }) =
 });
 test('session API failure shows an error, not zero business metrics', async ({ page }) => {
   await signIn(page); await page.route('**/api/v1/me', route => route.fulfill({ status: 503, json: {} }));
-  await page.goto('/dashboard'); await expect(page.getByText('Session error', { exact: true })).toBeVisible();
+  await page.goto('/dashboard'); await expect(page.getByText("We couldn't open your account", { exact: true })).toBeVisible();
   await expect(page.getByText('0 / 37')).toHaveCount(0);
 });
 test('unauthorized persona is denied detailed health in UI and direct API', async ({ page }) => {

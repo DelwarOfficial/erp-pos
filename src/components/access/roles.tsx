@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { AlertCircle, BookKey, Layers3, Loader2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AccessHeading, CompanyPicker, control, date, request, useAccess, type Permission, type Role, type User } from './common';
@@ -83,7 +84,38 @@ export function PermissionsPage() {
       .catch(() => { if (!controller.signal.aborted) setError('Permission catalogue unavailable.'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort(); }, [allowed]);
   if (!allowed) return <p role="alert">Access Control access denied.</p>;
-  return <div className="space-y-5"><AccessHeading company={access.company} title="Permissions" /><p>Permissions are assigned through roles, not directly to users.</p>
-    {loading ? <p role="status">Loading permissions…</p> : error ? <p role="alert">{error}</p> : !rows.length ? <p>No permissions available.</p> : [...new Set(rows.map(item => item.module))].map(module => <section key={module}><h2 className="font-semibold">{module}</h2><ul>{rows.filter(item => item.module === module).map(item => <li className="border-b py-2" key={item.id}>{item.description} <code className="text-xs">{item.code}</code></li>)}</ul></section>)}
+  return <div className="min-w-0 space-y-6 pb-6">
+    <div className="[&_nav_a]:min-h-11 [&_nav_a[href*='/access/permissions']]:bg-primary/10 [&_nav_a[href*='/access/permissions']]:text-primary">
+      <AccessHeading company={access.company} title="Permissions" />
+    </div>
+
+    <section aria-label="About permissions" className="flex flex-col gap-5 rounded-xl border bg-card p-5 text-card-foreground sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div className="flex items-start gap-4">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><ShieldCheck aria-hidden="true" className="size-5" /></div>
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Permission catalogue</h2>
+          <p className="max-w-xl text-sm leading-6 text-muted-foreground">Review the actions available across your workspace. Permissions are assigned through roles, not directly to users.</p>
+        </div>
+      </div>
+      <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-md border bg-muted/40 px-3 py-1.5 text-xs font-medium"><LockKeyhole aria-hidden="true" className="size-3.5" />Read-only catalogue</span>
+    </section>
+
+    {loading ? <div role="status" className="flex min-h-48 items-center justify-center gap-3 rounded-xl border bg-card text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="size-5 animate-spin motion-reduce:animate-none" />Loading permissions…</div>
+      : error ? <div role="alert" className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive"><AlertCircle aria-hidden="true" className="size-5 shrink-0" /><div><p className="font-medium">Unable to load permissions</p><p className="mt-1">{error}</p></div></div>
+      : !rows.length ? <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-xl border bg-card p-6 text-center"><BookKey aria-hidden="true" className="mb-2 size-7 text-muted-foreground" /><h2 className="font-semibold">No permissions available.</h2><p className="text-sm text-muted-foreground">Permissions will appear here when they are available.</p></div>
+      : <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">All permissions</h2><p className="text-xs text-muted-foreground">{rows.length} permissions <span aria-hidden="true" className="mx-1">·</span> {new Set(rows.map(item => item.module)).size} modules</p></div>
+        {[...new Set(rows.map(item => item.module))].map(module => <section aria-label={`${module} permissions`} key={module} className="overflow-hidden rounded-xl border bg-card text-card-foreground">
+          <header className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-4 sm:px-6">
+            <h3 className="flex min-w-0 items-center gap-3 text-sm font-semibold"><Layers3 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" /><span className="break-words capitalize">{module.replace(/[_-]/g, ' ')}</span></h3>
+            <span className="shrink-0 rounded-md border bg-background px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{rows.filter(item => item.module === module).length} permissions</span>
+          </header>
+          <div aria-hidden="true" className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 border-b px-6 py-2.5 text-xs font-medium text-muted-foreground md:grid"><span>Permission</span><span>Permission code</span></div>
+          <ul className="divide-y">{rows.filter(item => item.module === module).map(item => <li className="grid min-w-0 gap-2 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-center md:gap-6 sm:px-6" key={item.id}>
+            <p className="min-w-0 break-words text-sm leading-6">{item.description}</p>
+            <code className="w-fit max-w-full break-all rounded-md border bg-muted/40 px-2 py-1 text-xs leading-5 text-muted-foreground">{item.code}</code>
+          </li>)}</ul>
+        </section>)}
+      </div>}
   </div>;
 }
