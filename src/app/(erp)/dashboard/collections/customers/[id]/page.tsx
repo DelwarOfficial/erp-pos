@@ -43,6 +43,8 @@ const AMOUNT = /^\d{1,15}(\.\d{1,2})?$/;
 export default function CustomerCollectionPage() {
   const { id } = useParams<{ id: string }>();
   const can = useCan();
+  // Cashiers collect with payment.allocate; managers and admins with payment.pay.branch.
+  const canCollect = can('payment.allocate') || can('payment.pay.branch');
   const [data, setData] = useState<Receivable | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,14 +75,14 @@ export default function CustomerCollectionPage() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!can('payment.pay.branch')) return;
+    if (!canCollect) return;
     void Promise.all([apiFetch('/api/v1/branches'), apiFetch('/api/v1/financial-accounts')]).then(async ([b, f]) => {
       const bs = b.ok ? (await b.json()).items as Option[] : [];
       const fs = f.ok ? ((await f.json()).items as Array<Option & { is_active?: boolean }>).filter(a => a.is_active !== false) : [];
       setBranches(bs); setAccounts(fs);
       if (bs.length === 1) setBranchId(bs[0].id);
     });
-  }, []);
+  }, [canCollect]);
 
   const openSales = useMemo(() => {
     const seen = new Map<string, string>();
@@ -165,7 +167,7 @@ export default function CustomerCollectionPage() {
         </CardContent>
       </Card>
 
-      {can('payment.pay.branch') && data.outstanding !== '0.00' && (
+      {canCollect && data.outstanding !== '0.00' && (
         <Card id="collect">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><HandCoins className="h-5 w-5" />Collect a payment</CardTitle>

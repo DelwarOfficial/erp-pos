@@ -23,6 +23,7 @@ import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
 import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/schedule';
 import { installmentBalances } from '@/domain/receivables/balances';
+import { getApprovalThresholds } from '@/lib/approval/thresholds';
 import { localDate, isoFromDate } from '@/domain/receivables/calendar';
 import { normalizeBdMobile } from '@/domain/receivables/phone';
 
@@ -56,6 +57,13 @@ export interface PostSaleInput {
   reminderPhone?: string;
   /** Send SMS due reminders for this sale (default true; the company policy must also be on). */
   dueRemindersEnabled?: boolean;
+  /**
+   * The caller may approve a price reduction above the company's
+   * sale_discount_threshold (route: holds approval.resolve for the branch).
+   * Without it, selling below the products' default prices by more than the
+   * threshold, in total, is refused.
+   */
+  discountApproved?: boolean;
 }
 
 export interface PostSaleResult {
@@ -111,6 +119,7 @@ export async function postSale(
   let subtotal = new Prisma.Decimal(0);
   let discountTotal = new Prisma.Decimal(0);
   let taxTotal = new Prisma.Decimal(0);
+  let priceReduction = new Prisma.Decimal(0);
   const saleItemsData: Array<{
     lineNo: number;
     productId: string;
@@ -247,10 +256,29 @@ export async function postSale(
       })),
     });
 
+    // Price reduction against the catalogue: default price × qty minus what
+    // the line actually charges (before tax). A price above default is fine.
+    if (product.defaultPrice != null) {
+      const listAmount = new Prisma.Decimal(product.defaultPrice).mul(item.qty);
+      const reduction = listAmount.minus(grossAmount.minus(discountAmount));
+      if (reduction.gt(0)) priceReduction = priceReduction.plus(reduction);
+    }
+
     subtotal = subtotal.plus(grossAmount);
     discountTotal = discountTotal.plus(discountAmount);
     taxTotal = taxTotal.plus(lineTaxAmount);
     lineNo++;
+  }
+
+  // Prices and discounts arrive from the till; the catalogue is the authority.
+  // A reduction above the company threshold needs someone who can approve it.
+  if (priceReduction.gt(0) && !input.discountApproved) {
+    const { sale_discount_threshold: threshold } = await getApprovalThresholds(input.companyId);
+    if (priceReduction.gt(threshold)) {
+      throw new DomainError('APPROVAL_REQUIRED',
+        `This sale is ৳${priceReduction.toFixed(2)} below list price, above the ৳${new Prisma.Decimal(threshold).toFixed(2)} a cashier may give. Ask a manager to post it.`,
+        { price_reduction: priceReduction.toFixed(2), threshold }, 403);
+    }
   }
 
   const grandTotal = subtotal.minus(discountTotal).plus(taxTotal);

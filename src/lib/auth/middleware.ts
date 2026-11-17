@@ -102,6 +102,12 @@ export async function withAuthenticatedTenant<T>(
   return runInTenantContext(auth.ctx, async () => work(auth));
 }
 
+/** requirePermission as a yes/no answer, for optional powers such as approving a discount. */
+export async function hasPermission(auth: AuthResult, permissionCode: string, branchId?: string): Promise<boolean> {
+  try { await requirePermission(auth, permissionCode, branchId); return true; }
+  catch (e) { if (e instanceof DomainError && e.code === 'FORBIDDEN_SCOPE') return false; throw e; }
+}
+
 export async function requirePermission(
   auth: AuthResult,
   permissionCode: string,

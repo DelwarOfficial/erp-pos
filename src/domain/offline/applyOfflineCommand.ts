@@ -122,7 +122,8 @@ export async function applyOfflineCommand(
         closedBy: params.userId,
         countedClosingCash: payload.counted_closing_cash,
         varianceReason: payload.variance_reason,
-        approvedBy: payload.approved_by,
+        // Offline closes carry no approval: a large variance waits for a manager online.
+        closerCanApprove: false,
       }, correlationId);
       return { status: 'applied', resourceType: 'cashier_shift', resourceId: shift.shiftId };
     }

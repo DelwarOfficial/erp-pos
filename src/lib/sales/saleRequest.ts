@@ -57,8 +57,9 @@ function arrangement(body: PostSaleBody): PaymentArrangement | undefined {
   return { type: 'installments', installments: a.installments.map(i => ({ dueDate: i.due_date, amount: i.amount })) };
 }
 
-export function postSaleInput(body: PostSaleBody, auth: { companyId: string; userId: string }): PostSaleInput {
+export function postSaleInput(body: PostSaleBody, auth: { companyId: string; userId: string }, discountApproved = false): PostSaleInput {
   return {
+    discountApproved,
     companyId: auth.companyId,
     branchId: body.branch_id,
     warehouseId: body.warehouse_id,

@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { authenticateRequest, hasPermission, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { closeCashierShift } from '@/domain/commands/m3/CashierShift';
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'shift.close');
+    await requirePermission(auth, 'shift.close');
     const { id } = await params;
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CloseSchema.parse(await req.json());
@@ -30,13 +30,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         withIdempotency(
           { idempotencyKey, operation: 'cashier_shift.close', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
+            // Who may approve is decided from the session for the shift's branch; an
+            // approved_by in the body is ignored (it used to be trusted as given).
+            const shiftRow = await tx.cashierShift.findFirst({ where: { id, companyId: auth.companyId }, select: { branchId: true } });
+            const closerCanApprove = shiftRow ? await hasPermission(auth, 'approval.resolve', shiftRow.branchId) : false;
             const result = await closeCashierShift(tx, {
               shiftId: id,
               companyId: auth.companyId,
               closedBy: auth.userId,
               countedClosingCash: body.counted_closing_cash,
               varianceReason: body.variance_reason,
-              approvedBy: body.approved_by,
+              closerCanApprove,
             }, correlationId);
             return {
               status: 200,

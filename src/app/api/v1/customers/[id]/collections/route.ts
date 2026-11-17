@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { authenticateRequest, hasPermission, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -28,11 +28,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-    await requirePermission(auth, 'payment.pay.branch');
     const idempotencyKey = requireIdempotencyKey(req);
     const { id: customerId } = await params;
     const body = CollectSchema.parse(await req.json());
     assertBranchAccess(body.branch_id, auth.ctx);
+    // A cashier collects dues at the counter with payment.allocate (applying
+    // money to invoices); payment.pay.branch, which also pays money out, is
+    // not needed for that.
+    if (!(await hasPermission(auth, 'payment.allocate', body.branch_id))) {
+      await requirePermission(auth, 'payment.pay.branch', body.branch_id);
+    }
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/customers/${customerId}/collections`, body });
 
     const result = await runInTenantContext(auth.ctx, () =>

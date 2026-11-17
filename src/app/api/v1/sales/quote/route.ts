@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { authenticateRequest, hasPermission, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -30,9 +30,11 @@ export async function POST(req: NextRequest) {
     await requirePermission(auth, 'sale.post');
     requireIdempotencyKey(req);
     const body = PostSaleSchema.parse(await req.json());
+    await requirePermission(auth, 'sale.post', body.branch_id);
+    const discountApproved = await hasPermission(auth, 'approval.resolve', body.branch_id);
     try {
       await runInTenantContext(auth.ctx, () => withTenant(auth.ctx, async tx => {
-        const sale = await postSale(tx, postSaleInput(body, auth), correlationId);
+        const sale = await postSale(tx, postSaleInput(body, auth, discountApproved), correlationId);
         const installments = await tx.installment.findMany({ where: { saleId: sale.saleId }, orderBy: { installmentNo: 'asc' } });
         const saleRow = await tx.sale.findUniqueOrThrow({ where: { id: sale.saleId }, select: { customerPhoneSnapshot: true } });
         const unpaid = installments.reduce((s, i) => s.plus(i.amount), new Prisma.Decimal(0));

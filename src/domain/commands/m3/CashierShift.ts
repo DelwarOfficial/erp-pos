@@ -63,7 +63,13 @@ export interface CloseShiftInput {
   closedBy: string;
   countedClosingCash: number;
   varianceReason?: string;
-  approvedBy?: string;  // required if variance exceeds threshold
+  /**
+   * The closer holds approval.resolve for the shift's branch (decided by the
+   * route from the session, never from the request body). A large variance is
+   * approved by such a closer, who must not be the shift's own cashier; the
+   * approver recorded is the closer. Closing someone else's shift needs it too.
+   */
+  closerCanApprove: boolean;
 }
 
 export async function closeCashierShift(
@@ -109,14 +115,19 @@ export async function closeCashierShift(
   const { getApprovalThresholds } = await import('@/lib/approval/thresholds');
   const thresholds = await getApprovalThresholds(input.companyId);
   const requiresApproval = Math.abs(variance) > thresholds.cashier_variance_amount;
-  if (requiresApproval && !input.approvedBy) {
+  const ownShift = shift.cashierId === input.closedBy;
+  if (!ownShift && !input.closerCanApprove) {
+    throw new DomainError('FORBIDDEN_SCOPE', 'Only the shift’s cashier or a manager can close this shift', {}, 403);
+  }
+  if (requiresApproval && (ownShift || !input.closerCanApprove)) {
     throw new DomainError(
       'APPROVAL_REQUIRED',
-      `Variance of ${variance.toFixed(2)} exceeds threshold — supervisor approval required`,
+      `The drawer is off by ৳${Math.abs(variance).toFixed(2)}, more than ৳${thresholds.cashier_variance_amount}. A manager must count and close this shift.`,
       { variance, threshold: thresholds.cashier_variance_amount },
       409,
     );
   }
+  const approvedBy = requiresApproval ? input.closedBy : null;
 
   await tx.cashierShift.update({
     where: { id: shift.id },
@@ -127,8 +138,8 @@ export async function closeCashierShift(
       countedClosingCash: input.countedClosingCash,
       variance,
       varianceReason: input.varianceReason ?? null,
-      approvedBy: input.approvedBy ?? null,
-      approvedAt: input.approvedBy ? new Date() : null,
+      approvedBy,
+      approvedAt: approvedBy ? new Date() : null,
     },
   });
 
@@ -170,7 +181,7 @@ export async function closeCashierShift(
       action: 'cashier_shift.close', entityType: 'cashier_shift', entityId: shift.id,
       afterValue: JSON.stringify({
         expected: expectedCash, counted: input.countedClosingCash,
-        variance, approved_by: input.approvedBy ?? null,
+        variance, approved_by: approvedBy,
       }),
     },
   });

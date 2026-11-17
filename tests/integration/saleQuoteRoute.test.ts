@@ -9,7 +9,7 @@ import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 
 const A: string = randomUUID();
 const auth = vi.hoisted(() => ({ current: null as unknown }));
-vi.mock('@/lib/auth/middleware', () => ({ authenticateRequest: async () => auth.current, requirePermission: async () => undefined }));
+vi.mock('@/lib/auth/middleware', () => ({ authenticateRequest: async () => auth.current, requirePermission: async () => undefined, hasPermission: async () => false }));
 
 const db = new PrismaClient();
 let body: Record<string, unknown>;

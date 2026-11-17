@@ -96,6 +96,12 @@ export default function MfaSetupPage() {
         toast.error(message);
         return;
       }
+      if (data?.awaiting_activation) {
+        // New company: MFA was the last step on our side; the platform team activates it next.
+        toast.success('Two-step sign-in is on. Your company will be ready once it is activated — then sign in again.');
+        router.push('/login');
+        return;
+      }
       toast.success('MFA activated');
       router.push('/dashboard');
     } catch (e) {

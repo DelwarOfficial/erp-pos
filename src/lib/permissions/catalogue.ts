@@ -252,12 +252,13 @@ export const SYSTEM_ROLES = [
   {
     name: 'branch_manager',
     description: 'Branch manager. Branch-scoped operations + approvals.',
-    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'collection.manage.branch', 'collection.reschedule.branch', 'communication.transactional.send.branch'],
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'collection.manage.branch', 'collection.reschedule.branch', 'communication.transactional.send.branch', 'payment.read', 'payment.allocate', 'customer.credit.view.branch'],
   },
   {
     name: 'cashier',
-    description: 'POS cashier. Posts sales, opens/closes shifts. No reports.',
-    permissions: ['product.read', 'sale.post', 'sale.void', 'sale_return.post', 'shift.open', 'shift.close', 'gift_card.redeem', 'payment.allocate'],
+    description: 'POS cashier. Posts sales, opens/closes shifts, collects customer dues. No reports.',
+    permissions: ['product.read', 'sale.post', 'sale.void', 'sale_return.post', 'shift.open', 'shift.close', 'gift_card.redeem', 'payment.allocate',
+      'payment.read', 'inventory.read', 'customer.credit.view.branch', 'collection.view.branch'],
   },
   {
     name: 'accountant',

@@ -80,9 +80,33 @@ export async function collectCustomerPayment(
 
   const account = await tx.financialAccount.findFirst({
     where: { id: input.financialAccountId, companyId: input.companyId, isActive: true },
-    select: { id: true, chartOfAccountId: true, currencyCode: true },
+    select: { id: true, chartOfAccountId: true, currencyCode: true, branchId: true },
   });
   if (!account) throw new DomainError('VALIDATION_FAILED', 'Financial account not found or inactive', {}, 404);
+  // Money taken at one branch cannot land in another branch's cash box or bank.
+  if (account.branchId && account.branchId !== input.branchId) {
+    throw new DomainError('VALIDATION_FAILED', 'That account belongs to another branch; choose one of this branch', {}, 400);
+  }
+
+  // Cash taken at the counter belongs in the collector's drawer: link it to
+  // their open shift so shift close expects it (otherwise every collection
+  // shows as a cash overage). A named shift must be open, in this branch and
+  // the collector's own.
+  let cashierShiftId: string | null = null;
+  if (input.cashierShiftId) {
+    const shift = await tx.cashierShift.findFirst({
+      where: { id: input.cashierShiftId, companyId: input.companyId, branchId: input.branchId, cashierId: input.collectedBy, status: 'open' },
+      select: { id: true },
+    });
+    if (!shift) throw new DomainError('NO_OPEN_SHIFT', 'That shift is not your open shift in this branch', {}, 409);
+    cashierShiftId = shift.id;
+  } else if (input.paymentMethod === 'cash') {
+    const shift = await tx.cashierShift.findFirst({
+      where: { companyId: input.companyId, branchId: input.branchId, cashierId: input.collectedBy, status: 'open' },
+      select: { id: true }, orderBy: { openedAt: 'desc' },
+    });
+    cashierShiftId = shift?.id ?? null;
+  }
   if (account.currencyCode !== CURRENCY) throw new DomainError('VALIDATION_FAILED', `Collections are in ${CURRENCY}`, {}, 409);
   const policies = await tx.accountingPolicy.findUnique({ where: { companyId: input.companyId }, select: { arAccountId: true } });
   if (!policies) throw new DomainError('VALIDATION_FAILED', 'Accounting policies are not configured', {}, 409);
@@ -115,7 +139,7 @@ export async function collectCustomerPayment(
     data: {
       companyId: input.companyId, branchId: input.branchId, referenceNo, clientTxnId: randomUUID(),
       paymentType: 'sale_receipt', direction: 'incoming', customerId: input.customerId,
-      financialAccountId: account.id, cashierShiftId: input.cashierShiftId ?? null,
+      financialAccountId: account.id, cashierShiftId,
       currencyCode: CURRENCY, exchangeRate: 1, amount, baseAmount: amount,
       paymentMethod: input.paymentMethod, methodReference: input.methodReference ?? null,
       chequeStatus: input.paymentMethod === 'cheque' ? 'pending_clearance' : 'not_applicable',

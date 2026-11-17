@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { systemDb as db } from '@/lib/db';
 import { verifyPassword, getLockoutDuration } from '@/lib/auth/password';
 import { setAuthCookies, setMfaPendingCookie, setMfaSetupCookie, applyCookiesToResponse } from '@/lib/auth/sessions';
-import { issueEnrollment } from '@/lib/auth/enrollment';
+import { issueEnrollment, isAwaitingActivation } from '@/lib/auth/enrollment';
 import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -70,7 +70,12 @@ export async function POST(req: NextRequest) {
 
     if (!user.isActive) throw new DomainError('UNAUTHORIZED', 'Invalid credentials', {}, 401);
 
-    if (user.company.status !== 'active') {
+    // A newly onboarded company stays suspended until the platform activates
+    // it, and activation needs an owner with MFA. Its owner may therefore sign
+    // in only to enrol MFA (no session is issued until activation); any other
+    // non-active company is refused outright.
+    const awaitingActivation = await isAwaitingActivation(user.company);
+    if (user.company.status !== 'active' && !awaitingActivation) {
       throw new DomainError('COMPANY_SUSPENDED', 'Company is not active', {}, 403);
     }
 
@@ -151,7 +156,7 @@ export async function POST(req: NextRequest) {
     const e2eBypassAllowed = process.env.E2E_TESTING === 'true'
       && (process.env.NODE_ENV !== 'production' || insecureTestModeAcknowledged(process.env));
     const isSandboxBypass = (process.env.NODE_ENV === 'development' || e2eBypassAllowed) && !user.mfaEnabled;
-    if (hasPrivilegedRole && !user.mfaEnabled && !isSandboxBypass) {
+    if (hasPrivilegedRole && !user.mfaEnabled && (!isSandboxBypass || awaitingActivation)) {
       // Bootstrap path: password is valid but MFA was never enrolled. Issue a
       // short-lived, HMAC-bound enrollment state (NOT a session) and direct
       // the client to the setup flow. MFA remains mandatory — this is the only
@@ -169,6 +174,13 @@ export async function POST(req: NextRequest) {
       });
       setupResponse.cookies.set(setupDef.name, setupDef.value, setupDef.options as never);
       return setupResponse;
+    }
+
+    // Awaiting activation: nothing past MFA enrolment is available yet.
+    if (awaitingActivation) {
+      throw new DomainError('COMPANY_SUSPENDED',
+        user.mfaEnabled ? 'Your company is waiting for activation. You can sign in once it is active.' : 'Company is not active',
+        { awaiting_activation: true }, 403);
     }
 
     // If MFA enabled, set pending cookie and require verification

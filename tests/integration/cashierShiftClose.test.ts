@@ -28,7 +28,7 @@ async function cash(shiftId: string, amount: string, direction: 'incoming' | 'ou
   } });
 }
 const close = (shiftId: string, counted: number) => withTenant(ctx(), tx => closeCashierShift(tx, {
-  shiftId, companyId: A, closedBy: fx.user.id, countedClosingCash: counted, varianceReason: 'count', approvedBy: fx.user.id,
+  shiftId, companyId: A, closedBy: fx.user.id, countedClosingCash: counted, varianceReason: 'count', closerCanApprove: true,
 }, randomUUID()));
 
 beforeAll(async () => {
@@ -66,6 +66,23 @@ describe('closing a cashier shift', () => {
     await cash(exact.shiftId, '40.00', 'outgoing');
     expect((await close(exact.shiftId, 60)).variance).toBe(0);
     expect(await db.journalEntry.count({ where: { companyId: A, sourceType: 'cashier_shift', sourceId: exact.shiftId } })).toBe(0);
+  });
+
+  it('needs a manager, not the cashier, to close with a large variance, and records the manager', async () => {
+    const shift = await open(1000);
+    const own =await db.cashierShift.findUniqueOrThrow({ where: { id: shift.shiftId } });
+    // The cashier closes their own shift 900 short: refused even if they could approve.
+    await expect(withTenant(ctx(), tx => closeCashierShift(tx, {
+      shiftId: shift.shiftId, companyId: A, closedBy: own.cashierId, countedClosingCash: 0, varianceReason: 'count', closerCanApprove: true,
+    }, randomUUID()))).rejects.toThrow(/manager must count and close/);
+    // Someone else without approval rights cannot close it at all.
+    await expect(withTenant(ctx(), tx => closeCashierShift(tx, {
+      shiftId: shift.shiftId, companyId: A, closedBy: fx.user.id, countedClosingCash: 0, varianceReason: 'count', closerCanApprove: false,
+    }, randomUUID()))).rejects.toThrow(/cashier or a manager/);
+    // A manager closes it, and is the recorded approver.
+    const result = await close(shift.shiftId, 0);
+    expect(result.status).toBe('approved');
+    expect((await db.cashierShift.findUniqueOrThrow({ where: { id: shift.shiftId } })).approvedBy).toBe(fx.user.id);
   });
 
   it('refuses a variance when no cash over/short account is set', async () => {

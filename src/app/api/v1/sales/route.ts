@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { authenticateRequest, hasPermission, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { postSale } from '@/domain/commands/m3/PostSale';
@@ -101,6 +101,9 @@ export async function POST(req: NextRequest) {
     await requirePermission(auth, 'sale.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostSaleSchema.parse(await req.json());
+    await requirePermission(auth, 'sale.post', body.branch_id);
+    // A manager (approval.resolve) may sell further below list price than the threshold.
+    const discountApproved = await hasPermission(auth, 'approval.resolve', body.branch_id);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/sales', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
@@ -108,7 +111,7 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'sale.post', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
-            const result = await postSale(tx, postSaleInput(body, auth), correlationId);
+            const result = await postSale(tx, postSaleInput(body, auth, discountApproved), correlationId);
 
             return {
               status: 201,

@@ -35,13 +35,26 @@ export interface EnrollmentContext {
 
 type IssueSession = typeof setAuthCookies;
 
+/**
+ * A company onboarded but never activated: suspended, with no company.activate
+ * audit row. Its owners may enrol MFA (activation requires it) but get no
+ * session. A company suspended after it was once active is not this.
+ */
+export async function isAwaitingActivation(company: { id: string; status: string }): Promise<boolean> {
+  if (company.status !== 'suspended') return false;
+  const activated = await db.auditLog.findFirst({ where: { companyId: company.id, action: 'company.activate' }, select: { id: true } });
+  return !activated;
+}
+
 async function loadEnrollableUser(payload: MfaSetupPayload) {
   const user = await db.user.findFirst({
     where: { id: payload.userId, companyId: payload.companyId, deletedAt: null },
     include: { company: true, branchAccess: true },
   });
   // Re-check at USE time: already-enrolled users can never (re-)enroll here.
-  if (!user || !user.isActive || user.company.status !== 'active' || user.mfaEnabled || user.mfaSecretCiphertext
+  if (!user || !user.isActive
+    || (user.company.status !== 'active' && !(await isAwaitingActivation(user.company)))
+    || user.mfaEnabled || user.mfaSecretCiphertext
     || user.passwordChangedAt.getTime() > payload.iat) {
     return null;
   }
@@ -103,7 +116,10 @@ export async function getEnrollmentChallenge(
   return { otpauthUrl: setup.otpauthUrl, manualKey: setup.secret, cookieValue: refreshed.cookieValue };
 }
 
-export interface ActivationResult {
+export type ActivationResult = { awaitingActivation: true } | SessionActivationResult;
+
+export interface SessionActivationResult {
+  awaitingActivation?: false;
   user: {
     id: string;
     name: string;
@@ -195,6 +211,18 @@ export async function activateEnrollment(
   }
 
   const branchIds = user.branchAccess.map((b) => b.branchId);
+
+  // MFA is now on, which is what activation waits for; but a company not yet
+  // active gets no session.
+  if (user.company.status !== 'active') {
+    await recordSecurityEvent({
+      eventType: 'mfa_setup_completed', severity: 'info',
+      metadata: { user_id: user.id, family_id: payload.familyId, awaiting_activation: true },
+      companyId: user.companyId, userId: user.id, ip: ctx?.ip, userAgent: ctx?.userAgent,
+    });
+    return { awaitingActivation: true };
+  }
+
   const sessionId = randomUUID();
   const issueSession = deps?.issueSession ?? setAuthCookies;
   const session = await issueSession({

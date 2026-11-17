@@ -29,6 +29,13 @@ export async function POST(req: NextRequest) {
     const result = await activateEnrollment(incoming, code, { ip, userAgent: ua });
 
     await clearMfaSetupCookie();
+    if (result.awaitingActivation) {
+      // MFA is on; the company still needs platform activation. No session.
+      const pending = NextResponse.json({ mfa_required: false, mfa_setup_completed: true, awaiting_activation: true });
+      pending.cookies.delete(getMfaSetupCookieName());
+      pending.headers.set('Cache-Control', 'no-store');
+      return pending;
+    }
     const res = NextResponse.json({
       mfa_required: false,
       mfa_setup_completed: true,
