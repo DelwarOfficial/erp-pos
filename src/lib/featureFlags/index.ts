@@ -19,6 +19,7 @@
 //   quotation_enabled (default true — B2B core)
 //   multilingual_ui_enabled (default true — bn-BD + en-BD both available)
 
+import type { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { DomainError } from '../errors/codes';
 import { getTenantContext } from '../db/transaction';
@@ -173,9 +174,15 @@ export async function toggleFeatureFlag(params: {
 /**
  * Seed default feature flags for a new company during onboarding.
  */
-export async function seedFeatureFlagsForCompany(companyId: string, userId: string): Promise<void> {
+/**
+ * Pass the caller's transaction client when the company row is not yet
+ * committed (onboarding): another connection cannot see it, so the insert
+ * fails its company foreign key.
+ */
+export async function seedFeatureFlagsForCompany(companyId: string, userId: string,
+  client: Pick<Prisma.TransactionClient, 'featureFlag'> = db): Promise<void> {
   for (const spec of FEATURE_FLAG_CATALOGUE) {
-    await db.featureFlag.upsert({
+    await client.featureFlag.upsert({
       where: { companyId_flagKey: { companyId, flagKey: spec.key } },
       create: {
         companyId,

@@ -208,7 +208,6 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'backup.download.company', module: 'system', description: 'Download backups (requires MFA)' },
   { code: 'backup.restore.request.company', module: 'system', description: 'Request production restore (platform ops only)' },
   // Platform
-  { code: 'platform.onboarding.execute', module: 'platform', description: 'Onboard new tenants' },
   { code: 'platform.tenant.pilot_enable', module: 'platform', description: 'Enable pilot features for tenants' },
   { code: 'system.config.view', module: 'system', description: 'View system configuration' },
   // AM-BR — Fixed assets + bank reconciliation

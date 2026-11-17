@@ -140,3 +140,34 @@ Strings moved: 36 (`inventory.*`). The table keeps every stock and cost column a
 - Browser: `tests/e2e/presentation.spec.ts` run against the local dev server with the installed Chromium (the Playwright version in the repo expects a browser build that is not installed, so a local config in `.local/` points at the installed one). Final run on 2026-11-17: 73 of 75 passed. The two failures are the stale tests listed above.
 - Manual: shell, home, POS, cashier, sales, payments and inventory opened at 1280px as the platform admin; POS opened at 375px in Bengali with no horizontal overflow.
 - **Not done:** the full cashier journey (login → POS → serial product → cash payment → close shift) with real data, because onboarding fails as described above. `tests/e2e/ui-health.spec.ts`, `accessibility.spec.ts` and `ui-workflows.spec.ts` need a seeded tenant and were not run; their selectors were updated for the renamed controls but are unverified.
+
+## Verification pass, 2026-11-17 (afternoon)
+
+**Fixed to unblock verification (backend, small):**
+- Onboarding failed three ways. (1) `platform.onboarding.execute` was listed twice in the permission catalogue, so seeding the `owner` role (`*`) inserted it twice; the duplicate is removed and `tests/unit/permissionCatalogueUnique.test.ts` guards it. (2) The onboarding audit row paired the new company's ID with the platform admin's user ID, which the tenant foreign key rejects; it is now recorded under the admin's own company with the new company as the entity. (3) Feature flags and company languages were seeded with the shared client while the company existed only inside the onboarding transaction; both seed helpers now take the transaction client.
+
+**Verified:**
+- Cashier journey, `tests/e2e/cashier-journey.spec.ts` (new): sign in → open shift → New Sale → serial TV → cash with change → sale `INV-DHN-000001` saved → appears in Sales → close shift → "Drawer balanced". Passed against the real app and database; screenshots in `.local/journey/`.
+- `accessibility.spec.ts`: 16/16. It previously signed in before every test (12+ times), which trips the login limit of 10 per 15 minutes; it now signs in once and reuses the session.
+- `presentation.spec.ts`: the two stale tests now match the current pages (catalogue has named Edit/Delete actions; opening stock picks its warehouse from a list).
+- Full unit and integration suite: 116 files, 1,441 tests passed. TypeScript and ESLint clean on changed files.
+- Worker entrypoint: `src/workers/index.ts` starts all six BullMQ workers (then retries Redis, which is not running locally).
+
+**Still not run:** `ui-health.spec.ts` and `ui-workflows.spec.ts`. Their harness launches Playwright's pinned browser build (`chromium_headless_shell-1234`), which is not installed. The worker Docker image was not built (no Docker on this machine).
+
+**Product gaps found (not fixed, need a decision):**
+- **Company activation deadlock.** Onboarding creates the company `suspended`; activation requires an owner with two-step sign-in; login is refused for a suspended company, so the owner can never set it up. The demo company was activated directly in the local database.
+- **Products can never be activated.** Activation requires default sale and purchase unit options, and no code path creates `product_unit_options` rows. New products therefore stay inactive and cannot be sold. The demo rows were inserted directly in the local database.
+- **New companies cannot sell until someone opens a fiscal period.** This is a reasonable setup step, but onboarding neither creates one nor says so; the cashier only sees the error at checkout.
+- **Tenant owner gets the platform onboarding permission.** `owner` is granted `*`, which includes `platform.onboarding.execute`. The route also checks `isGlobal`, so it is not exploitable today, but the grant is wrong.
+
+**High findings from the red-team review, now checked in code:**
+
+| Finding | Verdict |
+|---|---|
+| Client-authoritative `unit_price` / discount on sales | **Confirmed.** `PostSale` accepts any price ≥ 0 and any discount; nothing compares with the product's price, and `sale_discount_threshold` is defined but never used. |
+| Loyalty / gift-card redemption is dead code | **Confirmed.** `redeemGiftCard`, `redeemCoupon`, `earnRewardPoints`, `redeemRewardPoints` are never called. POS rejects gift-card tenders with an honest message. |
+| Feature-flag registry disagreement | **Confirmed.** Leads, employees and warranty-claims routes have no flag gate; `IMPLEMENTED_MODULES` lacks hr/loyalty/delivery/service/crm/offline, so those flags cannot be switched on. |
+| Multi-currency enables a no-journal revaluation | **Confirmed.** `runRevaluation` creates the revaluation record but posts no journal entry. |
+| Warranty fulfilment asset-unsafe | **Confirmed and live.** `POST /api/v1/warranty-claims` records a replacement serial without moving it out of stock or changing its status, so the same unit can still be sold. The route has no feature-flag gate. |
+| Bank reconciliation misstates the `reversed` status set | **Not confirmed.** No status filter was found in the bank-reconciliation routes; needs a targeted look. |

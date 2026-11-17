@@ -13,12 +13,24 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@erp-platform.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'ChangeMe!2026';
 
+// Sign in through the form once and reuse the session cookies. Signing in
+// before every test used 12+ attempts for one account, which trips the login
+// rate limit (10 per 15 minutes) and locked the suite out part-way through.
+type Cookies = Awaited<ReturnType<import('@playwright/test').BrowserContext['cookies']>>;
+let session: Cookies | null = null;
+
 async function login(page: import('@playwright/test').Page) {
+  if (session) {
+    await page.context().addCookies(session);
+    await page.goto(`${BASE_URL}/dashboard`);
+    return;
+  }
   await page.goto(`${BASE_URL}/login`);
   await page.fill('[id="email"]', ADMIN_EMAIL);
   await page.fill('[id="password"]', ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard', { timeout: 45000 });
+  session = await page.context().cookies();
 }
 
 async function analyzePage(page: import('@playwright/test').Page) {

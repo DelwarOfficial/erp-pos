@@ -112,10 +112,10 @@ test('touch navigation actions provide 44-pixel targets without overflow', async
   } finally { await context.close(); }
 });
 
-test('catalogue creation keeps named fields and does not offer unsupported edits', async ({ page }) => {
+test('catalogue creation keeps named fields and names its edit and delete actions', async ({ page }) => {
   await fixtures(page, { is_global: true });
   let posts = 0;
-  await page.route('**/api/v1/categories', route => {
+  await page.route(/\/api\/v1\/categories(\?.*)?$/, route => {
     if (route.request().method() === 'POST') {
       posts++; expect(route.request().postDataJSON()).toEqual({ name: 'Accessories', code: 'ACC' });
       return route.fulfill({ json: { id: 'created-category' } });
@@ -128,8 +128,11 @@ test('catalogue creation keeps named fields and does not offer unsupported edits
   await form.getByLabel('Code', { exact: true }).fill('ACC');
   await form.getByRole('button', { name: 'Add Category', exact: true }).click();
   await expect(form.getByLabel('Name', { exact: true })).toHaveValue('');
+  // Catalogue entries can now be edited and deleted; every row action names
+  // what it acts on rather than a bare "Edit" or "Delete".
   await expect(page.getByRole('button', { name: /^(Edit|Delete)$/ })).toHaveCount(0);
-  await expect(page.getByText('Editing and deletion are not available here.')).toHaveCount(4);
+  await expect(page.getByRole('button', { name: 'Edit Category', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Delete Category', exact: true })).toHaveCount(1);
   expect(posts).toBe(1);
 });
 
@@ -142,11 +145,14 @@ test('retrying product options preserves form values without submitting stock', 
     posts++; return route.fulfill({ status: 503, json: {} });
   });
   await page.goto('/dashboard/inventory/opening-stock');
-  await page.getByLabel('Warehouse *', { exact: true }).fill('presentation-warehouse');
+  // The warehouse is now chosen from a picker, so the reference number stands
+  // in as the typed header field that must survive the retry.
+  await page.getByLabel('Reference No *', { exact: true }).fill('OPEN-PRESENTATION');
   await page.getByLabel('Quantity', { exact: true }).fill('2');
   await page.getByLabel('Unit Cost (BDT)', { exact: true }).fill('125.50');
   recovered = true; await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByText('No products are available for selection.')).toBeVisible();
+  await expect(page.getByLabel('Reference No *', { exact: true })).toHaveValue('OPEN-PRESENTATION');
   await expect(page.getByLabel('Quantity', { exact: true })).toHaveValue('2');
   expect(posts).toBe(0);
 });

@@ -6,6 +6,7 @@
 // company in `translation_overrides`. Noto Sans Bengali is loaded as a web
 // font for UI and embedded in PDFs.
 
+import type { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -246,13 +247,15 @@ export function formatMoney(
 /**
  * Seed supported_languages + company_languages for a new company during onboarding.
  */
-export async function seedLocalizationForCompany(companyId: string, defaultLocale: Locale = DEFAULT_LOCALE): Promise<void> {
+/** Pass the caller's transaction client while the company is uncommitted (onboarding). */
+export async function seedLocalizationForCompany(companyId: string, defaultLocale: Locale = DEFAULT_LOCALE,
+  client: Pick<Prisma.TransactionClient, 'supportedLanguage' | 'companyLanguage'> = db): Promise<void> {
   // Ensure supported_languages exist
   for (const locale of SUPPORTED_LOCALES) {
     const meta = locale === 'bn-BD'
       ? { name: 'Bangla (Bangladesh)', nativeName: 'বাংলা', textDirection: 'ltr' }
       : { name: 'English (Bangladesh)', nativeName: 'English', textDirection: 'ltr' };
-    await db.supportedLanguage.upsert({
+    await client.supportedLanguage.upsert({
       where: { locale },
       create: { locale, ...meta, isActive: true },
       update: meta,
@@ -261,7 +264,7 @@ export async function seedLocalizationForCompany(companyId: string, defaultLocal
 
   // Enable both locales for the company
   for (const locale of SUPPORTED_LOCALES) {
-    await db.companyLanguage.upsert({
+    await client.companyLanguage.upsert({
       where: { companyId_locale: { companyId, locale } },
       create: { companyId, locale, isDefault: locale === defaultLocale, isEnabled: true },
       update: {},

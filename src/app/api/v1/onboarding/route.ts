@@ -195,10 +195,13 @@ export async function POST(req: NextRequest) {
             data: { userId: admin.id, roleId: ownerRoleId },
           });
 
-          // 6. Audit log (manual — outside withTenant but inside tx)
+          // 6. Audit log (manual — outside withTenant but inside tx).
+          // Recorded under the platform admin's own company: the tenant foreign
+          // key requires the acting user to belong to the row's company, and the
+          // new company has no such user. The new company is the entity.
           await tx.auditLog.create({
             data: {
-              companyId: company.id,
+              companyId: auth.companyId,
               userId: auth.userId,
               correlationId,
               action: 'onboarding.create',
@@ -217,8 +220,8 @@ export async function POST(req: NextRequest) {
           });
 
           // 7. Seed M1 defaults: feature flags + localization
-          await seedFeatureFlagsForCompany(company.id, admin.id);
-          await seedLocalizationForCompany(company.id, body.company.default_locale as typeof DEFAULT_LOCALE || DEFAULT_LOCALE);
+          await seedFeatureFlagsForCompany(company.id, admin.id, tx);
+          await seedLocalizationForCompany(company.id, body.company.default_locale as typeof DEFAULT_LOCALE || DEFAULT_LOCALE, tx);
 
           // 8. Seed default chart of accounts + accounting policies + financial accounts
           const coaResult = await seedDefaultCoa(tx, company.id);
