@@ -11,13 +11,14 @@ import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 const db = new PrismaClient();
 const COMPANY_ID = 'd08293a4-b5c6-4d12-a345-6f708192a3b4';
 const ROLLBACK = new Error('ROLLBACK_PERIOD');
+let userId: string;
 
 beforeAll(async () => {
   const target = new URL(process.env.DATABASE_URL ?? '');
   if (target.hostname !== '127.0.0.1' || target.port !== '43318' || target.pathname !== '/readiness_20260912_disposable') {
     throw new Error('Only the known local synthetic disposable MariaDB is permitted');
   }
-  await ensureSyntheticIssuerTenant(db, { companyId: COMPANY_ID, label: 'PL', code: 'SYN-PL' });
+  userId = (await ensureSyntheticIssuerTenant(db, { companyId: COMPANY_ID, label: 'PL', code: 'SYN-PL' })).user.id;
 }, 120_000);
 afterAll(() => db.$disconnect());
 
@@ -36,7 +37,7 @@ describe('locking a period', () => {
       await run(tx, 'failed', '2099-01-01T00:00:00Z');
       await run(tx, 'passed', '2099-01-02T00:00:00Z');
       const p = await period(tx);
-      await lockPeriod(COMPANY_ID, p.id, 'tester', tx);
+      await lockPeriod(COMPANY_ID, p.id, userId, tx);
       expect((await tx.fiscalPeriod.findUniqueOrThrow({ where: { id: p.id } })).status).toBe('locked');
     });
   });
@@ -46,7 +47,7 @@ describe('locking a period', () => {
       await run(tx, 'passed', '2099-02-01T00:00:00Z');
       await run(tx, 'failed', '2099-02-02T00:00:00Z');
       const p = await period(tx);
-      await expect(lockPeriod(COMPANY_ID, p.id, 'tester', tx)).rejects.toThrow(/critical findings/);
+      await expect(lockPeriod(COMPANY_ID, p.id, userId, tx)).rejects.toThrow(/critical findings/);
     });
   });
 });

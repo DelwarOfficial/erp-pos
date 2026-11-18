@@ -95,6 +95,33 @@ async function validateIndirectCreate(
   }
 }
 
+async function validateIndirectCreateMany(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  model: string,
+  rows: Record<string, any>[],
+  companyId: string,
+) {
+  for (const parent of INDIRECT_CREATE_PARENTS[model] ?? []) {
+    const ids = new Set<string>();
+    for (const row of rows) {
+      const id = row[parent.field];
+      if (typeof id !== 'string') throw new Error(`TENANT_PARENT_REQUIRED:${model}.${parent.field}`);
+      ids.add(id);
+    }
+    const uniqueIds = [...ids];
+    // Bound SQL parameters and result memory; never reuse validation across calls
+    // or transactions. All parents must pass before the original bulk write.
+    for (let offset = 0; offset < uniqueIds.length; offset += 500) {
+      const batch = uniqueIds.slice(offset, offset + 500);
+      const found = await (prisma as any)[parent.delegate].findMany({
+        where: { id: { in: batch }, companyId },
+        select: { id: true },
+      });
+      if (found.length !== batch.length) throw new Error('TENANT_VIOLATION');
+    }
+  }
+}
+
 export function applyTenantIsolation(prisma: PrismaClient) {
   return prisma.$extends({
     name: 'tenant-isolation',
@@ -173,7 +200,9 @@ export function applyTenantIsolation(prisma: PrismaClient) {
             const rows = Array.isArray(mutableArgs.data) ? mutableArgs.data : [mutableArgs.data];
             for (const row of rows) {
               if (DIRECT_TENANT_MODELS.has(model)) enforceCompanyId(row, ctx.companyId);
-              else await validateIndirectCreate(ctx.transactionClient ?? prisma, model, row, ctx.companyId);
+            }
+            if (!DIRECT_TENANT_MODELS.has(model)) {
+              await validateIndirectCreateMany(ctx.transactionClient ?? prisma, model, rows, ctx.companyId);
             }
           }
 

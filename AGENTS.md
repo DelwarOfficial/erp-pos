@@ -8,6 +8,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Documentation location
+
+Maintain project documentation and documentation exports under `docs/`; start at `docs/README.md`. Keep the root README as a short entry point. Preserve tool-discovered instruction files, bundled skill packages and generated Graphify output in their required locations. After moving documents, update relative links and references. Run `node scripts/docs/check-location.mjs` to check locations.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "scripts/update-readme.py": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054067,
-    "ast_hash": "45242ed30729e73e3751a85ff912c84b",
+    "mtime": 1795000743.0192533,
+    "seen": 1795000764.57492,
+    "ast_hash": "81bbf3c5b82239df93ab53a94789e8e8",
     "semantic_hash": ""
   },
   "scripts/validate-migrations-dry-run.ts": {
@@ -840,9 +840,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/accounting/period-close/[id]/lock/route.ts": {
-    "mtime": 1791030165.809003,
-    "seen": 1791098939.905482,
-    "ast_hash": "e9837ebfbb516a1d378ee76cf6bf5cb5",
+    "mtime": 1794998928.465631,
+    "seen": 1794999730.5006917,
+    "ast_hash": "e6fb606196de9b8701407ad6b4baed37",
     "semantic_hash": ""
   },
   "src/app/api/v1/accounting/period-close/[id]/route.ts": {
@@ -852,9 +852,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/accounting/period-close/[id]/unlock/route.ts": {
-    "mtime": 1791030165.809003,
-    "seen": 1791098939.905484,
-    "ast_hash": "4ee2379adcc71242f09e836c64ac681a",
+    "mtime": 1794998928.465631,
+    "seen": 1794999730.5008392,
+    "ast_hash": "86012a1a1de1ca6fb8e5fe788df30051",
     "semantic_hash": ""
   },
   "src/app/api/v1/accounting/revaluate/route.ts": {
@@ -1686,9 +1686,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/purchase-returns/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.9056144,
-    "ast_hash": "90e6bb32bd25f3ee10830d1159e87c03",
+    "mtime": 1794998782.4083045,
+    "seen": 1794999730.5218916,
+    "ast_hash": "387905c090cc48d0d4ddd3fe1d8ab3c6",
     "semantic_hash": ""
   },
   "src/app/api/v1/purchases/[id]/receivings/route.ts": {
@@ -2520,9 +2520,9 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m2/PostPurchaseReturn.ts": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.9057424,
-    "ast_hash": "61f3184ec9a1059f304c9366308d1f57",
+    "mtime": 1794998782.183005,
+    "seen": 1794999730.5476613,
+    "ast_hash": "f234fbb0bdb04b08f56f6ff07ead81a6",
     "semantic_hash": ""
   },
   "src/domain/commands/m2/PostStockAdjustment.ts": {
@@ -2568,9 +2568,9 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m3/PostSale.ts": {
-    "mtime": 1794922767.8393364,
-    "seen": 1794923089.4472256,
-    "ast_hash": "350b4b616939957b84a85b94e05227ee",
+    "mtime": 1794998822.3324406,
+    "seen": 1794999730.549667,
+    "ast_hash": "7dc9e06c6b54e53f93ec3073b63f14c1",
     "semantic_hash": ""
   },
   "src/domain/commands/m3/PostSaleReturn.ts": {
@@ -2880,9 +2880,9 @@
     "semantic_hash": ""
   },
   "src/lib/accounting/periodClose.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9057968,
-    "ast_hash": "fdb1c4d58ecbc31ae48f12fb15f6ca94",
+    "mtime": 1794998928.465631,
+    "seen": 1794999730.5648656,
+    "ast_hash": "452d52f8f4dc3df54f889ba070df519c",
     "semantic_hash": ""
   },
   "src/lib/accounting/revaluation.ts": {
@@ -3084,9 +3084,9 @@
     "semantic_hash": ""
   },
   "src/lib/db/tenantClient.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9058275,
-    "ast_hash": "dfe7a6fc284ca4dcb5f612c1298c15ec",
+    "mtime": 1794999568.2142453,
+    "seen": 1794999730.5725827,
+    "ast_hash": "e43409d51ff5a60ab6c7a01bce9f80b2",
     "semantic_hash": ""
   },
   "src/lib/db/transaction.ts": {
@@ -4350,9 +4350,9 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1791091665.027568,
-    "seen": 1791098939.9060342,
-    "ast_hash": "1dce6b8f6d20e9ef41a2a96be5329157",
+    "mtime": 1795000747.9427755,
+    "seen": 1795000764.6129882,
+    "ast_hash": "5b47645650f7a9aff6c9564641c921bc",
     "semantic_hash": ""
   },
   "CLAUDE.md": {
@@ -4362,9 +4362,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1791030165.7590022,
-    "seen": 1791098939.9060361,
-    "ast_hash": "bfb012ac08bb049e88cb7ea2cc15055d",
+    "mtime": 1795000710.4610248,
+    "seen": 1795000764.6130376,
+    "ast_hash": "b6ac71416495263574ccc6aff1484445",
     "semantic_hash": ""
   },
   "docker/docker-compose.yml": {
@@ -4587,12 +4587,6 @@
     "mtime": 1791030165.7809024,
     "seen": 1791098939.9060676,
     "ast_hash": "a9b03494151fe90e5decd2405400e106",
-    "semantic_hash": ""
-  },
-  "tests/e2e/uat-scenarios.md": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9060688,
-    "ast_hash": "77c237999a826a7993f9d9db4c612fe8",
     "semantic_hash": ""
   },
   "public/logo.svg": {
@@ -4884,15 +4878,15 @@
     "semantic_hash": ""
   },
   "tests/integration/purchaseAndTenderAccounting.test.ts": {
-    "mtime": 1794928190.9839501,
-    "seen": 1794931103.5498633,
-    "ast_hash": "084e873cb23594ae127473513f4a0ac6",
+    "mtime": 1794998812.910952,
+    "seen": 1794999730.598505,
+    "ast_hash": "5808c0bb833d0c283ee3cc0d1386d733",
     "semantic_hash": ""
   },
   "tests/integration/unifiedSaleCheckout.test.ts": {
-    "mtime": 1794930896.8403692,
-    "seen": 1794931103.5502877,
-    "ast_hash": "076e55eabb0b0934c0fad7d2fc507f23",
+    "mtime": 1794998895.0922382,
+    "seen": 1794999730.5996976,
+    "ast_hash": "cba9f556f5392645fce84678a56ef0d5",
     "semantic_hash": ""
   },
   "tests/unit/scheduleIntervals.test.ts": {
@@ -5025,6 +5019,48 @@
     "mtime": 1794997960.6129003,
     "seen": 1794998190.153267,
     "ast_hash": "9e37a9aa29e35c99c85628d9a7a86eeb",
+    "semantic_hash": ""
+  },
+  "tests/integration/indirectParentSqlGrowth.test.ts": {
+    "mtime": 1794999688.2254658,
+    "seen": 1794999730.5970118,
+    "ast_hash": "28e8e7986f2b276c18f51757c2f3f4ed",
+    "semantic_hash": ""
+  },
+  "tests/integration/periodLock.test.ts": {
+    "mtime": 1794999022.655955,
+    "seen": 1794999730.5983713,
+    "ast_hash": "b72a1439e23ef684facab114c5878f54",
+    "semantic_hash": ""
+  },
+  "scripts/docs/check-location.mjs": {
+    "mtime": 1795000742.893601,
+    "seen": 1795000764.5737586,
+    "ast_hash": "f6c470ced92edb96f63cea9416e66d54",
+    "semantic_hash": ""
+  },
+  "docs/README.md": {
+    "mtime": 1795000742.7021813,
+    "seen": 1795000764.613087,
+    "ast_hash": "4c728ad75db6bfcfc960b85a33061899",
+    "semantic_hash": ""
+  },
+  "docs/audits/2026-11-18-database-performance.md": {
+    "mtime": 1794999750.1620607,
+    "seen": 1795000764.614079,
+    "ast_hash": "f38a1a6b0edebc3fc1e6aa2ea5ae37bf",
+    "semantic_hash": ""
+  },
+  "docs/overview.md": {
+    "mtime": 1795000710.4610248,
+    "seen": 1795000764.6143694,
+    "ast_hash": "f770503b37964292fd89e3d8dcd10e42",
+    "semantic_hash": ""
+  },
+  "docs/testing/uat-scenarios.md": {
+    "mtime": 1791030165.859814,
+    "seen": 1795000764.614696,
+    "ast_hash": "77c237999a826a7993f9d9db4c612fe8",
     "semantic_hash": ""
   }
 }

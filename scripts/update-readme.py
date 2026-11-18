@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Update README.md with current stats and Asset Management / Bank Reconciliation sections."""
+"""Historical overview updater. Review its dated content before use."""
 import re
 from pathlib import Path
 
-README = Path("/home/z/my-project/README.md")
+README = Path(__file__).resolve().parents[1] / "docs" / "overview.md"
 text = README.read_text(encoding="utf-8")
 
 # ── 1. Replace stale stats table ────────────────────────────────────────────
