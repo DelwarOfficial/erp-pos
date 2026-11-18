@@ -15,6 +15,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const auth = await authenticateRequest();
     await requirePermission(auth, 'fiscal_period.lock');
     const { id } = await params;
+    // Locking or unlocking a period changes what can be posted; it needs a fresh MFA check.
+    await requireMfaForAction(req, 'fiscal_period_lock');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = {};
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/accounting/period-close/${id}/lock`, body });
@@ -24,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         withIdempotency(
           { idempotencyKey, operation: 'period_close.lock', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
-            await lockPeriod(auth.companyId, id, auth.userId);
+            await lockPeriod(auth.companyId, id, auth.userId, tx);
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
                 action: 'period_close.lock', entityType: 'fiscal_period', entityId: id,

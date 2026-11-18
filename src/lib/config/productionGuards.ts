@@ -182,6 +182,15 @@ export function productionSecurityProblems(env: Env): string[] {
     }
   }
 
+  // Mock providers accept any webhook whose payment id they made up, with no
+  // signature check, and pretend SMS and couriers worked. In production that
+  // would let anyone mark a payment paid. Same second switch as above for the
+  // e2e runs that use a production build.
+  if (env.PROVIDER_MODE === 'mock' && !insecureTestModeAcknowledged(env)) {
+    problems.push('PROVIDER_MODE=mock replaces real payment, SMS and courier providers with fakes and is refused in production '
+      + `unless ERP_ALLOW_INSECURE_TEST_MODE=${INSECURE_TEST_MODE_ACKNOWLEDGEMENT} is also set`);
+  }
+
   return problems;
 }
 

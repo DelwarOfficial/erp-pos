@@ -74,6 +74,7 @@ describe('postCourierCodSettlement', () => {
     courierCodSettlement: { create: vi.fn(async () => ({ id: 'cs-1' })), update: vi.fn() },
     courierCodSettlementItem: { create: vi.fn() },
     financialAccount: { findFirst: vi.fn(async () => ({ chartOfAccountId: 'coa-cash' })) },
+    chartOfAccount: { findFirst: vi.fn(async () => ({ id: 'coa-courier-fee' })) },
     businessEvent: { create: vi.fn() },
     auditLog: { create: vi.fn() },
   } as unknown as Prisma.TransactionClient;
@@ -96,6 +97,12 @@ describe('postCourierCodSettlement', () => {
     expect(credit.eq(debit)).toBe(true);
     const cash = mocks.journal.mock.calls[0][1].lines.find((l: { chartOfAccountId: string }) => l.chartOfAccountId === 'coa-cash');
     expect(new Prisma.Decimal(cash.debit).toNumber()).toBe(1000 - fee + adjustment);
+    // The clearing account is cleared by exactly the COD collected; the fee and
+    // any adjustment land on the courier fee expense account.
+    const lines = mocks.journal.mock.calls[0][1].lines as Array<{ chartOfAccountId: string; debit: Prisma.Decimal.Value; credit: Prisma.Decimal.Value }>;
+    const net = (id: string) => lines.filter(l => l.chartOfAccountId === id).reduce((t, l) => t.plus(l.debit).minus(l.credit), new Prisma.Decimal(0)).toNumber();
+    expect(net('coa-clearing')).toBe(-1000);
+    expect(net('coa-courier-fee')).toBe(fee - adjustment);
   });
 
   it.each([

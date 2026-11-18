@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { receivePurchase } from '@/domain/commands/m2/ReceivePurchase';
 import { postSupplierInvoice } from '@/domain/commands/m2/PostSupplierInvoice';
 import { postLandedCost } from '@/domain/commands/m2/PostLandedCost';
+import { postPurchaseReturn } from '@/domain/commands/m2/PostPurchaseReturn';
 import { postSale } from '@/domain/commands/m3/PostSale';
 import { voidSale } from '@/domain/commands/m3/VoidSale';
 import { issueGiftCard } from '@/domain/commands/m6/Loyalty';
@@ -164,6 +165,50 @@ describe('gift card tender', () => {
 
       await voidSale(tx, { saleId: sale.saleId, companyId: COMPANY_ID, voidedBy: fx.user.id, reason: 'probe' }, randomUUID());
       expect(await cardBalance()).toBe('200.00');
+    });
+  });
+});
+
+describe('purchase return', () => {
+  it('credits the supplier at purchase price, takes stock out at average cost, and books the difference', async () => {
+    await probe(async tx => {
+      const s = await setup(tx); // 10 received at 60
+      // A second delivery at 80 moves the average cost to 70.
+      const second = await tx.purchase.create({ data: {
+        companyId: COMPANY_ID, branchId: s.warehouse.branchId, warehouseId: s.warehouse.id, supplierId: s.supplier.id,
+        referenceNo: `PO-${randomUUID().slice(0, 8)}`, orderStatus: 'ordered', orderDate: new Date(), currencyCode: 'BDT', exchangeRate: 1, createdBy: fx.user.id,
+        items: { create: [{ companyId: COMPANY_ID, lineNo: 1, productId: s.product.id, productNameSnapshot: s.product.name,
+          productCodeSnapshot: s.product.code, qtyOrdered: 10, unitCost: 80, discountAmount: 0, taxAmount: 0 }] },
+      }, include: { items: true } });
+      await receivePurchase(tx, { purchaseId: second.id, companyId: COMPANY_ID, branchId: s.warehouse.branchId, warehouseId: s.warehouse.id,
+        receivedBy: fx.user.id, businessDate: new Date(), items: [{ purchaseItemId: second.items[0].id, qtyReceivedNow: 10 }] }, randomUUID());
+
+      const ret = await postPurchaseReturn(tx, { companyId: COMPANY_ID, branchId: s.warehouse.branchId, warehouseId: s.warehouse.id,
+        purchaseId: s.purchase.id, supplierId: s.supplier.id, postedBy: fx.user.id, businessDate: new Date(), reason: 'Damaged',
+        items: [{ purchaseItemId: s.purchase.items[0].id, qtyReturned: 2 }] }, randomUUID());
+      expect(ret.totalCredit).toBe('120.00');
+
+      const pr = { sourceType: 'purchase_return', sourceId: ret.returnId };
+      expect((await balance(tx, s.policy.inventoryAccountId, pr)).toFixed(2)).toBe('-140.00');
+      expect((await balance(tx, s.grni.id, pr)).toFixed(2)).toBe('120.00'); // not invoiced yet, so GRNI
+      expect((await balance(tx, s.policy.purchaseVarianceAccountId, pr)).toFixed(2)).toBe('20.00');
+      const moved = await tx.stockMovement.aggregate({ where: { companyId: COMPANY_ID, referenceType: 'purchase_return', referenceId: ret.returnId }, _sum: { totalCostDelta: true } });
+      expect(new Prisma.Decimal(moved._sum.totalCostDelta ?? 0).toFixed(2)).toBe('-140.00');
+    });
+  });
+
+  it('returns serialized units by serial number, and refuses a wrong count or a sold unit', async () => {
+    await probe(async tx => {
+      const s = await setup(tx);
+      await tx.product.update({ where: { id: s.product.id }, data: { isSerialized: true } });
+      const [a, b] = ['A', 'B'].map(x => `RET-${x}-${randomUUID().slice(0, 6)}`);
+      for (const serialNumber of [a, b]) await tx.productSerial.create({ data: { companyId: COMPANY_ID, productId: s.product.id, serialNumber, status: 'in_stock', currentWarehouseId: s.warehouse.id } });
+      const base = { companyId: COMPANY_ID, branchId: s.warehouse.branchId, warehouseId: s.warehouse.id, purchaseId: s.purchase.id, supplierId: s.supplier.id, postedBy: fx.user.id, businessDate: new Date(), reason: 'Faulty' };
+      await expect(postPurchaseReturn(tx, { ...base, items: [{ purchaseItemId: s.purchase.items[0].id, qtyReturned: 2, serials: [a] }] }, randomUUID())).rejects.toThrow(/exactly 2/);
+      await postPurchaseReturn(tx, { ...base, items: [{ purchaseItemId: s.purchase.items[0].id, qtyReturned: 1, serials: [a] }] }, randomUUID());
+      expect((await tx.productSerial.findFirstOrThrow({ where: { companyId: COMPANY_ID, serialNumber: a } })).status).toBe('returned_to_supplier');
+      expect((await tx.productSerial.findFirstOrThrow({ where: { companyId: COMPANY_ID, serialNumber: b } })).status).toBe('in_stock');
+      await expect(postPurchaseReturn(tx, { ...base, items: [{ purchaseItemId: s.purchase.items[0].id, qtyReturned: 1, serials: [a] }] }, randomUUID())).rejects.toThrow(/not in stock/);
     });
   });
 });

@@ -14,6 +14,8 @@ import { getCorrelationId } from '@/lib/http';
 const ReturnItemSchema = z.object({
   purchase_item_id: z.string().uuid(),
   qty_returned: z.number().positive(),
+  // Serialized products: the serial numbers going back, one per unit.
+  serials: z.array(z.string().trim().min(1)).max(1000).optional(),
 });
 
 const PostPurchaseReturnSchema = z.object({
@@ -98,6 +100,7 @@ export async function POST(req: NextRequest) {
               items: body.items.map(i => ({
                 purchaseItemId: i.purchase_item_id,
                 qtyReturned: i.qty_returned,
+                serials: i.serials,
               })),
             }, correlationId);
             return {

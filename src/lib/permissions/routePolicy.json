@@ -1504,6 +1504,15 @@
     "exception": null
   },
   {
+    "file": "v1/payroll-runs/[id]/pay/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payroll.approve",
+      "payment.pay.branch"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/print/escpos/[saleId]/route.ts",
     "method": "GET",
     "permissions": [
@@ -2108,6 +2117,15 @@
     "method": "POST",
     "permissions": [
       "warranty.fulfill"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/warranty-claims/[id]/route.ts",
+    "method": "POST",
+    "permissions": [
+      "warranty.fulfill",
+      "approval.resolve"
     ],
     "exception": null
   },

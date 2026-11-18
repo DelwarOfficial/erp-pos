@@ -118,6 +118,15 @@ export async function postSale(
     if (!shift) {
       throw new DomainError('NO_OPEN_SHIFT', 'Cashier shift is not open', { shift_id: cashierShiftId }, 409);
     }
+    // The cash belongs in the drawer of the cashier making the sale, at this
+    // branch. Any open shift of the company used to be accepted, so a sale
+    // could be counted in someone else's drawer, or another branch's.
+    if (shift.branchId !== input.branchId) {
+      throw new DomainError('NO_OPEN_SHIFT', 'That shift is open at another branch', { shift_id: cashierShiftId }, 409);
+    }
+    if (shift.cashierId !== input.cashierId) {
+      throw new DomainError('NO_OPEN_SHIFT', 'That shift belongs to another cashier; open your own shift', { shift_id: cashierShiftId }, 409);
+    }
   }
 
   const warehouse = await tx.warehouse.findFirst({

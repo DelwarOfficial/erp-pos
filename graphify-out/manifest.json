@@ -618,9 +618,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/deliveries/page.tsx": {
-    "mtime": 1794984330.6058056,
-    "seen": 1794984480.7601001,
-    "ast_hash": "5d2ba98f49e532a76aee1c402e6e5336",
+    "mtime": 1794994771.8749807,
+    "seen": 1794995009.4982126,
+    "ast_hash": "2eed68130b17e581fb8ce2460cfaef28",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/error.tsx": {
@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/hr/page.tsx": {
-    "mtime": 1794984330.6058056,
-    "seen": 1794984480.7603717,
-    "ast_hash": "d86772c49a5e7b63a892bf6e8c30021a",
+    "mtime": 1794998025.7848823,
+    "seen": 1794998190.124995,
+    "ast_hash": "ddebfe71ab7adac083803dfb13c10c93",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/imports/page.tsx": {
@@ -1338,9 +1338,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/deliveries/route.ts": {
-    "mtime": 1794922293.7842245,
-    "seen": 1794922425.9214685,
-    "ast_hash": "eccd8ee0e4643b70762e316e3c63e3ba",
+    "mtime": 1794994715.4230945,
+    "seen": 1794995009.5153222,
+    "ast_hash": "3ca762815b9e9ae5e37aa916f7e1ada0",
     "semantic_hash": ""
   },
   "src/app/api/v1/employees/[id]/route.ts": {
@@ -1380,9 +1380,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/expenses/[id]/approve/route.ts": {
-    "mtime": 1791030165.8099174,
-    "seen": 1791098939.905567,
-    "ast_hash": "af2ac25e6a26a5a57617b897ba2e040e",
+    "mtime": 1794997845.9725296,
+    "seen": 1794998190.1324959,
+    "ast_hash": "610e510c86aac6b23f2e2b9769b123c7",
     "semantic_hash": ""
   },
   "src/app/api/v1/expenses/[id]/route.ts": {
@@ -1812,9 +1812,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/service-requests/[id]/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.9056337,
-    "ast_hash": "2f01993057969b87fa61a24b6ca68e9d",
+    "mtime": 1794994327.50436,
+    "seen": 1794995009.5268264,
+    "ast_hash": "b97fd33ab865d1d58916d0078491109d",
     "semantic_hash": ""
   },
   "src/app/api/v1/service-requests/route.ts": {
@@ -2136,9 +2136,9 @@
     "semantic_hash": ""
   },
   "src/components/service/ServiceDetail.tsx": {
-    "mtime": 1794915148.5885217,
-    "seen": 1794915328.3040242,
-    "ast_hash": "b16486fc8f7e8c6f00ba2f7eafa82ed5",
+    "mtime": 1794994409.722385,
+    "seen": 1794995009.534615,
+    "ast_hash": "c92dead136733282e77c5505ac465f49",
     "semantic_hash": ""
   },
   "src/components/shared/ApprovalBadge.tsx": {
@@ -2598,9 +2598,9 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m4/PostExpense.ts": {
-    "mtime": 1794823830.4016416,
-    "seen": 1794824254.8294268,
-    "ast_hash": "caf42141ba5675d64a06bc5c51f80b49",
+    "mtime": 1794997928.1735492,
+    "seen": 1794998190.144962,
+    "ast_hash": "e5f5d405348b8d22e1a55b727adab456",
     "semantic_hash": ""
   },
   "src/domain/commands/m4/PostJournalEntry.ts": {
@@ -2616,15 +2616,15 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m5/FulfillWarrantyClaim.ts": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.9057567,
-    "ast_hash": "04bfa753e0f4d27e14d9db2d5941da57",
+    "mtime": 1794994478.4053288,
+    "seen": 1794995009.5453992,
+    "ast_hash": "4d2c618e604f11d11ef863c3a1bd52a1",
     "semantic_hash": ""
   },
   "src/domain/commands/m5/PostCourierCodSettlement.ts": {
-    "mtime": 1794824093.293798,
-    "seen": 1794824254.829576,
-    "ast_hash": "06a87d193f5d66f7618bf22eb23befe3",
+    "mtime": 1794994680.2265441,
+    "seen": 1794995009.5454016,
+    "ast_hash": "c29b6f81450c891935ba4cefa76f9b39",
     "semantic_hash": ""
   },
   "src/domain/commands/m5/Service.ts": {
@@ -2658,15 +2658,15 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m6/PayPayrollRun.ts": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.9057631,
-    "ast_hash": "e0740fba855d1c6fc4d6b9ab4425153a",
+    "mtime": 1794994616.048019,
+    "seen": 1794995009.5460846,
+    "ast_hash": "2385deaa399e891b81efdf4c3d7be33f",
     "semantic_hash": ""
   },
   "src/domain/commands/m6/PostPayrollRun.ts": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.9057639,
-    "ast_hash": "f822287a9193aeaa5566141853508bd5",
+    "mtime": 1794994566.6119976,
+    "seen": 1794995009.5460865,
+    "ast_hash": "59961a05039bf4b7b814f5a1b9344e0d",
     "semantic_hash": ""
   },
   "src/domain/communication/campaigns.ts": {
@@ -2892,9 +2892,9 @@
     "semantic_hash": ""
   },
   "src/lib/accounting/seedCoa.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9057987,
-    "ast_hash": "e386c87a7993860a623e228a91d109fe",
+    "mtime": 1794998065.181244,
+    "seen": 1794998190.147695,
+    "ast_hash": "ea7721b96c96dacf30ee9902aeb67b69",
     "semantic_hash": ""
   },
   "src/lib/accounting/trialBalance.ts": {
@@ -3048,9 +3048,9 @@
     "semantic_hash": ""
   },
   "src/lib/config/productionGuards.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.905822,
-    "ast_hash": "fffb20250f620b212c8e76e5d725f994",
+    "mtime": 1794997759.0830114,
+    "seen": 1794998190.1489105,
+    "ast_hash": "7560e2b5914b4fc0f58b4dc7c31451bd",
     "semantic_hash": ""
   },
   "src/lib/crypto/index.ts": {
@@ -3114,9 +3114,9 @@
     "semantic_hash": ""
   },
   "src/lib/featureFlags/index.ts": {
-    "mtime": 1794931474.2038958,
-    "seen": 1794932002.7531993,
-    "ast_hash": "25c3f9b850fdf233b662d947b1ede8d1",
+    "mtime": 1794984581.7111235,
+    "seen": 1794984722.5319595,
+    "ast_hash": "1f9f23b52c7b0c64f26706217c0953f3",
     "semantic_hash": ""
   },
   "src/lib/health/contract.ts": {
@@ -3228,9 +3228,9 @@
     "semantic_hash": ""
   },
   "src/lib/permissions/routePolicy.json": {
-    "mtime": 1794922885.4395018,
-    "seen": 1794923089.4615808,
-    "ast_hash": "6c86d16ca84dba10a3cc46fef515f6fd",
+    "mtime": 1794997987.2225783,
+    "seen": 1794998190.1504467,
+    "ast_hash": "395d9596eeb699d8e2f81f1b882b360f",
     "semantic_hash": ""
   },
   "src/lib/queue/index.ts": {
@@ -3810,9 +3810,9 @@
     "semantic_hash": ""
   },
   "tests/unit/featureFlags.test.ts": {
-    "mtime": 1794932021.1160655,
-    "seen": 1794932459.24267,
-    "ast_hash": "19ecea4ffb64c9202b85c760e4b1e0ff",
+    "mtime": 1794984573.387886,
+    "seen": 1794984722.5493336,
+    "ast_hash": "8a4dc09c974e86372cd6728cd89295ee",
     "semantic_hash": ""
   },
   "tests/unit/financialIntegrity.test.ts": {
@@ -3978,9 +3978,9 @@
     "semantic_hash": ""
   },
   "tests/unit/nplus1FinancialRegression.test.ts": {
-    "mtime": 1791030165.8801818,
-    "seen": 1791098939.9059615,
-    "ast_hash": "759443445a237986e35e51ffbfb49efd",
+    "mtime": 1794994570.9851649,
+    "seen": 1794995009.5765064,
+    "ast_hash": "0607a3b1725a3f31743853302a92fb77",
     "semantic_hash": ""
   },
   "tests/unit/nplus1PostSaleRegression.test.ts": {
@@ -4050,9 +4050,9 @@
     "semantic_hash": ""
   },
   "tests/unit/productionSecurityConfig.test.ts": {
-    "mtime": 1791030165.8801818,
-    "seen": 1791098939.9059734,
-    "ast_hash": "e47203cba9ad5b8ab103ed3ba75a0ee1",
+    "mtime": 1794997771.7952304,
+    "seen": 1794998190.157712,
+    "ast_hash": "4155b7779ebf22defa49809eeac661ba",
     "semantic_hash": ""
   },
   "tests/unit/providers.test.ts": {
@@ -4608,9 +4608,9 @@
     "semantic_hash": ""
   },
   "tests/unit/redteamPostingBalance.test.ts": {
-    "mtime": 1794824209.9702847,
-    "seen": 1794824254.8408394,
-    "ast_hash": "a667f1655813fa4309128896c1d40519",
+    "mtime": 1794994700.5250392,
+    "seen": 1794995009.5789332,
+    "ast_hash": "c6b2cf284166aa45a20fb7a2e8afeb2c",
     "semantic_hash": ""
   },
   ".claude/launch.json": {
@@ -4965,6 +4965,66 @@
     "mtime": 1794984302.9050314,
     "seen": 1794984480.7763608,
     "ast_hash": "d7c790d9a19d5798f8d5b4ed79973f41",
+    "semantic_hash": ""
+  },
+  "tests/e2e/modules-live.spec.ts": {
+    "mtime": 1794984618.7972465,
+    "seen": 1794984722.5393112,
+    "ast_hash": "d2a3fdd11259857cc4138efa4de588ba",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/warranty-claims/[id]/route.ts": {
+    "mtime": 1794994876.5010774,
+    "seen": 1794995009.5298653,
+    "ast_hash": "660cd325a2d64d7eec923cd117a001fc",
+    "semantic_hash": ""
+  },
+  "src/components/deliveries/CodSettlementPanel.tsx": {
+    "mtime": 1794994763.9107559,
+    "seen": 1794995009.5337918,
+    "ast_hash": "149aca116d27fb1f58582e47a364b2a5",
+    "semantic_hash": ""
+  },
+  "src/components/service/WarrantyClaimPanel.tsx": {
+    "mtime": 1794994409.5386326,
+    "seen": 1794995009.5346172,
+    "ast_hash": "b0ffd1c33ae131bfce02fb5abd6e14aa",
+    "semantic_hash": ""
+  },
+  "tests/integration/payrollAccounts.test.ts": {
+    "mtime": 1794994628.7759867,
+    "seen": 1794995009.5684052,
+    "ast_hash": "1b34b2c0576548e6b1b3f535724cf6e2",
+    "semantic_hash": ""
+  },
+  "tests/integration/warrantyFulfilment.test.ts": {
+    "mtime": 1794994467.4400318,
+    "seen": 1794995009.56997,
+    "ast_hash": "2c2fcafd5c994fdd196781fec5a5cabd",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/payroll-runs/[id]/pay/route.ts": {
+    "mtime": 1794997987.0741117,
+    "seen": 1794998190.135258,
+    "ast_hash": "d4fab16f744133104a0479578ac76797",
+    "semantic_hash": ""
+  },
+  "src/components/hr/PayrollPanel.tsx": {
+    "mtime": 1794998025.5527585,
+    "seen": 1794998190.140137,
+    "ast_hash": "92c7782313610b4d72198dd205103351",
+    "semantic_hash": ""
+  },
+  "tests/e2e/payroll.spec.ts": {
+    "mtime": 1794998093.6404614,
+    "seen": 1794998190.1520622,
+    "ast_hash": "5ecb91941add67455381926097cc1eef",
+    "semantic_hash": ""
+  },
+  "tests/integration/expenseApproval.test.ts": {
+    "mtime": 1794997960.6129003,
+    "seen": 1794998190.153267,
+    "ast_hash": "9e37a9aa29e35c99c85628d9a7a86eeb",
     "semantic_hash": ""
   }
 }

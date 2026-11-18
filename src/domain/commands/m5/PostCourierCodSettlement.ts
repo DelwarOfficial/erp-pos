@@ -3,13 +3,12 @@
 //
 // Posts a courier COD settlement batch:
 //   Dr Cash/Bank (net received = gross COD - fee + adjustment)
-//   Dr Courier clearing (fee withheld by the courier)
-//   Cr/Dr Courier clearing (adjustment: positive = courier paid more, so credit)
+//   Dr Courier fee expense (fee withheld by the courier)
+//   Cr/Dr Courier fee expense (adjustment: positive = courier paid more, so credit)
 //   Cr Courier clearing (gross COD)
 //
-// AccountingPolicy has no courier fee expense account, so the fee and the
-// adjustment stay on the courier clearing account until one is added; the
-// entry is balanced but the fee is not yet expensed.
+// The fee and the adjustment are expensed to the chart's courier fee account
+// (subtype courier_fee; 5300 in the default chart), so clearing nets to zero.
 
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -140,6 +139,19 @@ export async function postCourierCodSettlement(
     include: { chartOfAccount: true },
   });
   if (!fa) throw new DomainError('VALIDATION_FAILED', 'Financial account not found', {}, 404);
+  if (fa.branchId && fa.branchId !== input.branchId) throw new DomainError('VALIDATION_FAILED', 'That account belongs to another branch', {}, 400);
+
+  // The courier's fee, and any difference in what it paid, is a delivery
+  // cost: it goes to the courier fee expense account (5300 in the default
+  // chart), so the COD clearing account is cleared by exactly the COD
+  // collected. It used to stay on the clearing account, which then never
+  // reconciled to zero and hid the expense.
+  const feeAccount = (totalFeeDec.gt(0) || !totalAdjustmentDec.isZero())
+    ? await tx.chartOfAccount.findFirst({ where: { companyId: input.companyId, accountSubtype: 'courier_fee', isActive: true }, select: { id: true } })
+    : null;
+  if ((totalFeeDec.gt(0) || !totalAdjustmentDec.isZero()) && !feeAccount) {
+    throw new DomainError('VALIDATION_FAILED', 'Add an active expense account of type "courier fee" to the chart of accounts before settling with a fee', {}, 409);
+  }
 
   // Post journal entry. Debits: net + fee (+ |adjustment| when negative).
   // Credits: gross (+ adjustment when positive). With net = gross - fee +
@@ -148,24 +160,25 @@ export async function postCourierCodSettlement(
   // unbalanced by twice the adjustment; zero-amount lines are skipped because
   // the journal rejects them.
   const zero = new Prisma.Decimal(0);
-  const journalLines: Array<{ chartOfAccountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal; memo?: string }> = [];
+  const journalLines: Array<{ chartOfAccountId: string; financialAccountId?: string; branchId: string; debit: Prisma.Decimal; credit: Prisma.Decimal; memo?: string }> = [];
+  const branchId = input.branchId;
   if (netReceivedDec.gt(0)) {
-    journalLines.push({ chartOfAccountId: fa.chartOfAccountId, debit: netReceivedDec, credit: zero,
+    journalLines.push({ chartOfAccountId: fa.chartOfAccountId, financialAccountId: fa.id, branchId, debit: netReceivedDec, credit: zero,
       memo: `Net received from ${input.courierCode}` });
   }
   if (totalFeeDec.gt(0)) {
-    journalLines.push({ chartOfAccountId: clearingAccountId, debit: totalFeeDec, credit: zero,
+    journalLines.push({ chartOfAccountId: feeAccount!.id, branchId, debit: totalFeeDec, credit: zero,
       memo: `Courier fee for ${referenceNo}` });
   }
   if (totalAdjustmentDec.gt(0)) {
-    journalLines.push({ chartOfAccountId: clearingAccountId, debit: zero, credit: totalAdjustmentDec,
+    journalLines.push({ chartOfAccountId: feeAccount!.id, branchId, debit: zero, credit: totalAdjustmentDec,
       memo: 'Settlement adjustment (courier paid more)' });
   } else if (totalAdjustmentDec.lt(0)) {
-    journalLines.push({ chartOfAccountId: clearingAccountId, debit: totalAdjustmentDec.abs(), credit: zero,
+    journalLines.push({ chartOfAccountId: feeAccount!.id, branchId, debit: totalAdjustmentDec.abs(), credit: zero,
       memo: 'Settlement adjustment (courier paid less)' });
   }
   if (grossCodDec.gt(0)) {
-    journalLines.push({ chartOfAccountId: clearingAccountId, debit: zero, credit: grossCodDec,
+    journalLines.push({ chartOfAccountId: clearingAccountId, branchId, debit: zero, credit: grossCodDec,
       memo: `COD clearing for ${referenceNo}` });
   }
 

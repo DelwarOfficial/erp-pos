@@ -87,6 +87,7 @@ export async function postPayrollRun(
 
   const beftnEntries: BEFTNEntry[] = [];
   const employeeData: Array<{ employeeId: string; net: number }> = [];
+  const payrollItems: Prisma.PayrollItemCreateManyInput[] = [];
 
   const employeeIds = [...new Set(input.items.map(item => item.employeeId))];
   const employees: Prisma.EmployeeGetPayload<object>[] = [];
@@ -112,6 +113,16 @@ export async function postPayrollRun(
     const net = gross - deductions;
 
     employeeData.push({ employeeId: employee.id, net });
+    // Each employee's line of the run, so paying it later clears exactly what
+    // each was owed (the run used to keep only totals).
+    payrollItems.push({
+      companyId: input.companyId, payrollRunId: run.id, employeeId: employee.id,
+      baseSalary: new Prisma.Decimal(item.baseSalary), allowanceTotal: new Prisma.Decimal(item.allowanceTotal ?? 0),
+      overtimeTotal: new Prisma.Decimal(item.overtimeTotal ?? 0), deductionTotal: new Prisma.Decimal(item.deductionTotal ?? 0),
+      withholdingTotal: new Prisma.Decimal(item.withholdingTotal ?? 0),
+      netPay: new Prisma.Decimal(item.baseSalary).plus(item.allowanceTotal ?? 0).plus(item.overtimeTotal ?? 0)
+        .minus(item.deductionTotal ?? 0).minus(item.withholdingTotal ?? 0).toDecimalPlaces(2),
+    });
 
     beftnEntries.push({
       serialNo: beftnEntries.length + 1,
@@ -125,6 +136,8 @@ export async function postPayrollRun(
       purpose: 'Salary',
     });
   }
+
+  await tx.payrollItem.createMany({ data: payrollItems });
 
   const beftnOptions: BEFTNFileOptions = {
     senderName: (await tx.company.findUnique({ where: { id: input.companyId }, select: { legalName: true } }))?.legalName ?? 'ERP POS',
@@ -140,31 +153,33 @@ export async function postPayrollRun(
 
   // Post journal: Dr Salaries Expense, Cr Deductions, Cr Payroll Payable (net)
   let journalEntryNo = '';
-  const firstEmp = employeeById.get(input.items[0].employeeId);
+  // Each employee's pay goes to that employee's own expense and payable
+  // accounts. The journal used to take both from the first employee in the
+  // run, so a run mixing departments or entities posted everyone to one pair.
+  const expenseByAccount = new Map<string, Prisma.Decimal>();
+  const payableByAccount = new Map<string, Prisma.Decimal>();
+  const add = (map: Map<string, Prisma.Decimal>, key: string, value: Prisma.Decimal.Value) => map.set(key, (map.get(key) ?? new Prisma.Decimal(0)).plus(value));
+  for (const item of input.items) {
+    const employee = employeeById.get(item.employeeId)!;
+    const gross = new Prisma.Decimal(item.baseSalary).plus(item.allowanceTotal ?? 0).plus(item.overtimeTotal ?? 0);
+    add(expenseByAccount, employee.payrollExpenseAccountId, gross);
+    // Net pay and deductions are both owed (to the employee, and to whoever
+    // the deductions are withheld for) until paid out.
+    add(payableByAccount, employee.payrollPayableAccountId, gross);
+  }
+  const firstEmp = input.items.length ? employeeById.get(input.items[0].employeeId) : undefined;
 
   if (firstEmp) {
     const journalLines = [
-      {
-        chartOfAccountId: firstEmp.payrollExpenseAccountId,
-        debit: grossTotal, credit: 0,
-        memo: `Payroll: ${referenceNo} — ${input.items.length} employees`,
-        branchId: input.branchId,
-      },
+      ...[...expenseByAccount].map(([chartOfAccountId, amount]) => ({
+        chartOfAccountId, debit: amount.toDecimalPlaces(2), credit: 0 as Prisma.Decimal.Value,
+        memo: `Payroll: ${referenceNo} — ${input.items.length} employees`, branchId: input.branchId,
+      })),
+      ...[...payableByAccount].map(([chartOfAccountId, amount]) => ({
+        chartOfAccountId, debit: 0 as Prisma.Decimal.Value, credit: amount.toDecimalPlaces(2),
+        memo: `Payroll payable (net ${netTotal.toFixed(2)}, deductions ${deductionTotal.toFixed(2)}): ${referenceNo}`, branchId: input.branchId,
+      })),
     ];
-    if (deductionTotal > 0) {
-      journalLines.push({
-        chartOfAccountId: firstEmp.payrollPayableAccountId,
-        debit: 0, credit: deductionTotal,
-        memo: `Payroll deductions: ${referenceNo}`,
-        branchId: input.branchId,
-      });
-    }
-    journalLines.push({
-      chartOfAccountId: firstEmp.payrollPayableAccountId,
-      debit: 0, credit: netTotal,
-      memo: `Net payroll payable: ${referenceNo}`,
-      branchId: input.branchId,
-    });
 
     const eventId = randomUUID();
     await tx.businessEvent.create({

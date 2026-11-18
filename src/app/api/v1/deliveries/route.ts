@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         deliveredAt: true,
         sale: { select: { id: true, referenceNo: true, grandTotal: true } },
-        _count: { select: { items: true, events: true } },
+        _count: { select: { items: true, events: true, codSettlementItems: true } },
         },
       });
     });
@@ -81,6 +81,8 @@ export async function GET(req: NextRequest) {
         recipient_name: d.recipientName, recipient_phone: d.recipientPhone,
         cod_amount: d.codAmount.toString(), delivery_fee: d.deliveryFee.toString(),
         item_count: d._count.items, event_count: d._count.events,
+        // Already in a courier COD settlement (cannot be settled twice).
+        cod_settled: d._count.codSettlementItems > 0,
         created_at: d.createdAt, delivered_at: d.deliveredAt,
       })),
     });

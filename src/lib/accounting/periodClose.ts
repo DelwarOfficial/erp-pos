@@ -13,6 +13,7 @@
 // Status transitions: open → soft_locked → locked
 // (unlocking requires platform operations approval per §20.D08)
 
+import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { runReconciliation } from '@/lib/reconciliation/checks';
 import { DomainError } from '@/lib/errors/codes';
@@ -132,8 +133,10 @@ export async function lockPeriod(
   companyId: string,
   fiscalPeriodId: string,
   lockedBy: string,
+  // The caller's transaction, so the lock commits with its audit row (or not at all).
+  client: Pick<Prisma.TransactionClient, 'fiscalPeriod' | 'reconciliationRun'> = db,
 ): Promise<void> {
-  const period = await db.fiscalPeriod.findFirst({
+  const period = await client.fiscalPeriod.findFirst({
     where: { id: fiscalPeriodId, companyId },
   });
   if (!period) throw new DomainError('RESOURCE_NOT_FOUND', 'Fiscal period not found', {}, 404);
@@ -142,9 +145,11 @@ export async function lockPeriod(
     throw new DomainError('VALIDATION_FAILED', `Period must be soft_locked before locking (current: ${period.status})`, {}, 400);
   }
 
-  // Verify no critical/high reconciliation findings
-  const reconRun = await db.reconciliationRun.findFirst({
-    where: { companyId, status: { in: ['failed', 'partial'] } },
+  // Verify no critical/high reconciliation findings in the LATEST run. This
+  // used to look only at failed/partial runs, so one old failure blocked the
+  // lock for ever, even after a clean run had passed.
+  const reconRun = await client.reconciliationRun.findFirst({
+    where: { companyId, completedAt: { not: null } },
     orderBy: { completedAt: 'desc' },
   });
 
@@ -152,7 +157,7 @@ export async function lockPeriod(
     throw new DomainError('VALIDATION_FAILED', 'Cannot lock — reconciliation has critical findings', {}, 400);
   }
 
-  await db.fiscalPeriod.update({
+  await client.fiscalPeriod.update({
     where: { id: fiscalPeriodId },
     data: { status: 'locked', lockedBy, lockedAt: new Date() },
   });
@@ -167,8 +172,9 @@ export async function unlockPeriod(
   fiscalPeriodId: string,
   unlockedBy: string,
   isPlatformOps: boolean,
+  client: Pick<Prisma.TransactionClient, 'fiscalPeriod'> = db,
 ): Promise<void> {
-  const period = await db.fiscalPeriod.findFirst({
+  const period = await client.fiscalPeriod.findFirst({
     where: { id: fiscalPeriodId, companyId },
   });
   if (!period) throw new DomainError('RESOURCE_NOT_FOUND', 'Fiscal period not found', {}, 404);
@@ -177,7 +183,7 @@ export async function unlockPeriod(
     throw new DomainError('FORBIDDEN_SCOPE', 'Unlocking a locked period requires platform operations approval', {}, 403);
   }
 
-  await db.fiscalPeriod.update({
+  await client.fiscalPeriod.update({
     where: { id: fiscalPeriodId },
     data: { status: 'open', lockedBy: null, lockedAt: null },
   });

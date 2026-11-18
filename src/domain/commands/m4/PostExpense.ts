@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
 import { nextDocumentNumber } from '@/lib/numbering';
-import { postJournalEntry } from './PostJournalEntry';
+import { postJournalEntry, type JournalLineInput } from './PostJournalEntry';
 
 export interface PostExpenseInput {
   companyId: string;
@@ -70,6 +70,20 @@ export async function postExpense(
     documentType: 'EXPENSE', fiscalYear: new Date(input.expenseDate).getFullYear(), prefix: 'EXP-',
   });
 
+  // Above the company's expense approval threshold, the expense waits for
+  // someone else to approve it and posts nothing until then (maker-checker).
+  // Every expense used to post at once with the creator as its own approver.
+  const { getApprovalThresholds } = await import('@/lib/approval/thresholds');
+  const needsApproval = baseGrandTotal.gt((await getApprovalThresholds(input.companyId)).expense_approval_threshold);
+
+  // The paying account is checked now either way, so an approved expense cannot fail on it later.
+  const fa = await tx.financialAccount.findFirst({
+    where: { id: input.financialAccountId, companyId: input.companyId, isActive: true },
+    include: { chartOfAccount: true },
+  });
+  if (!fa) throw new DomainError('VALIDATION_FAILED', 'Financial account not found', {}, 404);
+  if (fa.branchId && fa.branchId !== input.branchId) throw new DomainError('VALIDATION_FAILED', 'That account belongs to another branch', {}, 400);
+
   // Create expense header
   const expense = await tx.expense.create({
     data: {
@@ -77,19 +91,19 @@ export async function postExpense(
       referenceNo, clientTxnId: randomUUID(),
       supplierId: input.supplierId ?? null,
       payeeName: input.payeeName ?? null,
-      status: 'posted',
+      status: needsApproval ? 'pending_approval' : 'posted',
       expenseDate: input.expenseDate,
       currencyCode: input.currencyCode, exchangeRate: input.exchangeRate,
       subtotal, taxTotal, grandTotal, baseGrandTotal,
       description: input.description,
-      requestedBy: input.createdBy, approvedBy: input.createdBy,
-      postedAt: new Date(),
+      requestedBy: input.createdBy, approvedBy: needsApproval ? null : input.createdBy,
+      postedAt: needsApproval ? null : new Date(),
     },
   });
 
   // Create expense items + build journal lines
   let lineNo = 1;
-  const journalLines: Array<{ chartOfAccountId: string; debit: number | Prisma.Decimal; credit: number | Prisma.Decimal; memo?: string }> = [];
+  const journalLines: JournalLineInput[] = [];
 
   const categoryIds = [...new Set(input.items.map(item => item.expenseCategoryId))];
   const categories: Prisma.ExpenseCategoryGetPayload<object>[] = [];
@@ -123,45 +137,34 @@ export async function postExpense(
         baseAmount,
       },
     });
-    journalLines.push({
-      chartOfAccountId: cat.expenseAccountId,
-      debit: baseDebit, credit: 0,
-      memo: item.description,
-    });
+    journalLines.push({ chartOfAccountId: cat.expenseAccountId, branchId: input.branchId, debit: baseDebit, credit: 0, memo: item.description });
     lineNo++;
   }
 
-  // Get payment account for Cr side
-  const fa = await tx.financialAccount.findFirst({
-    where: { id: input.financialAccountId, companyId: input.companyId },
-    include: { chartOfAccount: true },
-  });
-  if (!fa) throw new DomainError('VALIDATION_FAILED', 'Financial account not found', {}, 404);
+  if (needsApproval) {
+    const request = await tx.approvalRequest.create({ data: {
+      companyId: input.companyId, branchId: input.branchId, requestType: 'expense_approval',
+      referenceType: 'expense', referenceId: expense.id, requestedBy: input.createdBy,
+      reason: `Expense ${referenceNo} of ${baseGrandTotal.toFixed(2)} is above the approval threshold`,
+      // What approval needs to post it: the account it is paid from.
+      payload: JSON.stringify({ financial_account_id: fa.id }),
+    } });
+    await tx.expense.update({ where: { id: expense.id }, data: { approvalRequestId: request.id } });
+    await tx.auditLog.create({ data: { companyId: input.companyId, userId: input.createdBy, correlationId,
+      action: 'expense.submit', entityType: 'expense', entityId: expense.id,
+      afterValue: JSON.stringify({ reference_no: referenceNo, grand_total: grandTotal, status: 'pending_approval' }) } });
+    return { expenseId: expense.id, referenceNo, status: 'pending_approval', grandTotal, journalEntryNo: '' };
+  }
 
-  journalLines.push({
-    chartOfAccountId: fa.chartOfAccountId,
-    debit: 0, credit: baseGrandTotal,
-    memo: `Payment for ${referenceNo}`,
-  });
-
-  // Post journal entry
+  journalLines.push({ chartOfAccountId: fa.chartOfAccountId, financialAccountId: fa.id, branchId: input.branchId, debit: 0, credit: baseGrandTotal, memo: `Payment for ${referenceNo}` });
   const jeResult = await postJournalEntry(tx, {
-    companyId: input.companyId,
-    entryDate: input.expenseDate,
-    postingKind: 'expense',
+    companyId: input.companyId, entryDate: input.expenseDate, postingKind: 'expense',
     sourceType: 'expense', sourceId: expense.id,
     description: `Expense ${referenceNo}: ${input.description}`,
-    currencyCode: input.currencyCode,
-    exchangeRate: input.exchangeRate,
-    createdBy: input.createdBy,
+    currencyCode: input.currencyCode, exchangeRate: input.exchangeRate, createdBy: input.createdBy,
     lines: journalLines,
   }, correlationId);
-
-  // Link journal entry to expense
-  await tx.expense.update({
-    where: { id: expense.id },
-    data: { journalEntryId: jeResult.journalEntryId },
-  });
+  await tx.expense.update({ where: { id: expense.id }, data: { journalEntryId: jeResult.journalEntryId } });
 
   // Audit log
   await tx.auditLog.create({
@@ -179,4 +182,36 @@ export async function postExpense(
     grandTotal,
     journalEntryNo: jeResult.entryNo,
   };
+}
+
+/**
+ * The expense's journal: Dr each line's expense account (tax included, as it
+ * is not recoverable), Cr the paying account. Used when an expense posts at
+ * once and when an approved expense is posted.
+ */
+export async function postExpenseJournal(
+  tx: Prisma.TransactionClient,
+  input: { companyId: string; expenseId: string; financialAccountId: string; postedBy: string },
+  correlationId: string,
+): Promise<{ journalEntryId: string; entryNo: string }> {
+  const expense = await tx.expense.findFirstOrThrow({ where: { id: input.expenseId, companyId: input.companyId },
+    include: { items: { include: { expenseCategory: { select: { expenseAccountId: true } } } } } });
+  const fa = await tx.financialAccount.findFirst({ where: { id: input.financialAccountId, companyId: input.companyId, isActive: true } });
+  if (!fa) throw new DomainError('VALIDATION_FAILED', 'The paying account is no longer active', {}, 409);
+  const rate = new Prisma.Decimal(expense.exchangeRate);
+  const toBase = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value).mul(rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  const lines = expense.items.map(item => ({
+    chartOfAccountId: item.expenseCategory.expenseAccountId, branchId: expense.branchId,
+    debit: toBase(new Prisma.Decimal(item.amount).plus(item.taxAmount)), credit: new Prisma.Decimal(0), memo: item.description,
+  }));
+  const total = lines.reduce((t, l) => t.plus(l.debit), new Prisma.Decimal(0));
+  const je = await postJournalEntry(tx, {
+    companyId: input.companyId, entryDate: expense.expenseDate, postingKind: 'expense',
+    sourceType: 'expense', sourceId: expense.id,
+    description: `Expense ${expense.referenceNo}: ${expense.description}`,
+    currencyCode: expense.currencyCode, exchangeRate: Number(expense.exchangeRate), createdBy: input.postedBy,
+    lines: [...lines, { chartOfAccountId: fa.chartOfAccountId, financialAccountId: fa.id, branchId: expense.branchId, debit: new Prisma.Decimal(0), credit: total, memo: `Payment for ${expense.referenceNo}` }],
+  }, correlationId);
+  await tx.expense.update({ where: { id: expense.id }, data: { journalEntryId: je.journalEntryId, status: 'posted', postedAt: new Date() } });
+  return { journalEntryId: je.journalEntryId, entryNo: je.entryNo };
 }

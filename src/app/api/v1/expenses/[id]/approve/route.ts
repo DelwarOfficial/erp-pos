@@ -13,6 +13,7 @@ import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { postExpenseJournal } from '@/domain/commands/m4/PostExpense';
 import { getCorrelationId } from '@/lib/http';
 
 // Body is optional; only `notes` is consumed. Unknown keys (e.g. `decision`)
@@ -170,6 +171,18 @@ export async function POST(
               }
             }
 
+            // 12b. An expense held for approval posts now, from the account it
+            //      was entered with. Before, approval only changed the status
+            //      and the expense never reached the ledger.
+            let journalEntryNo: string | null = null;
+            if (expense.approvalRequestId) {
+              const ar = await tx.approvalRequest.findFirst({ where: { id: expense.approvalRequestId, companyId: auth.companyId }, select: { payload: true } });
+              const financialAccountId = (() => { try { return JSON.parse(ar?.payload ?? '{}').financial_account_id as string | undefined; } catch { return undefined; } })();
+              if (financialAccountId && !expense.journalEntryId) {
+                journalEntryNo = (await postExpenseJournal(tx, { companyId: auth.companyId, expenseId: expense.id, financialAccountId, postedBy: auth.userId! }, correlationId)).entryNo;
+              }
+            }
+
             // 13. Append-only audit log capturing the state transition.
             await tx.auditLog.create({
               data: {
@@ -195,7 +208,8 @@ export async function POST(
               body: {
                 id: updated.id,
                 reference_no: updated.referenceNo,
-                status: updated.status,
+                status: journalEntryNo ? 'posted' : updated.status,
+                journal_entry_no: journalEntryNo,
                 approved_by: updated.approvedBy,
                 approved_at: now.toISOString(),
                 approval_request_id: updated.approvalRequestId,

@@ -223,3 +223,14 @@ describe('F-11: cookie flags follow the guard', () => {
     expect(options.sameSite).toBe('lax');
   });
 });
+
+describe('mock providers', () => {
+  it('refuses PROVIDER_MODE=mock in production: fake providers would accept unsigned payment webhooks', () => {
+    expect(productionSecurityProblems(goodProduction({ PROVIDER_MODE: 'mock' })).join('\n')).toMatch(/PROVIDER_MODE=mock/);
+  });
+
+  it('allows it only with the explicit insecure-test acknowledgement, and anywhere outside production', () => {
+    expect(productionSecurityProblems(goodProduction({ PROVIDER_MODE: 'mock', ERP_ALLOW_INSECURE_TEST_MODE: INSECURE_TEST_MODE_ACKNOWLEDGEMENT }))).toEqual([]);
+    expect(productionSecurityProblems({ NODE_ENV: 'development', PROVIDER_MODE: 'mock' })).toEqual([]);
+  });
+});

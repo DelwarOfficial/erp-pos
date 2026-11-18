@@ -20,6 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         serial: { select: { id: true, serialNumber: true, status: true } }, serviceSale: { select: { id: true, referenceNo: true } },
         parts: { orderBy: { lineNo: 'asc' }, include: { product: { select: { id: true, name: true, code: true } } } },
         events: { orderBy: { createdAt: 'asc' }, include: { creator: { select: { name: true } } } },
+        warrantyClaim: { include: { replacementSerial: { select: { id: true, serialNumber: true } } } },
       } });
       if (!request) throw new DomainError('RESOURCE_NOT_FOUND', 'Service request not found', {}, 404);
       const approval = await db.approvalRequest.findFirst({ where: { companyId: auth.companyId, referenceType: 'service_request', referenceId: id, requestType: 'service_estimate', status: { in: ['pending', 'approved', 'rejected'] } }, orderBy: { requestedAt: 'desc' }, select: { id: true, status: true, requestedBy: true } });
@@ -28,6 +29,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         issue: request.issueDescription, intake_condition: request.intakeCondition, accessories: request.accessoriesReceived,
         estimated_amount: request.estimatedAmount.toString(), approved_amount: request.approvedAmount?.toString(), deposit_required: request.depositRequiredAmount.toString(),
         warranty_eligible: request.warrantyEligibleSnapshot, received_at: request.receivedAt, delivered_at: request.deliveredAt, approval,
+        sale_id: request.saleId,
+        warranty_claim: request.warrantyClaim ? { id: request.warrantyClaim.id, claim_type: request.warrantyClaim.claimType, status: request.warrantyClaim.status,
+          eligibility_reason: request.warrantyClaim.eligibilityReason, replacement_serial: request.warrantyClaim.replacementSerial, reference: request.warrantyClaim.supplierReference,
+          approved_at: request.warrantyClaim.approvedAt, fulfilled_at: request.warrantyClaim.fulfilledAt } : null,
         available_transitions: (ALLOWED_SERVICE_TRANSITIONS[request.status] ?? []).filter(status => !(status === 'approved' && request.status === 'diagnosing' && request.serviceType !== 'warranty')),
         parts: request.parts.map(part => ({ id: part.id, product: part.product, quantity: part.quantity.toString(), unit_cost: part.unitCostSnapshot.toString(), unit_price: part.unitPrice.toString(), warranty_covered: part.warrantyCovered })),
         events: request.events.map(event => {

@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
 import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
+import { CodSettlementPanel } from '@/components/deliveries/CodSettlementPanel';
+import { useDashboardSession } from '@/components/dashboard/session';
 
 interface Delivery {
   id: string;
@@ -69,6 +71,9 @@ export default function DeliveriesPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const session = useDashboardSession();
+  const canSettle = Boolean(session?.is_global || session?.permissions.includes('courier_cod.settle'));
+
   async function handleTransition(id: string, toStatus: string) {
     setTransitioning(id);
     try {
@@ -93,6 +98,8 @@ export default function DeliveriesPage() {
         <h1 className="text-2xl font-bold flex items-center gap-2"><Truck className="h-6 w-6" /> Deliveries</h1>
         <p className="text-muted-foreground">Delivery orders linked to posted sales from the last 30 days.</p>
       </div>
+
+      {canSettle && !featureOff && !loading && !error ? <CodSettlementPanel deliveries={items} onSettled={() => void load()} /> : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

@@ -46,6 +46,9 @@ const DEFAULT_COA: CoaSpec[] = [
   { code: '2110', name: 'Supplementary Duty Payable', accountClass: 'liability', accountSubtype: 'tax_payable', normalBalance: 'C' },
   { code: '2200', name: 'Gift Card Liability', accountClass: 'liability', accountSubtype: 'gift_card_liability', normalBalance: 'C', isControlAccount: true },
   { code: '2300', name: 'Branch Clearing', accountClass: 'liability', accountSubtype: 'branch_clearing', normalBalance: 'C' },
+  // Salaries owed to staff between posting a payroll run and paying it. Every
+  // employee needs a payable account, and the default chart had none.
+  { code: '2400', name: 'Salaries Payable', accountClass: 'liability', accountSubtype: 'payroll_payable', normalBalance: 'C' },
   // Equity
   { code: '3000', name: 'Equity', accountClass: 'equity', accountSubtype: 'equity', normalBalance: 'C', isControlAccount: true },
   { code: '3100', name: 'Opening Balance Equity', accountClass: 'equity', accountSubtype: 'opening_balance', normalBalance: 'C', allowManualPosting: true },

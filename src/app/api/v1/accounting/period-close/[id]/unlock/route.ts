@@ -15,6 +15,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const auth = await authenticateRequest();
     await requirePermission(auth, 'fiscal_period.unlock');
     const { id } = await params;
+    // Locking or unlocking a period changes what can be posted; it needs a fresh MFA check.
+    await requireMfaForAction(req, 'fiscal_period_unlock');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = {};
     const requestHash = computeRequestHash({ method: 'POST', path: `/api/v1/accounting/period-close/${id}/unlock`, body });
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           async () => {
             // Unlocking a fully locked period requires platform operations scope.
             // auth.isGlobal is true for platform_operations users.
-            await unlockPeriod(auth.companyId, id, auth.userId, auth.isGlobal);
+            await unlockPeriod(auth.companyId, id, auth.userId, auth.isGlobal, tx);
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
                 action: 'period_close.unlock', entityType: 'fiscal_period', entityId: id,

@@ -102,3 +102,18 @@ describe('one New Sale command: full, part and credit', () => {
     });
   });
 });
+
+describe('the shift a sale is counted in', () => {
+  it("refuses another cashier's shift; accepts the cashier's own", async () => {
+    await probe(async tx => {
+      const s = await setup(tx);
+      const other = await tx.user.create({ data: { companyId: COMPANY_ID, name: 'Other cashier', email: `${randomUUID()}@example.invalid`, passwordHash: 'x' } });
+      const shiftOf = (cashierId: string) => tx.cashierShift.create({ data: { companyId: COMPANY_ID, branchId: s.base.branchId, warehouseId: s.base.warehouseId,
+        cashierId, cashAccountId: fx.cash.id, openingFloat: 0 } });
+      const sale = (cashierShiftId: string) => postSale(tx, { ...s.base, cashierShiftId,
+        items: [{ productId: s.product.id, qty: 1, unitPrice: 10000 }], payments: [{ paymentMethod: 'cash', amount: 10000, financialAccountId: fx.cash.id }] }, randomUUID());
+      await expect(sale((await shiftOf(other.id)).id)).rejects.toThrow(/another cashier/);
+      await expect(sale((await shiftOf(fx.user.id)).id)).resolves.toMatchObject({ grandTotal: '10000' });
+    });
+  });
+});

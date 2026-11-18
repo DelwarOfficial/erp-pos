@@ -25,7 +25,7 @@ describe('financial workflow N+1 regression', () => {
         payrollPayableAccountId: 'payable-account',
       })));
       const tx = {
-        payrollRun: { create: vi.fn(async () => ({ id: 'payroll-safe' })) },
+        payrollRun: { create: vi.fn(async () => ({ id: 'payroll-safe' })) }, payrollItem: { createMany: vi.fn(async () => ({ count: 0 })) },
         employee: { findMany: employeeRead },
         company: { findUnique: vi.fn(async () => ({ legalName: 'Safe Company' })) },
         businessEvent: { create: vi.fn(async () => ({})) },
