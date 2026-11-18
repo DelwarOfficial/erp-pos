@@ -11,6 +11,7 @@ import { Loader2, Truck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
+import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
 
 interface Delivery {
   id: string;
@@ -46,6 +47,7 @@ export default function DeliveriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState<string | null>(null);
+  const [featureOff, setFeatureOff] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,9 +55,10 @@ export default function DeliveriesPage() {
     try {
       const res = await apiFetch('/api/v1/deliveries?limit=50');
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load deliveries');
+      if (!res.ok) { throwIfFeatureOff(data); throw new Error(data?.error?.message ?? 'Failed to load deliveries'); }
       setItems(data.items ?? []);
     } catch (e) {
+      if (e instanceof FeatureOffError) { setFeatureOff(true); return; }
       const msg = e instanceof Error ? e.message : 'Network error';
       setError(msg);
       toast.error(msg);
@@ -99,6 +102,8 @@ export default function DeliveriesPage() {
         <CardContent>
           {loading ? (
             <LoadingState label="Loading deliveries…" />
+          ) : featureOff ? (
+            <FeatureOffNotice module="Delivery & Courier" />
           ) : error ? (
             <ErrorState message={error} onRetry={load} />
           ) : items.length === 0 ? (

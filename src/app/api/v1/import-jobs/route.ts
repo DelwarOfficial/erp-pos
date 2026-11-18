@@ -13,7 +13,7 @@ import { errorMeta, logger } from '@/lib/logging';
 // GET /api/v1/import-jobs — list import jobs for the current company
 export async function GET(req: NextRequest) {
   let auth;
-    const idempotencyKey = requireIdempotencyKey(req);
+  // A read needs no Idempotency-Key; requiring one here threw outside any try and turned every list request into an empty 500.
   try {
     auth = await authenticateRequest();
   } catch (e) {

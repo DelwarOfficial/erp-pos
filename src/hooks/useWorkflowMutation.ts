@@ -9,9 +9,10 @@ export function useWorkflowMutation() {
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   async function mutate<T>(url: string, body: unknown, method = 'POST'): Promise<T | null> {
     if (busy.current) return null;
-    busy.current = true; setPending(true); setError('');
+    busy.current = true; setPending(true); setError(''); setErrorStatus(null);
     const payload = JSON.stringify(body);
     const identity = `${method}:${url}:${payload}`;
     const key = keys.current.get(identity) ?? crypto.randomUUID();
@@ -19,11 +20,14 @@ export function useWorkflowMutation() {
     try {
       const response = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: payload });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'Action failed. Review the form and retry.');
+      if (!response.ok) {
+        setErrorStatus(response.status);
+        throw new Error(data.error?.message ?? 'Action failed. Review the form and retry.');
+      }
       keys.current.delete(identity);
       return data as T;
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Network error. Retry the same action.'); return null; }
     finally { busy.current = false; setPending(false); }
   }
-  return { mutate, pending, error, setError };
+  return { mutate, pending, error, setError, errorStatus };
 }

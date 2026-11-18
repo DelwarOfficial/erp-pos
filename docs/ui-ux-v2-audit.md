@@ -68,8 +68,8 @@ Used for the bn-BD catalog. Every bn-BD string added in this pass is machine-wri
 
 | English | বাংলা |
 |---|---|
-| Sale | বিক্রয় |
-| Customer | গ্রাহক |
+| Sale | বিক্রি (was বিক্রয়; the owner chose "নতুন বিক্রি") |
+| Customer | কাস্টমার (was গ্রাহক; the owner chose "নতুন কাস্টমার যোগ করুন") |
 | Supplier | সরবরাহকারী |
 | Product | পণ্য |
 | Warehouse | গুদাম |
@@ -86,6 +86,20 @@ Used for the bn-BD catalog. Every bn-BD string added in this pass is machine-wri
 | Receipt | রসিদ |
 | Invoice | চালান |
 | Change (cash) | ফেরত টাকা |
+
+### Bengali review, New Sale and Add Customer (2026-11-18)
+
+A consistency review by the assistant, not by a native speaker. It fixed:
+
+- **One word per thing on the checkout screen.** কাস্টমার throughout New Sale (it had গ্রাহক and কাস্টমার side by side), বিক্রি instead of বিক্রয়, and ওয়াক-ইন কাস্টমার for a walk-in customer.
+- **No doubled meaning.** "বাকি বকেয়া" (both words mean "due") became "বাকি রইল".
+- **No jargon.** "লাইন" became "এই পণ্য" in the line-discount texts.
+- **Examples a cashier can type.** The amount fields accept English digits only, so the examples in the error texts now use English digits (1000, 50000), not Bengali ones (১০০০), and say so.
+
+Still needed before release:
+
+- A native Bengali speaker reads every bn-BD string. This review checked consistency, not idiom or tone.
+- The other pages still use গ্রাহক and বিক্রয়. Bring them in line with this glossary in the same review.
 
 ## What changed, by slice
 

@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
 
 type LeadStatus = BusinessEntity & { isWon?: boolean; isLost?: boolean };
 type LeadSummary = { id: string; name: string; company_name: string | null; phone: string | null; email: string | null; next_action_at: string | null; status: LeadStatus; assignee: BusinessEntity | null; converted_customer_id: string | null };
@@ -34,14 +35,15 @@ export default function CRMPage() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [editor, setEditor] = useState<LeadDetail | 'new' | null>(null);
+  const [featureOff, setFeatureOff] = useState(false);
   const load = useCallback(async (after?: string) => {
     setLoading(true); setError('');
     try {
       const params = new URLSearchParams({ limit: '50', search: query, today: String(today) }); if (after) params.set('cursor', after);
       const response = await apiFetch(`/api/v1/leads?${params}`); const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message ?? 'Unable to load leads');
+      if (!response.ok) { throwIfFeatureOff(data); throw new Error(data.error?.message ?? 'Unable to load leads'); }
       setItems(current => after ? [...current, ...data.items] : data.items); setCursor(data.has_more ? data.next_cursor : null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load leads'); } finally { setLoading(false); }
+    } catch (cause) { if (cause instanceof FeatureOffError) { setFeatureOff(true); return; } setError(cause instanceof Error ? cause.message : 'Unable to load leads'); } finally { setLoading(false); }
   }, [query, today]);
   useEffect(() => { void load(); }, [load]);
   async function view(id: string) {
@@ -57,6 +59,7 @@ export default function CRMPage() {
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">CRM — Leads</h1><p className="text-muted-foreground">Manage contacts, follow-ups and customer conversion.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading} onClick={() => void load()}>Refresh</Button>{can('crm.lead.create') ? <Button disabled={!!editor || mutation.pending} onClick={() => setEditor('new')}>New lead</Button> : null}</div></div>
     <form className="flex flex-wrap items-end gap-3" onSubmit={event => { event.preventDefault(); setQuery(search); }}><div className="min-w-0 flex-1"><Label htmlFor="lead-search">Search leads</Label><Input id="lead-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Name, company or phone" /></div><Button variant="outline" type="submit">Search</Button><Button type="button" variant={today ? 'default' : 'outline'} aria-pressed={today} onClick={() => setToday(value => !value)}>Today’s actions</Button></form>
+    {featureOff ? <FeatureOffNotice module="CRM" /> : null}
     {error || mutation.error ? <div role="alert" className="space-y-2 rounded-md border p-3"><p>{error || mutation.error}</p><Button variant="outline" onClick={() => void load()}>Retry lead list</Button></div> : null}
     {editor ? <LeadEditor key={editor === 'new' ? 'new' : editor.id} initial={editor === 'new' ? null : editor} onCancel={() => setEditor(null)} onSaved={async id => { setEditor(null); await load(); await view(id); }} /> : null}
     {detail && !editor ? <Card><CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3"><CardTitle><h2>{detail.name}</h2></CardTitle><Button variant="outline" disabled={mutation.pending} onClick={() => setDetail(null)}>Close lead</Button></CardHeader><CardContent className="space-y-4">

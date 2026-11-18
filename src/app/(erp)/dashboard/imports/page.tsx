@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, Upload, Download, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
 
 interface ImportJob {
   id: string;
@@ -58,6 +59,7 @@ export default function ImportExportPage() {
   const [exportJobs, setExportJobs] = useState<ExportJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [importsOff, setImportsOff] = useState(false);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -68,6 +70,8 @@ export default function ImportExportPage() {
       if (importRes.ok) {
         const data = await importRes.json();
         setImportJobs(data.jobs ?? []);
+      } else {
+        try { throwIfFeatureOff(await importRes.json()); } catch (e) { if (e instanceof FeatureOffError) setImportsOff(true); }
       }
       if (exportRes.ok) {
         const data = await exportRes.json();
@@ -128,6 +132,7 @@ export default function ImportExportPage() {
           CSV/Excel exports escape formula-leading cells.
         </p>
       </div>
+      {importsOff ? <FeatureOffNotice module="CSV / Excel import" /> : null}
 
       <Tabs defaultValue="imports">
         <TabsList>

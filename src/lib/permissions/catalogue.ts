@@ -258,7 +258,9 @@ export const SYSTEM_ROLES = [
     name: 'cashier',
     description: 'POS cashier. Posts sales, opens/closes shifts, collects customer dues. No reports.',
     permissions: ['product.read', 'sale.post', 'sale.void', 'sale_return.post', 'shift.open', 'shift.close', 'gift_card.redeem', 'payment.allocate',
-      'payment.read', 'inventory.read', 'customer.credit.view.branch', 'collection.view.branch'],
+      'payment.read', 'inventory.read', 'customer.credit.view.branch', 'collection.view.branch',
+      // Find the customer at the till. Not customer.create: adding customers stays a manager's call.
+      'customer.read'],
   },
   {
     name: 'accountant',

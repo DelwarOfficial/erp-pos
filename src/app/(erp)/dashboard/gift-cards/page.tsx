@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Gift, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
+import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
 
 interface GiftCard {
   id: string;
@@ -25,6 +26,7 @@ interface GiftCard {
 export default function GiftCardsPage() {
   const [items, setItems] = useState<GiftCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [featureOff, setFeatureOff] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [faceValue, setFaceValue] = useState('1000');
   const [posting, setPosting] = useState(false);
@@ -71,9 +73,9 @@ export default function GiftCardsPage() {
     try {
       const res = await apiFetch('/api/v1/gift-cards');
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load gift cards');
+      if (!res.ok) { throwIfFeatureOff(data); throw new Error(data?.error?.message ?? 'Failed to load gift cards'); }
       setItems(data.items ?? []);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { if (e instanceof FeatureOffError) { setFeatureOff(true); return; } toast.error(e instanceof Error ? e.message : 'Failed'); }
     finally { setLoading(false); }
   }
 
@@ -117,8 +119,9 @@ export default function GiftCardsPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2"><Gift className="h-6 w-6" /> Gift Cards</h1>
           <p className="text-muted-foreground">Issue and track gift card liability.</p>
         </div>
-        <Button disabled={posting || uncertain} onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-2" /> Issue Card</Button>
+        {!featureOff ? <Button disabled={posting || uncertain} onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-2" /> Issue Card</Button> : null}
       </div>
+      {featureOff ? <FeatureOffNotice module="Gift Cards & Loyalty" /> : null}
 
       {showForm && (
         <Card>

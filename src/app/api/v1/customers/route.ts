@@ -9,17 +9,7 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
-
-const CustomerSchema = z.object({
-  name: z.string().min(1).max(200),
-  phone: z.string().max(30).optional(),
-  email: z.string().email().max(150).optional(),
-  address: z.string().optional(),
-  tax_identifier: z.string().max(50).optional(),
-  customer_group_id: z.string().uuid().optional(),
-  credit_limit: z.number().min(0).default(0),
-  preferred_branch_id: z.string().uuid().optional(),
-});
+import { CustomerSchema } from '@/lib/customers/schema';
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);

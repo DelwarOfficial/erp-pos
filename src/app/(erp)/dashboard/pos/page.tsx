@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 import { Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, Loader2, PackageX, AlertCircle, CheckCircle2, Printer, FileText } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
 import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
-import { QuickCreateCustomer } from '@/components/customers/QuickCreateCustomer';
+import { QuickCreateCustomer, type CreatedCustomer } from '@/components/customers/QuickCreateCustomer';
 import { useDashboardSession } from '@/components/dashboard/session';
 
 interface Product {
@@ -120,7 +120,7 @@ export default function POSPage() {
   // Display helpers only: neither value is sent with the sale.
   const [cashReceived, setCashReceived] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
-  const [customer, setCustomer] = useState<BusinessEntity | null>(null);
+  const [customer, setCustomer] = useState<(CreatedCustomer & { is_active?: boolean }) | null>(null);
   const [primaryAmount, setPrimaryAmount] = useState('');
   const [tenders, setTenders] = useState<{ id: string; method: string; account: BusinessEntity | null; amount: string; code?: string }[]>([]);
   const [postedSale, setPostedSale] = useState<{ saleId: string; referenceNo: string; grandTotal: string } | null>(null);
@@ -458,6 +458,7 @@ export default function POSPage() {
   // Escape (when search focused and non-empty) → clear search
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (addCustomer) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const isTypingField = tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
@@ -477,7 +478,7 @@ export default function POSPage() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cart, posting, search, handleCheckout]);
+  }, [cart, posting, search, handleCheckout, addCustomer]);
 
   const canReadSales = session?.is_global || session?.permissions.includes('sale.read');
   const canReadShifts = session?.is_global || session?.permissions.includes('shift.read');
@@ -723,19 +724,23 @@ export default function POSPage() {
               <div className="space-y-3 pt-2 border-t">
                 {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
                 {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button></div> : null}
-                <div className="flex items-end gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1">
                     <EntityPicker label={t(timing === 'full' ? 'customer_label' : 'customer_label_required')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting}
                       searchPlaceholder={t('customer_search_placeholder')}
+                      selectPlaceholder={t('customer_select')}
+                      searchLabel={t('customer_search_label')} noResultsLabel={t('customer_no_results')} loadingLabel={t('customer_search_loading')} retryLabel={t('add_customer_retry_search')}
+                      getOptionDescription={item => [item.phone, item.is_active === false ? t('customer_inactive') : ''].filter(Boolean).join(' · ')}
+                      getOptionDisabled={item => item.is_active === false}
                       createAction={canCreateCustomer ? { label: t('add_customer'), onCreate: prefill => setAddCustomer({ prefill }) } : undefined} />
                   </div>
-                  {canCreateCustomer ? <Button type="button" variant="outline" className="min-h-10 shrink-0" onClick={() => setAddCustomer({ prefill: '' })}>{t('add_customer')}</Button> : null}
+                  {canCreateCustomer ? <Button type="button" variant="outline" disabled={posting} className="min-h-11 h-auto whitespace-normal text-left sm:max-w-44" onClick={() => setAddCustomer({ prefill: '' })}>{t('add_customer')}</Button> : null}
                 </div>
                 {/* Only the customer changes here; the cart, discounts, payments and schedule stay as they are,
                     and the schedule preview re-checks credit for the newly chosen customer. */}
-                <QuickCreateCustomer open={addCustomer !== null} onOpenChange={open => { if (!open) setAddCustomer(null); }} prefill={addCustomer?.prefill ?? ''}
-                  askCreditLimit={timing !== 'full'} onSelected={created => setCustomer({ id: created.id, name: created.name })} />
-                {customer ? <Button type="button" variant="ghost" onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : <p className={`text-xs ${timing !== 'full' ? 'text-destructive' : 'text-muted-foreground'}`}>{timing !== 'full' ? t('err.credit_customer') : t('customer_walk_in')}</p>}
+                <QuickCreateCustomer open={canCreateCustomer && addCustomer !== null} onOpenChange={open => { if (!open) setAddCustomer(null); }} prefill={addCustomer?.prefill ?? ''}
+                  onSelected={setCustomer} />
+                {customer && timing === 'full' ? <Button type="button" variant="ghost" disabled={posting} onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : !customer ? <p className={`text-xs ${timing !== 'full' ? 'text-destructive' : 'text-muted-foreground'}`}>{timing !== 'full' ? t('err.credit_customer') : t('customer_walk_in')}</p> : null}
                 {/* When the customer pays — separate from how they pay. */}
                 <div className="space-y-1.5" role="radiogroup" aria-labelledby="timing-label">
                   <span id="timing-label" className="text-sm font-medium leading-none">{t('timing')}</span>

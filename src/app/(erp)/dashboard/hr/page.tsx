@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
 
 type Employee = { id: string; employee_no: string; name: string; phone: string | null; email: string | null; branch: BusinessEntity; department: BusinessEntity | null; designation: BusinessEntity | null; employment_status: string; base_salary: string; join_date: string };
 type Detail = { id: string; employeeNo: string; name: string; phone: string | null; email: string | null; address: string | null; branch: BusinessEntity; department: BusinessEntity | null; designation: BusinessEntity | null; user: BusinessEntity | null; employmentStatus: string; baseSalary: string; joinDate: string; expenseAccount: BusinessEntity | null; payableAccount: BusinessEntity | null };
@@ -26,14 +27,14 @@ export default function HRPage() {
   const [items, setItems] = useState<Employee[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [search, setSearch] = useState(''); const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false); const [opening, setOpening] = useState<string | null>(null); const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); const [opening, setOpening] = useState<string | null>(null); const [error, setError] = useState(''); const [featureOff, setFeatureOff] = useState(false);
   const [detail, setDetail] = useState<Detail | null>(null); const [editor, setEditor] = useState<Detail | 'new' | null>(null);
   const load = useCallback(async (after?: string) => {
     setLoading(true); setError('');
     try { const params = new URLSearchParams({ limit: '50', search: query }); if (after) params.set('cursor', after);
-      const response = await apiFetch(`/api/v1/employees?${params}`); const data = await response.json(); if (!response.ok) throw new Error(data.error?.message ?? 'Unable to load employees');
+      const response = await apiFetch(`/api/v1/employees?${params}`); const data = await response.json(); if (!response.ok) { throwIfFeatureOff(data); throw new Error(data.error?.message ?? 'Unable to load employees'); }
       setItems(current => after ? [...current, ...data.items] : data.items); setCursor(data.has_more ? data.next_cursor : null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load employees'); } finally { setLoading(false); }
+    } catch (cause) { if (cause instanceof FeatureOffError) { setFeatureOff(true); return; } setError(cause instanceof Error ? cause.message : 'Unable to load employees'); } finally { setLoading(false); }
   }, [query]);
   useEffect(() => { void load(); }, [load]);
   async function view(id: string) {
@@ -44,6 +45,7 @@ export default function HRPage() {
   return <div className="min-w-0 space-y-6 pb-6 [&_input]:min-h-11 [&_button]:min-h-11">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight">Employees</h1><p className="text-muted-foreground">Employee records, branch assignments and payroll setup.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={loading} onClick={() => void load()}>Refresh</Button>{can('employee.manage.branch') ? <Button disabled={!!editor} onClick={() => setEditor('new')}>New employee</Button> : null}</div></div>
     <form className="flex flex-col gap-3 rounded-xl border bg-card p-5 sm:flex-row sm:items-end" onSubmit={event => { event.preventDefault(); setQuery(search); }}><div className="grid w-full min-w-0 flex-1 gap-2"><Label htmlFor="employee-search">Search employees</Label><Input id="employee-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Name or employee number" /></div><Button type="submit" variant="outline">Search</Button></form>
+    {featureOff ? <FeatureOffNotice module="HR & Payroll" /> : null}
     {error ? <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"><p>{error}</p><Button variant="outline" onClick={() => void load()}>Retry employees</Button></div> : null}
     {editor ? <EmployeeEditor key={editor === 'new' ? 'new' : editor.id} initial={editor === 'new' ? null : editor} canReadAccounts={can('journal.read')} onCancel={() => setEditor(null)} onSaved={async id => { setEditor(null); await load(); await view(id); }} /> : null}
     {detail && !editor ? <Card><CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3"><CardTitle><h2>{detail.name}</h2></CardTitle><Button variant="outline" onClick={() => setDetail(null)}>Close employee</Button></CardHeader><CardContent className="space-y-5"><Badge>{detail.employmentStatus.replaceAll('_', ' ')}</Badge><dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 [&>div]:space-y-2">{[['Employee number', detail.employeeNo], ['Branch', detail.branch.name], ['Department', detail.department?.name], ['Designation', detail.designation?.name], ['Linked user', detail.user?.name], ['Phone', detail.phone], ['Email', detail.email], ['Joined', formatDate(detail.joinDate)], ['Base salary', detail.baseSalary], ['Payroll expense account', detail.expenseAccount?.name], ['Payroll payable account', detail.payableAccount?.name]].map(([label, value]) => <div key={label}><dt className="text-sm text-muted-foreground">{label}</dt><dd className="break-words">{value || 'Not set'}</dd></div>)}</dl>{detail.address ? <p className="whitespace-pre-wrap break-words">{detail.address}</p> : null}{can('employee.manage.branch') ? <Button variant="outline" onClick={() => setEditor(detail)}>Edit employee</Button> : null}</CardContent></Card> : null}

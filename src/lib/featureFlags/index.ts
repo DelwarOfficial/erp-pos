@@ -62,12 +62,30 @@ export const FEATURE_FLAG_CATALOGUE: FeatureFlagSpec[] = [
 
 // Module implementation registry — when a flag is enabled, the system must
 // verify the module is actually implemented (not just schema-present).
-// In M1, only the core + i18n + quotation modules are "implemented".
+//
+// A module is listed once its main journey works end to end in the app and is
+// covered by tests/e2e/ui-workflows.spec.ts (CRM create/edit/follow-up/
+// conversion, HR create/view/edit, service intake to delivery) or by the
+// integration suite (gift-card issue, POS tender and void restore; delivery
+// create and transitions). Listing a module only allows a company to switch
+// it on; each stays off until someone does.
+//
+// Still NOT listed, so they cannot be switched on:
+//   accounting multi-currency (module 'accounting' is listed for the core
+//     ledger, but multi_currency_enabled is blocked separately below):
+//     revaluation posts no journal entry.
+//   offline: there is no offline POS client in the app.
 export const IMPLEMENTED_MODULES = new Set<string>([
   'core', 'identity', 'organization', 'catalogue', 'inventory', 'purchasing',
   'pos_online', 'payments', 'accounting', 'expenses', 'reports',
-  'administration', 'integration', 'i18n', 'sale', // sale = quotation
+  'administration', 'integration', 'i18n', 'sale', // sale = quotation + credit sales
+  'crm', 'hr', 'delivery', 'service', 'loyalty',
 ]);
+
+/** Flags that stay blocked even though their module is listed, and why. */
+export const BLOCKED_FLAGS: Partial<Record<FeatureFlagKey, string>> = {
+  multi_currency_enabled: 'Foreign-currency revaluation does not post to the ledger yet',
+};
 
 /**
  * Check whether a feature flag is enabled for the current tenant.
@@ -133,7 +151,7 @@ client: Pick<Prisma.TransactionClient, 'featureFlag'> = db,
   }
 
   // If enabling, verify module is implemented
-  if (params.enabled && !IMPLEMENTED_MODULES.has(spec.module)) {
+  if (params.enabled && (!IMPLEMENTED_MODULES.has(spec.module) || BLOCKED_FLAGS[params.flagKey])) {
     await db.securityEvent.create({
       data: {
         companyId: params.companyId,
@@ -145,8 +163,10 @@ client: Pick<Prisma.TransactionClient, 'featureFlag'> = db,
     });
     throw new DomainError(
       'MODULE_NOT_IMPLEMENTED',
-      `Module "${spec.module}" is not implemented; cannot enable flag "${params.flagKey}"`,
-      { flag_key: params.flagKey, module: spec.module },
+      BLOCKED_FLAGS[params.flagKey]
+        ? `"${params.flagKey}" is not implemented for live use yet: ${BLOCKED_FLAGS[params.flagKey]}`
+        : `Module "${spec.module}" is not implemented; cannot enable flag "${params.flagKey}"`,
+      { flag_key: params.flagKey, module: spec.module, ...(BLOCKED_FLAGS[params.flagKey] ? { reason: BLOCKED_FLAGS[params.flagKey] } : {}) },
       409,
     );
   }

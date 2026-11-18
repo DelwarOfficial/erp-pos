@@ -1,17 +1,5 @@
 'use client';
 
-// Add a customer without leaving checkout.
-//
-// Uses the customer API as it is: GET /api/v1/customers?search= (name, phone
-// or email) to show people who may already be customers, and POST
-// /api/v1/customers to save. Nothing here merges records: a matching name is
-// shown, never reused silently, and the cashier decides. The mobile number
-// follows the reminder rule (normalizeBdMobile) when one is entered.
-//
-// One Idempotency-Key per set of details: a double click or a retry after a
-// lost response cannot save the customer twice; changing the details starts
-// a new attempt.
-
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Loader2 } from 'lucide-react';
@@ -20,155 +8,151 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api/client';
+import { CustomerSchema } from '@/lib/customers/schema';
 import { normalizeBdMobile } from '@/domain/receivables/phone';
+import { useWorkflowMutation } from '@/hooks/useWorkflowMutation';
 
 export interface CreatedCustomer { id: string; name: string; phone?: string | null }
-interface Match { id: string; name: string; phone: string | null; is_active?: boolean }
+interface Match extends CreatedCustomer { is_active?: boolean }
+type Lookup = { signature: string; items: Match[]; error: string };
+const QuickCustomerSchema = CustomerSchema.pick({ name: true, phone: true });
 
-const MONEY = /^\d{1,15}(\.\d{1,2})?$/;
-
-/** Typed search text that looks like a phone number goes to the mobile field, anything else to the name. */
 function splitPrefill(text: string) {
   const digits = text.replace(/[\s\-+().]/g, '');
-  return /^\d{6,}$/.test(digits) ? { name: '', phone: text.trim() } : { name: text.trim(), phone: '' };
+  return /^[\d০-৯]{6,}$/.test(digits) ? { name: '', phone: text.trim() } : { name: text.trim(), phone: '' };
 }
 
-export function QuickCreateCustomer({ open, onOpenChange, prefill, askCreditLimit, onSelected }: {
+/** Uses existing customer search/create rules; matching names are never merged. */
+export function QuickCreateCustomer({ open, onOpenChange, prefill, onSelected }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefill: string;
-  /** Show the credit limit field: the sale leaves money owing, and a new customer starts with no credit. */
-  askCreditLimit: boolean;
-  /** A saved or an existing customer was chosen. */
   onSelected: (customer: CreatedCustomer) => void;
 }) {
   const t = useTranslations('pos');
+  const mutation = useWorkflowMutation();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [creditLimit, setCreditLimit] = useState('');
   const [touched, setTouched] = useState(false);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const attempt = useRef<{ payload: string; key: string } | null>(null);
+  const [lookup, setLookup] = useState<Lookup | null>(null);
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
 
-  // Fresh form each time it opens, filled from what was typed in the search.
+  useEffect(() => {
+    if (open && !wasOpen.current && !mutation.error) {
+      const p = splitPrefill(prefill);
+      setName(p.name); setPhone(p.phone); setTouched(false); setLookup(null);
+    }
+    wasOpen.current = open;
+  }, [open, prefill, mutation.error]);
+
+  const body = { name: name.trim(), ...(phone.trim() ? { phone: phone.trim() } : {}) };
+  const validation = QuickCustomerSchema.safeParse(body);
+  const nameProblem = validation.success ? '' : validation.error.issues.some(issue => issue.path[0] === 'name')
+    ? t(body.name ? 'add_customer_name_long' : 'add_customer_name_required') : '';
+  const phoneProblem = validation.success ? '' : validation.error.issues.some(issue => issue.path[0] === 'phone') ? t('add_customer_phone_long') : '';
+  const signature = JSON.stringify([body.name, body.phone ?? '']);
+  const canonical = normalizeBdMobile(body.phone);
+  const samePhone = (match: Match) => Boolean(body.phone && match.phone &&
+    (canonical ? normalizeBdMobile(match.phone) === canonical : match.phone.trim() === body.phone));
+
   useEffect(() => {
     if (!open) return;
-    const p = splitPrefill(prefill);
-    setName(p.name); setPhone(p.phone); setCreditLimit(''); setTouched(false); setError(''); setMatches([]);
-    attempt.current = null;
-    setTimeout(() => (p.phone && !p.name ? nameRef : p.name ? phoneRef : nameRef).current?.focus(), 0);
-  }, [open, prefill]);
-
-  const canonical = phone.trim() ? normalizeBdMobile(phone) : null;
-  const nameProblem = !name.trim() ? t('add_customer_name_required') : name.trim().length > 200 ? t('add_customer_name_long') : '';
-  const phoneProblem = phone.trim() && !canonical ? t('add_customer_phone_invalid') : '';
-  const creditProblem = askCreditLimit && creditLimit.trim() && !MONEY.test(creditLimit.trim()) ? t('add_customer_credit_invalid') : '';
-
-  // People who may already be customers: same mobile first, then similar names.
-  useEffect(() => {
-    if (!open) return;
-    const queries = [canonical ? `0${canonical.slice(3)}` : '', name.trim().length >= 2 ? name.trim() : ''].filter(Boolean);
-    if (!queries.length) { setMatches([]); return; }
-    let alive = true;
+    const controller = new AbortController();
+    const queries = [...new Set([body.phone ?? '', canonical ? `0${canonical.slice(3)}` : '', body.name].filter(Boolean))];
+    if (!queries.length) { setLookup({ signature, items: [], error: '' }); return; }
     const timer = setTimeout(async () => {
-      const found = new Map<string, Match>();
-      for (const q of queries) {
-        const r = await apiFetch(`/api/v1/customers?search=${encodeURIComponent(q)}&limit=5`).catch(() => null);
-        if (r?.ok) for (const c of ((await r.json()).items ?? []) as Match[]) found.set(c.id, c);
+      try {
+        const groups = await Promise.all(queries.map(async query => {
+          const response = await apiFetch(`/api/v1/customers?search=${encodeURIComponent(query)}&limit=5`, { signal: controller.signal });
+          if (!response.ok) throw new Error(response.status === 403 ? t('add_customer_search_forbidden') : t('add_customer_search_failed'));
+          const data = await response.json();
+          if (!Array.isArray(data.items)) throw new Error(t('add_customer_search_failed'));
+          return data.items as Match[];
+        }));
+        const unique = new Map(groups.flat().map(item => [item.id, item]));
+        if (!controller.signal.aborted) setLookup({ signature, items: [...unique.values()], error: '' });
+      } catch (cause) {
+        if (!controller.signal.aborted) setLookup({ signature, items: [], error: cause instanceof Error ? cause.message : t('add_customer_search_failed') });
       }
-      if (alive) setMatches([...found.values()].slice(0, 6));
     }, 300);
-    return () => { alive = false; clearTimeout(timer); };
-  }, [open, name, canonical]);
-  const samePhone = (m: Match) => Boolean(canonical && m.phone && normalizeBdMobile(m.phone) === canonical);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [open, signature, canonical, lookupAttempt, t]);
+
+  const checked = lookup?.signature === signature;
+  const checking = !checked;
+  const matches = checked ? [...lookup.items].sort((a, b) => Number(samePhone(b)) - Number(samePhone(a))) : [];
+  const lookupError = checked ? lookup.error : '';
 
   async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setTouched(true);
-    if (saving) return;
-    if (nameProblem || phoneProblem || creditProblem) {
-      (nameProblem ? nameRef : phoneRef).current?.focus();
-      return;
-    }
-    const body = {
-      name: name.trim(),
-      ...(phone.trim() ? { phone: phone.trim() } : {}),
-      ...(askCreditLimit && creditLimit.trim() ? { credit_limit: Number(creditLimit.trim()) } : {}),
-    };
-    const payload = JSON.stringify(body);
-    if (attempt.current?.payload !== payload) attempt.current = { payload, key: `customer-${crypto.randomUUID()}` };
-    setSaving(true); setError('');
-    try {
-      const r = await apiFetch('/api/v1/customers', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attempt.current.key }, body: payload });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setError(r.status === 403 ? t('add_customer_forbidden') : t('add_customer_failed', { reason: data?.error?.message ?? String(r.status) }));
-        return;
-      }
-      attempt.current = null;
-      onSelected({ id: data.id, name: data.name ?? body.name, phone: body.phone ?? null });
-      onOpenChange(false);
-    } catch {
-      // The save may have reached the server; retrying with the same details reuses the same key.
-      setError(t('add_customer_network'));
-    } finally { setSaving(false); }
+    event.preventDefault(); setTouched(true);
+    if (!validation.success) { (nameProblem ? nameRef : phoneRef).current?.focus(); return; }
+    if (mutation.pending || checking || lookupError) return;
+    // Only name/phone: retain the API's credit-limit default and permission checks.
+    const result = await mutation.mutate<CreatedCustomer>('/api/v1/customers', validation.data);
+    if (!result) return;
+    onSelected(result);
+    onOpenChange(false);
   }
 
-  return (
-    <Dialog open={open} onOpenChange={next => { if (!saving) onOpenChange(next); }}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={save} noValidate className="space-y-4">
-          <DialogHeader>
-            <DialogTitle>{t('add_customer_title')}</DialogTitle>
-            <DialogDescription>{t('add_customer_help')}</DialogDescription>
-          </DialogHeader>
-          <fieldset disabled={saving} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="qc-name">{t('add_customer_name')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
-              <Input id="qc-name" ref={nameRef} required aria-required="true" maxLength={200} autoComplete="off" className="h-11"
-                value={name} onChange={e => setName(e.target.value)} aria-invalid={touched && !!nameProblem} aria-describedby={touched && nameProblem ? 'qc-name-error' : undefined} />
-              {touched && nameProblem ? <p id="qc-name-error" className="text-xs text-destructive">{nameProblem}</p> : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="qc-phone">{t('add_customer_phone')}</Label>
-              <Input id="qc-phone" ref={phoneRef} type="tel" inputMode="tel" autoComplete="off" maxLength={30} placeholder="01XXXXXXXXX" className="h-11"
-                value={phone} onChange={e => setPhone(e.target.value)} aria-invalid={!!phoneProblem} aria-describedby="qc-phone-help" />
-              <p id="qc-phone-help" className={`text-xs ${phoneProblem ? 'text-destructive' : 'text-muted-foreground'}`}>{phoneProblem || t('add_customer_phone_help')}</p>
-            </div>
-            {askCreditLimit ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="qc-credit">{t('add_customer_credit')}</Label>
-                <Input id="qc-credit" inputMode="decimal" autoComplete="off" placeholder="0" className="h-11 tabular-nums"
-                  value={creditLimit} onChange={e => setCreditLimit(e.target.value)} aria-invalid={!!creditProblem} aria-describedby="qc-credit-help" />
-                <p id="qc-credit-help" className={`text-xs ${creditProblem ? 'text-destructive' : 'text-muted-foreground'}`}>{creditProblem || t('add_customer_credit_help')}</p>
-              </div>
-            ) : null}
-          </fieldset>
-          {matches.length ? (
-            <section aria-labelledby="qc-matches" className="space-y-2 rounded-md border bg-muted/40 p-3">
-              <h3 id="qc-matches" className="text-sm font-medium">{t('add_customer_matches')}</h3>
-              <ul className="space-y-1">
-                {matches.map(m => (
-                  <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="min-w-0 truncate">{m.name}{m.phone ? <span className="text-muted-foreground"> · {m.phone}</span> : null}
-                      {samePhone(m) ? <strong className="ml-1 text-destructive">{t('add_customer_same_phone')}</strong> : null}</span>
-                    <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => { onSelected({ id: m.id, name: m.name, phone: m.phone }); onOpenChange(false); }}>{t('add_customer_use_existing')}</Button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          {error ? <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm">{error}</p> : null}
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>{t('add_customer_cancel')}</Button>
-            <Button type="submit" disabled={saving}>{saving ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}{error ? t('add_customer_retry') : t('add_customer_save')}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  const saveError = mutation.error ? mutation.errorStatus === 403 ? t('add_customer_forbidden')
+    : mutation.errorStatus === null ? t('add_customer_network') : t('add_customer_failed', { reason: mutation.error }) : '';
+
+  return <Dialog open={open} onOpenChange={next => { if (!mutation.pending) onOpenChange(next); }}>
+    <DialogContent className="sm:max-w-lg motion-reduce:animate-none" showCloseButton={!mutation.pending}
+      onOpenAutoFocus={event => {
+        event.preventDefault();
+        returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        nameRef.current?.focus();
+      }}
+      onCloseAutoFocus={event => {
+        if (returnFocus.current?.isConnected) { event.preventDefault(); returnFocus.current.focus(); }
+      }}>
+      <form onSubmit={save} noValidate className="min-w-0 space-y-4" aria-busy={mutation.pending}>
+        <DialogHeader><DialogTitle>{t('add_customer_title')}</DialogTitle><DialogDescription>{t('add_customer_help')}</DialogDescription></DialogHeader>
+        <fieldset disabled={mutation.pending} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="qc-name">{t('add_customer_name')}<span aria-hidden="true"> *</span></Label>
+            <Input id="qc-name" ref={nameRef} required maxLength={200} autoComplete="name" className="min-h-11"
+              value={name} onChange={event => setName(event.target.value)} aria-invalid={touched && !!nameProblem} aria-describedby={touched && nameProblem ? 'qc-name-error' : undefined} />
+            {touched && nameProblem ? <p id="qc-name-error" className="text-sm text-destructive">{nameProblem}</p> : null}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="qc-phone">{t('add_customer_phone')}</Label>
+            <Input id="qc-phone" ref={phoneRef} type="tel" autoComplete="tel" maxLength={30} className="min-h-11"
+              value={phone} onChange={event => setPhone(event.target.value)} aria-invalid={touched && !!phoneProblem} aria-describedby="qc-phone-help" />
+            <p id="qc-phone-help" className={`text-sm ${touched && phoneProblem ? 'text-destructive' : 'text-muted-foreground'}`}>{touched && phoneProblem ? phoneProblem : t('add_customer_phone_help')}</p>
+          </div>
+        </fieldset>
+        <div aria-live="polite" aria-atomic="true">
+          {checking ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />{t('add_customer_checking')}</p> : null}
+        </div>
+        {lookupError ? <div role="alert" className="space-y-2 rounded-lg border p-3 text-sm"><p>{lookupError}</p><Button type="button" variant="outline" className="min-h-11" onClick={() => { setLookup(null); setLookupAttempt(value => value + 1); }}>{t('add_customer_retry_search')}</Button></div> : null}
+        {matches.length ? <section aria-labelledby="qc-matches" className="space-y-3 rounded-lg border bg-muted/30 p-3">
+          <h3 id="qc-matches" className="text-sm font-medium">{t('add_customer_matches')}</h3>
+          <ul className="max-h-48 space-y-2 overflow-y-auto">
+            {matches.map(match => <li key={match.id} className="flex min-w-0 items-start justify-between gap-3 text-sm">
+              <div className="min-w-0 break-words"><p className="font-medium">{match.name}</p>{match.phone ? <p className="break-all text-muted-foreground">{match.phone}</p> : null}
+                {samePhone(match) ? <p className="font-medium">{t('add_customer_same_phone')}</p> : null}
+                {match.is_active === false ? <p className="text-muted-foreground">{t('customer_inactive')}</p> : null}</div>
+              <Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={mutation.pending || match.is_active === false}
+                onClick={() => { onSelected(match); onOpenChange(false); }}>{t('add_customer_use_existing')}</Button>
+            </li>)}
+          </ul>
+          <p className="text-xs leading-5 text-muted-foreground">{t('add_customer_separate_help')}</p>
+        </section> : null}
+        {saveError ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">{saveError}</p> : null}
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="outline" className="min-h-11" disabled={mutation.pending} onClick={() => onOpenChange(false)}>{t('add_customer_cancel')}</Button>
+          <Button type="submit" className="min-h-11" disabled={mutation.pending || checking || !!lookupError}>
+            {mutation.pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" /> : null}
+            {mutation.pending ? t('add_customer_saving') : saveError ? t('add_customer_retry') : t(matches.length ? 'add_customer_save_separate' : 'add_customer_save')}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }

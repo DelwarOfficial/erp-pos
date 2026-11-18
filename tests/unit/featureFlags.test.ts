@@ -113,10 +113,15 @@ describe('featureFlags', () => {
   });
 
   it('rejects enabling a flag for an unimplemented module with 409 MODULE_NOT_IMPLEMENTED', async () => {
-    // crm_enabled has module='crm' which is NOT in IMPLEMENTED_MODULES for M1
+    // offline_pos_enabled has module='offline', which is not in IMPLEMENTED_MODULES
+    // (there is no offline POS client); multi-currency is blocked by BLOCKED_FLAGS.
     await expect(
       runInTenantContext(ctx(), async () =>
-        toggleFeatureFlag({ companyId, flagKey: 'crm_enabled', enabled: true, updatedBy: userId })),
+        toggleFeatureFlag({ companyId, flagKey: 'offline_pos_enabled', enabled: true, updatedBy: userId })),
+    ).rejects.toThrow(/not implemented/);
+    await expect(
+      runInTenantContext(ctx(), async () =>
+        toggleFeatureFlag({ companyId, flagKey: 'multi_currency_enabled', enabled: true, updatedBy: userId })),
     ).rejects.toThrow(/not implemented/);
 
     // Verify a security event was recorded
