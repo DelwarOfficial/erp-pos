@@ -28,6 +28,10 @@ const CashSalePayload = z.object({
   warehouse_id: z.string().uuid(),
   cashier_shift_id: z.string().uuid().optional(),
   customer_id: z.string().uuid().optional(),
+  // The cashier signed in on the till when the sale was taken. Accepted only
+  // when that same person sends it (see cash_sale below), so it is never
+  // trusted on its own.
+  cashier_id: z.string().uuid().optional(),
   currency_code: z.string().min(3).max(3),
   exchange_rate: z.number().positive(),
   business_date: z.string().datetime(),
@@ -70,6 +74,8 @@ export async function applyOfflineCommand(
     userId: string;
     commandType: string;
     payload: unknown;
+    /** A manager posting a sale whose cashier can no longer sign in (route checks approval.resolve). */
+    adoptReason?: string;
   },
   correlationId: string,
 ): Promise<OfflineCommandOutcome> {
@@ -84,6 +90,23 @@ export async function applyOfflineCommand(
         throw new DomainError('VALIDATION_FAILED',
           `An offline sale must be dated within the last ${OFFLINE_MAX_AGE_MS / 86_400_000} days and not in the future`,
           { business_date: payload.business_date }, 400);
+      }
+      // Who took the sale. Only the cashier who took it may send it; nobody
+      // else's sign-in is credited with it. A manager may post it instead only
+      // when that cashier can no longer sign in, and the audit log keeps both.
+      let adopted: { originalCashierId: string | null; originalCashierName: string | null } | null = null;
+      if (payload.cashier_id !== params.userId) {
+        if (!params.adoptReason) {
+          if (!payload.cashier_id) throw new DomainError('OFFLINE_CASHIER_UNKNOWN', 'This offline sale does not say which cashier took it. A manager must post it from the till.', {}, 409);
+          throw new DomainError('OFFLINE_CASHIER_MISMATCH', 'Another cashier took this offline sale. They must sign in on this till to send it.', { cashier_id: payload.cashier_id }, 409);
+        }
+        const original = payload.cashier_id
+          ? await tx.user.findFirst({ where: { id: payload.cashier_id, companyId: params.companyId }, select: { id: true, name: true, isActive: true, deletedAt: true } })
+          : null;
+        if (original && original.isActive && !original.deletedAt) {
+          throw new DomainError('OFFLINE_CASHIER_MISMATCH', `${original.name} can still sign in. Ask them to sign in on this till and send it.`, { cashier_id: original.id }, 409);
+        }
+        adopted = { originalCashierId: original?.id ?? payload.cashier_id ?? null, originalCashierName: original?.name ?? null };
       }
       const sale = await postSale(tx, {
         companyId: params.companyId,
@@ -111,6 +134,11 @@ export async function applyOfflineCommand(
           methodReference: payment.method_reference,
         })),
       }, correlationId);
+      if (adopted) {
+        await tx.auditLog.create({ data: { companyId: params.companyId, userId: params.userId, correlationId, action: 'offline.sale_posted_by_manager',
+          entityType: 'sale', entityId: sale.saleId, afterValue: JSON.stringify({ original_cashier_id: adopted.originalCashierId,
+            original_cashier_name: adopted.originalCashierName, posted_by: params.userId, reason: params.adoptReason }) } });
+      }
       return { status: 'applied', resourceType: 'sale', resourceId: sale.saleId };
     }
 

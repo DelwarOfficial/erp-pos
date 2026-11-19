@@ -229,6 +229,7 @@ model Company {
   outboundMessages     OutboundMessage[]
   coupons              Coupon[]
   rewardPointTransactions RewardPointTransaction[]
+  rewardPointConfirmations RewardPointConfirmation[]
   expenseItemTaxes     ExpenseItemTax[]
   expenseAttachments   ExpenseAttachment[]
   giftCardTransactions GiftCardTransaction[]
@@ -413,6 +414,7 @@ model User {
   id                  String   @id @default(uuid())
   companyId           String   @map("company_id")
   name                String  
+  rewardPointConfirmationsRequested RewardPointConfirmation[] @relation("RewardPointConfirmationRequester")
   email               String  
   phone               String? 
   passwordHash        String   @map("password_hash")
@@ -2337,6 +2339,7 @@ model Customer {
   // Gap model backward relations
   advanceLedger   CustomerAdvanceLedger[]
   rewardPointTransactions RewardPointTransaction[] @relation("RewardPointCustomer")
+  rewardPointConfirmations RewardPointConfirmation[] @relation("RewardPointConfirmationCustomer")
   rewardPointConsumptions RewardPointConsumption[] @relation("RewardPointConsumptionCustomer")
   communicationConsents CommunicationConsent[] @relation("ConsentCustomer")
   campaignRecipients CommunicationCampaignRecipient[] @relation("CampaignRecipientCustomer")
@@ -2895,6 +2898,7 @@ model Sale {
   // Gap model backward relations
   couponRedemptions CouponRedemption[]
   rewardPointTransactions RewardPointTransaction[]
+  rewardPointConfirmation RewardPointConfirmation? @relation("RewardPointConfirmationSale")
   reminderOccurrences ReminderOccurrence[]
   collectionPromises  CollectionPromise[]
   collectionFollowUps CollectionFollowUp[]
@@ -4597,7 +4601,14 @@ model RewardPointConfirmation {
   requestedBy    String    @map("requested_by")
   createdAt      DateTime  @default(now()) @map("created_at")
 
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer    Customer @relation("RewardPointConfirmationCustomer", fields: [customerId], references: [id])
+  requester   User     @relation("RewardPointConfirmationRequester", fields: [requestedBy], references: [id])
+  consumedBy  Sale?    @relation("RewardPointConfirmationSale", fields: [consumedSaleId], references: [id])
+
   @@index([companyId, customerId])
+  @@index([customerId])
+  @@index([requestedBy])
   @@index([expiresAt])
   @@map("reward_point_confirmations")
 }

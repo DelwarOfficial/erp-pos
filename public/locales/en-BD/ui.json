@@ -679,5 +679,22 @@
   "tills.confirm_button": "Revoke {label}",
   "tills.revoking": "Revoking…",
   "tills.revoked": "{label} is revoked.",
-  "tills.revoke_failed": "We couldn't revoke the till — {reason}"
+  "tills.revoke_failed": "We couldn't revoke the till — {reason}",
+  "pos.points_consent_help": "The customer confirms with a code sent to their phone. Choosing the customer isn't enough.",
+  "pos.points_code_send": "Text code to customer",
+  "pos.points_code_label": "Code sent to {phone}",
+  "pos.points_code_confirm": "Confirm code",
+  "pos.points_code_resend": "Send a new code",
+  "pos.points_code_wrong": "That code is not right. {left} tries left.",
+  "pos.points_confirmed": "Customer confirmed spending {points} points.",
+  "pos.err.points_confirm": "The customer must confirm the points with the code sent to their phone.",
+  "offline.others_title": "{count, plural, one {# sale} other {# sales}} taken by another cashier",
+  "offline.others_body": "Only the cashier who took a sale can send it, so it is credited to the right person. Ask them to sign in on this till.",
+  "offline.taken_by": "taken by {name}",
+  "offline.adopt": "Post offline sale {n} as manager",
+  "offline.adopt_reason": "Reason (only if that cashier can't sign in any more)",
+  "offline.adopt_confirm": "Post sale {n}",
+  "offline.adopt_cancel": "Cancel",
+  "offline.posted_by_manager": "Offline sale {n} posted under your name. The audit log keeps who took it.",
+  "offline.no_cashier": "Sign in while online before taking offline sales."
 }

@@ -46,12 +46,14 @@ vi.mock('@/domain/commands/m3/PostSale', () => ({ postSale: mocks.postSale }));
 import { POST as syncRoute } from '@/app/api/v1/offline/sync/route';
 
 const DEVICE_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '77777777-7777-4777-8777-777777777777';
 const AUTH = {
-  companyId: 'company-a', userId: 'user-a', isGlobal: false,
+  companyId: 'company-a', userId: USER_ID, isGlobal: false,
   branchIds: ['branch-a'], ctx: { companyId: 'company-a' },
 };
 
 const SALE_PAYLOAD = {
+  cashier_id: USER_ID,
   branch_id: '22222222-2222-4222-8222-222222222222',
   warehouse_id: '33333333-3333-4333-8333-333333333333',
   currency_code: 'BDT',
@@ -126,6 +128,29 @@ describe('offline sync applies the commands it accepts', () => {
     expect(mocks.postSale).not.toHaveBeenCalled();
   });
 
+  it("refuses a sale taken by another cashier, and one that names no cashier", async () => {
+    const other = await syncRoute(one({ ...SALE_PAYLOAD, cashier_id: '88888888-8888-4888-8888-888888888888' }));
+    expect(other.status).toBe(409);
+    expect((await other.json()).error.code).toBe('OFFLINE_CASHIER_MISMATCH');
+    const { cashier_id: _omit, ...anonymous } = SALE_PAYLOAD;
+    const unknown = await syncRoute(one(anonymous));
+    expect((await unknown.json()).error.code).toBe('OFFLINE_CASHIER_UNKNOWN');
+    expect(mocks.postSale).not.toHaveBeenCalled();
+  });
+
+  it('posting for another cashier needs approval.resolve in the branch', async () => {
+    mocks.permission.mockImplementation(async (_auth: unknown, perm: string) => {
+      if (perm === 'approval.resolve') throw Object.assign(new Error('Forbidden'), { name: 'DomainError' });
+    });
+    const payload = { ...SALE_PAYLOAD, cashier_id: '88888888-8888-4888-8888-888888888888' };
+    const response = await syncRoute(new NextRequest('http://localhost/api/v1/offline/sync', { method: 'POST',
+      headers: { 'idempotency-key': 'k'.repeat(16), 'content-type': 'application/json' },
+      body: JSON.stringify({ device_id: DEVICE_ID, adopt_reason: 'Cashier left', commands: [{ command_type: 'cash_sale', sequence_number: 1, payload, payload_hash: hashOf(payload), idempotency_key: 'c'.repeat(16) }] }) }));
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(mocks.permission).toHaveBeenCalledWith(AUTH, 'approval.resolve', SALE_PAYLOAD.branch_id);
+    expect(mocks.postSale).not.toHaveBeenCalled();
+  });
+
   it('refuses an offline sale paid any way but cash, and posts nothing', async () => {
     for (const method of ['card', 'bkash', 'gift_card', 'reward_points']) {
       const payload = { ...SALE_PAYLOAD, payments: [{ ...SALE_PAYLOAD.payments[0], payment_method: method }] };
@@ -153,7 +178,7 @@ describe('offline sync applies the commands it accepts', () => {
     // The decisive assertion: the sale was actually posted.
     expect(mocks.postSale).toHaveBeenCalledTimes(1);
     const posted = mocks.postSale.mock.calls[0][1];
-    expect(posted).toMatchObject({ companyId: 'company-a', cashierId: 'user-a' });
+    expect(posted).toMatchObject({ companyId: 'company-a', cashierId: USER_ID });
     expect(posted.items).toHaveLength(1);
     // The terminal's capture time is preserved, so the sale lands in the
     // period it happened in rather than the period it was uploaded in.

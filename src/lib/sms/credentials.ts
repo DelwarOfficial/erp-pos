@@ -68,3 +68,16 @@ export async function loadSmsGateway(tx: Client, companyId: string, fetchImpl?: 
   const credentials = readCredentials(row);
   return credentials ? new MimSmsGateway(credentials, fetchImpl) : null;
 }
+
+/**
+ * The gateway for one-off transactional texts (e.g. reward-point codes).
+ * Outside production it is always the local dev outbox, so development never
+ * sends a real SMS; in production it is the company's own account, or null.
+ */
+export async function transactionalSmsGateway(tx: Client, companyId: string): Promise<SmsGateway | null> {
+  if (process.env.NODE_ENV !== 'production') {
+    const { DevOutboxSmsGateway } = await import('./devOutbox');
+    return new DevOutboxSmsGateway();
+  }
+  return loadSmsGateway(tx, companyId);
+}

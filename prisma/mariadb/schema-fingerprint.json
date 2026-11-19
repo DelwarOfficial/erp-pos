@@ -19746,6 +19746,196 @@
    },
    "checks": {}
   },
+  "reward_point_confirmations": {
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci",
+   "columns": {
+    "id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "company_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "customer_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "points": {
+     "type": "int(11)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "intent_hash": {
+     "type": "char(64)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "code_hash": {
+     "type": "char(64)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "phone_masked": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "status": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": "'pending'",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "attempts": {
+     "type": "int(11)",
+     "nullable": false,
+     "default": "0",
+     "extra": null,
+     "collation": null
+    },
+    "expires_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": null
+    },
+    "verified_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "consumed_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
+    },
+    "consumed_sale_id": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "requested_by": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "created_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": "current_timestamp(3)",
+     "extra": null,
+     "collation": null
+    }
+   },
+   "indexes": {
+    "fk_tenant_reward_point_confirmations_requester": {
+     "unique": false,
+     "columns": "company_id,requested_by"
+    },
+    "fk_tenant_reward_point_confirmations_sale": {
+     "unique": false,
+     "columns": "company_id,consumed_sale_id"
+    },
+    "PRIMARY": {
+     "unique": true,
+     "columns": "id"
+    },
+    "reward_point_confirmations_company_id_customer_id_idx": {
+     "unique": false,
+     "columns": "company_id,customer_id"
+    },
+    "reward_point_confirmations_consumed_sale_id_key": {
+     "unique": true,
+     "columns": "consumed_sale_id"
+    },
+    "reward_point_confirmations_customer_id_idx": {
+     "unique": false,
+     "columns": "customer_id"
+    },
+    "reward_point_confirmations_expires_at_idx": {
+     "unique": false,
+     "columns": "expires_at"
+    },
+    "reward_point_confirmations_requested_by_idx": {
+     "unique": false,
+     "columns": "requested_by"
+    }
+   },
+   "foreignKeys": {
+    "fk_tenant_reward_point_confirmations_customer": {
+     "columns": "company_id,customer_id",
+     "references": "customers(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_reward_point_confirmations_requester": {
+     "columns": "company_id,requested_by",
+     "references": "users(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "fk_tenant_reward_point_confirmations_sale": {
+     "columns": "company_id,consumed_sale_id",
+     "references": "sales(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "reward_point_confirmations_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "reward_point_confirmations_consumed_sale_id_fkey": {
+     "columns": "consumed_sale_id",
+     "references": "sales(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "SET NULL"
+    },
+    "reward_point_confirmations_customer_id_fkey": {
+     "columns": "customer_id",
+     "references": "customers(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "reward_point_confirmations_requested_by_fkey": {
+     "columns": "requested_by",
+     "references": "users(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    }
+   },
+   "checks": {}
+  },
   "reward_point_consumptions": {
    "engine": "InnoDB",
    "collation": "utf8mb4_unicode_ci",

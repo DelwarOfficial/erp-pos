@@ -88,5 +88,29 @@ test('make a coupon, use it at the till, and see the customer points', async ({ 
   await expect(page.getByLabel('Points to use (1 point = ৳1)')).toBeVisible();
   await page.screenshot({ path: `${shots}/03-points.png`, fullPage: true });
 
+  // 5. Spending needs the customer's code (texted; locally written to the dev outbox).
+  await page.getByLabel('Points to use (1 point = ৳1)').fill('5');
+  await page.getByLabel('Amount paid now').fill('345');
+  const wh4 = await page.getByRole('combobox', { name: 'Warehouse' }).textContent();
+  if (!wh4?.includes('Dhanmondi')) await pick(page, 'Warehouse', /Dhanmondi showroom/);
+  await pick(page, 'Payment account', /cash/i);
+  await page.getByRole('button', { name: /^Complete Sale — / }).first().click();
+  await expect(page.getByText('The customer must confirm the points with the code sent to their phone.').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Text code to customer' }).click();
+  const codeBox = page.getByLabel(/^Code sent to 88018\*{5}678$/);
+  await expect(codeBox).toBeVisible({ timeout: 30_000 });
+  const outbox = () => readFileSync('.local/sms-outbox.jsonl', 'utf8').trim().split('\n').map(l => JSON.parse(l) as { to: string; text: string })
+    .filter(m => m.to === '8801812345678').pop()!.text;
+  const smsCode = outbox().match(/is (\d{6})/)![1];
+  await codeBox.fill(smsCode === "000000" ? "111111" : "000000");
+  await page.getByRole('button', { name: 'Confirm code' }).click();
+  await expect(page.getByText('That code is not right. 4 tries left.')).toBeVisible();
+  await codeBox.fill(smsCode);
+  await page.getByRole('button', { name: 'Confirm code' }).click();
+  await expect(page.getByText('Customer confirmed spending 5 points.')).toBeVisible();
+  await page.screenshot({ path: `${shots}/04-points-confirmed.png`, fullPage: true });
+  await page.getByRole('button', { name: /^Complete Sale — / }).first().click();
+  await expect(page.getByRole('heading', { name: /^Sale saved: INV-/, level: 2 })).toBeVisible({ timeout: 30_000 });
+
   expect(errors).toEqual([]);
 });

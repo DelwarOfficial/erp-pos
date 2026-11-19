@@ -10,12 +10,25 @@ import { randomUUID } from 'node:crypto';
 import { postSale } from '@/domain/commands/m3/PostSale';
 import { voidSale } from '@/domain/commands/m3/VoidSale';
 import { expirePoints, pointsBalance } from '@/domain/loyalty/points';
+import { consumePointsConfirmation, requestPointsConfirmation, verifyPointsConfirmation, CONFIRMATION_MAX_ATTEMPTS } from '@/domain/loyalty/confirmations';
+import type { SmsGateway } from '@/lib/sms/gateway';
 import { ensureSyntheticIssuerTenant } from './helpers/disposableFixtures';
 import { runInTenantContext } from '@/lib/db/transaction';
 
 const db = new PrismaClient();
 const COMPANY_ID = 'c5d7e8f9-0a12-4c67-f890-b4c5d6e7f809';
 const ROLLBACK = new Error('ROLLBACK_LOYALTY');
+// A fake SMS gateway: keeps the last text so the test can read the code.
+const sms = { last: '' };
+const gateway: SmsGateway = { providerCode: 'test', send: async r => { sms.last = r.text; return { kind: 'accepted', providerMessageId: 'x', raw: '' }; } };
+const codeFromSms = () => sms.last.match(/is (\d{6})/)![1];
+type Line = { productId: string; qty: number; unitPrice: number };
+/** Ask for and confirm a code, as the till does; returns the confirmation id. */
+async function consent(tx: Prisma.TransactionClient, customerId: string, points: number, items: Line[]) {
+  const { id } = await requestPointsConfirmation(tx, { companyId: COMPANY_ID, requestedBy: fx.user.id, correlationId: randomUUID(), gateway, intent: { customerId, points, items } });
+  expect((await verifyPointsConfirmation(tx, { companyId: COMPANY_ID, customerId, confirmationId: id, code: codeFromSms(), userId: fx.user.id, correlationId: randomUUID() })).verified).toBe(true);
+  return id;
+}
 let fx: Awaited<ReturnType<typeof ensureSyntheticIssuerTenant>>;
 
 beforeAll(async () => {
@@ -46,6 +59,8 @@ async function setup(tx: Prisma.TransactionClient) {
   await tx.warehouseStock.create({ data: { companyId: COMPANY_ID, warehouseId: warehouse.id, productId: product.id, qtyOnHand: 50, movingAverageCost: 180 } });
   const acc = (code: string, cls: 'liability' | 'expense', subtype: string) => tx.chartOfAccount.create({ data: { companyId: COMPANY_ID, code: `${code}-${randomUUID().slice(0, 6)}`, name: code,
     accountClass: cls, accountSubtype: subtype, normalBalance: cls === 'liability' ? 'C' : 'D', isActive: true } });
+  // The company may already have the migration's 2500/5700; this probe measures its own pair.
+  await tx.chartOfAccount.updateMany({ where: { companyId: COMPANY_ID, accountSubtype: { in: ['reward_points_liability', 'reward_expense'] } }, data: { isActive: false } });
   const liability = await acc('points', 'liability', 'reward_points_liability');
   const expense = await acc('reward', 'expense', 'reward_expense');
   await tx.accountingPolicy.update({ where: { companyId: COMPANY_ID }, data: { rewardExpenseAccountId: expense.id } });
@@ -68,15 +83,17 @@ describe('reward points', () => {
       expect(await s.net(s.liability.id)).toBe('-7.00');
 
       // 350: 5 points + 345 cash. Earns floor(345 / 100) = 3 on the cash only.
-      const spend = await postSale(tx, { ...s.base, customerId: s.customer.id, items: [{ productId: s.product.id, qty: 1, unitPrice: 350 }],
+      const spendItems = [{ productId: s.product.id, qty: 1, unitPrice: 350 }];
+      const confirmationId = await consent(tx, s.customer.id, 5, spendItems);
+      const spend = await postSale(tx, { ...s.base, customerId: s.customer.id, items: spendItems, pointsConfirmationId: confirmationId,
         payments: [{ paymentMethod: 'reward_points', amount: 5, financialAccountId: fx.cash.id }, { paymentMethod: 'cash', amount: 345, financialAccountId: fx.cash.id }] }, randomUUID());
       expect(spend.pointsEarned).toBe(3);
       expect(await balance()).toBe(5); // 7 − 5 + 3
       expect(await s.net(s.liability.id)).toBe('-5.00');
 
-      await expect(postSale(tx, { ...s.base, customerId: s.customer.id, items: [{ productId: s.product.id, qty: 1, unitPrice: 350 }],
-        payments: [{ paymentMethod: 'reward_points', amount: 50, financialAccountId: fx.cash.id }, { paymentMethod: 'cash', amount: 300, financialAccountId: fx.cash.id }] }, randomUUID()))
-        .rejects.toThrow(/has 5 points/);
+      // Asking to spend more than the customer has is refused before any code is sent.
+      await expect(requestPointsConfirmation(tx, { companyId: COMPANY_ID, requestedBy: fx.user.id, correlationId: randomUUID(), gateway,
+        intent: { customerId: s.customer.id, points: 50, items: spendItems } })).rejects.toThrow(/has 5 points/);
 
       // Void: the 5 spent come back, the 3 earned go.
       await voidSale(tx, { saleId: spend.saleId, companyId: COMPANY_ID, voidedBy: fx.user.id, reason: 'probe' }, randomUUID());
@@ -125,6 +142,78 @@ describe('coupons', () => {
         payments: [{ paymentMethod: 'cash', amount: 250, financialAccountId: fx.cash.id }] }, randomUUID());
       await expect(sale('BIG')).rejects.toThrow(/at least ৳5000.00/);
       await expect(sale('OLD')).rejects.toThrow(/expired/);
+    });
+  });
+});
+
+describe('customer consent for spending points', () => {
+  const items = (productId: string): Line[] => [{ productId, qty: 1, unitPrice: 350 }];
+  async function withPoints(tx: Prisma.TransactionClient) {
+    const s = await setup(tx);
+    await tx.rewardPointTransaction.create({ data: { companyId: COMPANY_ID, customerId: s.customer.id, entryType: 'earn', pointsDelta: 20, expiresAt: new Date(Date.now() + 86_400_000) } });
+    const sale = (confirmationId?: string, cart = items(s.product.id)) => postSale(tx, { ...s.base, customerId: s.customer.id, items: cart, pointsConfirmationId: confirmationId,
+      payments: [{ paymentMethod: 'reward_points', amount: 5, financialAccountId: fx.cash.id }, { paymentMethod: 'cash', amount: cart.reduce((t, l) => t + l.qty * l.unitPrice, 0) - 5, financialAccountId: fx.cash.id }] }, randomUUID());
+    return { ...s, sale };
+  }
+  const ask = (tx: Prisma.TransactionClient, customerId: string, productId: string) => requestPointsConfirmation(tx, { companyId: COMPANY_ID, requestedBy: fx.user.id, correlationId: randomUUID(), gateway,
+    intent: { customerId, points: 5, items: items(productId) } });
+  const verify = (tx: Prisma.TransactionClient, customerId: string, confirmationId: string, code: string) => verifyPointsConfirmation(tx, { companyId: COMPANY_ID, customerId, confirmationId, code, userId: fx.user.id, correlationId: randomUUID() });
+
+  it('refuses points with no confirmation, an unverified one, or a replayed one', async () => {
+    await probe(async tx => {
+      const s = await withPoints(tx);
+      await expect(s.sale()).rejects.toThrow(/must confirm/);
+      const { id } = await ask(tx, s.customer.id, s.product.id);
+      await expect(s.sale(id)).rejects.toThrow(/not been confirmed/);
+      expect((await verify(tx, s.customer.id, id, codeFromSms())).verified).toBe(true);
+      await s.sale(id);
+      expect(await pointsBalance(tx, COMPANY_ID, s.customer.id)).toBe(18); // 20 − 5 + floor(345 / 100)
+      await expect(s.sale(id)).rejects.toThrow(/already been used/);
+      expect(await tx.auditLog.count({ where: { companyId: COMPANY_ID, entityId: id, action: 'reward_points.confirmation_verified' } })).toBe(1);
+    });
+  });
+
+  it('a confirmation does not cover a changed cart, another customer or another company', async () => {
+    await probe(async tx => {
+      const s = await withPoints(tx);
+      const id = await consent(tx, s.customer.id, 5, items(s.product.id));
+      await expect(s.sale(id, [{ productId: s.product.id, qty: 2, unitPrice: 350 }])).rejects.toThrow(/changed after the customer confirmed/);
+      const other = await tx.customer.create({ data: { companyId: COMPANY_ID, name: 'Karim', phone: '01711000333' } });
+      await expect(consumePointsConfirmation(tx, { companyId: COMPANY_ID, confirmationId: id, saleId: randomUUID(), intent: { customerId: other.id, points: 5, items: items(s.product.id) } }))
+        .rejects.toThrow(/not for this customer/);
+      await expect(consumePointsConfirmation(tx, { companyId: 'c0000000-0000-4000-8000-000000000000', confirmationId: id, saleId: randomUUID(), intent: { customerId: s.customer.id, points: 5, items: items(s.product.id) } }))
+        .rejects.toThrow(/not for this customer/);
+      await expect(verify(tx, other.id, id, '000000')).rejects.toThrow(/not found/);
+    });
+  });
+
+  it('locks after five wrong codes, and refuses an expired code', async () => {
+    await probe(async tx => {
+      const s = await withPoints(tx);
+      const { id } = await ask(tx, s.customer.id, s.product.id);
+      const right = codeFromSms(); const wrong = right === '000000' ? '111111' : '000000';
+      for (let n = 1; n <= CONFIRMATION_MAX_ATTEMPTS; n++) {
+        expect(await verify(tx, s.customer.id, id, wrong)).toEqual({ verified: false, attemptsLeft: CONFIRMATION_MAX_ATTEMPTS - n });
+      }
+      await expect(verify(tx, s.customer.id, id, right)).rejects.toThrow(/Too many wrong codes/);
+      expect(await tx.auditLog.count({ where: { companyId: COMPANY_ID, entityId: id, action: 'reward_points.confirmation_locked' } })).toBe(1);
+
+      const late = await ask(tx, s.customer.id, s.product.id);
+      await tx.rewardPointConfirmation.update({ where: { id: late.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await expect(verify(tx, s.customer.id, late.id, codeFromSms())).rejects.toThrow(/expired/);
+      const row = await tx.rewardPointConfirmation.findUniqueOrThrow({ where: { id: late.id } });
+      expect(row.codeHash).not.toContain(codeFromSms()); // only a keyed hash is stored
+    });
+  });
+
+  it('refuses a customer with no mobile number on file, and a company with no SMS', async () => {
+    await probe(async tx => {
+      const s = await withPoints(tx);
+      await tx.customer.update({ where: { id: s.customer.id }, data: { phone: null } });
+      await expect(ask(tx, s.customer.id, s.product.id)).rejects.toThrow(/no mobile number/);
+      await tx.customer.update({ where: { id: s.customer.id }, data: { phone: '01711000222' } });
+      await expect(requestPointsConfirmation(tx, { companyId: COMPANY_ID, requestedBy: fx.user.id, correlationId: randomUUID(), gateway: null,
+        intent: { customerId: s.customer.id, points: 5, items: items(s.product.id) } })).rejects.toThrow(/SMS is not set up/);
     });
   });
 });

@@ -51,6 +51,8 @@ export const PostSaleSchema = z.object({
   reminder_phone: z.string().max(20).optional(),
   due_reminders_enabled: z.boolean().optional(),
   coupon_code: z.string().trim().min(1).max(40).optional(),
+  // The customer's verified one-time code for a reward_points tender.
+  points_confirmation_id: z.string().uuid().optional(),
 });
 export type PostSaleBody = z.infer<typeof PostSaleSchema>;
 
@@ -81,5 +83,6 @@ export function postSaleInput(body: PostSaleBody, auth: { companyId: string; use
     reminderPhone: body.reminder_phone,
     dueRemindersEnabled: body.due_reminders_enabled,
     couponCode: body.coupon_code,
+    pointsConfirmationId: body.points_confirmation_id,
   };
 }

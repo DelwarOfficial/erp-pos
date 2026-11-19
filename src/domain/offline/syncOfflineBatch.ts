@@ -17,7 +17,7 @@ export interface OfflineSyncCommand {
 
 export async function syncOfflineBatch(
   tx: Prisma.TransactionClient,
-  input: { companyId: string; userId: string; deviceId: string; commands: OfflineSyncCommand[] },
+  input: { companyId: string; userId: string; deviceId: string; commands: OfflineSyncCommand[]; adoptReason?: string },
   correlationId: string,
 ) {
   // Validate device
@@ -103,6 +103,7 @@ export async function syncOfflineBatch(
       userId: input.userId,
       commandType: cmd.command_type,
       payload: cmd.payload,
+      adoptReason: input.adoptReason,
     }, correlationId);
 
     await tx.offlineCommand.create({

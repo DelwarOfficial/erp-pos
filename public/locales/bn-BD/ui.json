@@ -679,5 +679,22 @@
   "tills.confirm_button": "{label} বাতিল করুন",
   "tills.revoking": "বাতিল হচ্ছে…",
   "tills.revoked": "{label} বাতিল হয়েছে।",
-  "tills.revoke_failed": "টিল বাতিল করা যায়নি — {reason}"
+  "tills.revoke_failed": "টিল বাতিল করা যায়নি — {reason}",
+  "pos.points_consent_help": "কাস্টমার তাঁর ফোনে পাঠানো কোড দিয়ে নিশ্চিত করবেন। শুধু কাস্টমার বেছে নেওয়া যথেষ্ট নয়।",
+  "pos.points_code_send": "কাস্টমারকে কোড পাঠান",
+  "pos.points_code_label": "{phone} নম্বরে পাঠানো কোড",
+  "pos.points_code_confirm": "কোড নিশ্চিত করুন",
+  "pos.points_code_resend": "নতুন কোড পাঠান",
+  "pos.points_code_wrong": "কোডটি সঠিক নয়। আর {left} বার চেষ্টা করা যাবে।",
+  "pos.points_confirmed": "কাস্টমার {points} পয়েন্ট খরচ নিশ্চিত করেছেন।",
+  "pos.err.points_confirm": "ফোনে পাঠানো কোড দিয়ে কাস্টমারকে পয়েন্ট নিশ্চিত করতে হবে।",
+  "offline.others_title": "অন্য ক্যাশিয়ারের নেওয়া {count}টি বিক্রি",
+  "offline.others_body": "যে ক্যাশিয়ার বিক্রি নিয়েছেন শুধু তিনিই পাঠাতে পারবেন, যাতে সঠিক জনের নামে যায়। তাঁকে এই টিলে সাইন ইন করতে বলুন।",
+  "offline.taken_by": "{name} নিয়েছেন",
+  "offline.adopt": "ম্যানেজার হিসেবে অফলাইন বিক্রি {n} পোস্ট করুন",
+  "offline.adopt_reason": "কারণ (শুধু যদি ওই ক্যাশিয়ার আর সাইন ইন করতে না পারেন)",
+  "offline.adopt_confirm": "বিক্রি {n} পোস্ট করুন",
+  "offline.adopt_cancel": "বাতিল",
+  "offline.posted_by_manager": "অফলাইন বিক্রি {n} আপনার নামে পোস্ট হয়েছে। কে নিয়েছিলেন তা অডিট লগে থাকবে।",
+  "offline.no_cashier": "অফলাইন বিক্রি নেওয়ার আগে অনলাইনে সাইন ইন করুন।"
 }

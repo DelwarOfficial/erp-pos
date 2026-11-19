@@ -26,6 +26,7 @@ import { installmentBalances } from '@/domain/receivables/balances';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
 import { tenderGiftCard } from '@/domain/commands/m6/Loyalty';
 import { couponDiscount } from '@/domain/loyalty/coupons';
+import { consumePointsConfirmation } from '@/domain/loyalty/confirmations';
 import { earnPointsForSale, loyaltyAccounts, spendPointsForSale, TAKA_PER_POINT_SPENT } from '@/domain/loyalty/points';
 import { localDate, isoFromDate } from '@/domain/receivables/calendar';
 import { normalizeBdMobile } from '@/domain/receivables/phone';
@@ -69,6 +70,8 @@ export interface PostSaleInput {
   discountApproved?: boolean;
   /** A coupon code to apply to the whole sale. */
   couponCode?: string;
+  /** The verified customer confirmation for a reward_points tender (src/domain/loyalty/confirmations.ts). */
+  pointsConfirmationId?: string;
 }
 
 export interface PostSaleResult {
@@ -563,6 +566,7 @@ export async function postSale(
   }
 
   let paymentCount = 0;
+  let pointsConsented = false;
   for (const payment of input.payments) {
     if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
       throw new DomainError('VALIDATION_FAILED', 'Payment amount must be > 0', {}, 400);
@@ -586,6 +590,13 @@ export async function postSale(
         receivedOrPaidAt: new Date(), postedAt: new Date(), createdBy: input.cashierId,
       },
     });
+    if (payment.paymentMethod === 'reward_points' && !pointsConsented) {
+      // The customer's consent covers all points on this sale, for exactly this cart.
+      await consumePointsConfirmation(tx, { companyId: input.companyId, confirmationId: input.pointsConfirmationId, saleId: sale.id, intent: {
+        customerId: input.customerId!, points: pointPayments.reduce((t, p) => t + p.amount / TAKA_PER_POINT_SPENT, 0),
+        items: input.items.map(i => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice, discountAmount: i.discountAmount })), couponCode: input.couponCode } });
+      pointsConsented = true;
+    }
     if (payment.paymentMethod === 'reward_points') {
       await spendPointsForSale(tx, { companyId: input.companyId, saleId: sale.id, customerId: input.customerId!, points: payment.amount / TAKA_PER_POINT_SPENT });
     }

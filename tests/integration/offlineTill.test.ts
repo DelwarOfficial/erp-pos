@@ -57,7 +57,7 @@ describe('offline till', () => {
       expect(lineTotals[0]).toBe('358.32975'); // 333.33 + 7.5% VAT, unrounded as posting keeps it
       const total = sumMoney([lineTotals[2], lineTotals[6]]); // a line of 3 and a line of 7
 
-      const payload = { branch_id: branch.id, warehouse_id: warehouse.id, currency_code: 'BDT', exchange_rate: 1, business_date: new Date().toISOString(),
+      const payload = { cashier_id: fx.user.id, branch_id: branch.id, warehouse_id: warehouse.id, currency_code: 'BDT', exchange_rate: 1, business_date: new Date().toISOString(),
         items: [{ product_id: product.id, qty: 3, unit_price: 333.33 }, { product_id: product.id, qty: 7, unit_price: 333.33 }],
         payments: [{ payment_method: 'cash', amount: Number(total), financial_account_id: fx.cash.id }] };
       const command = { command_type: 'cash_sale', sequence_number: 1, payload, payload_hash: createHash('sha256').update(JSON.stringify(payload)).digest('hex'), idempotency_key: `offline-${device.id}-1` };
@@ -80,6 +80,31 @@ describe('offline till', () => {
       await expect(syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [{ ...command, sequence_number: 2, payload: wrong,
         payload_hash: createHash('sha256').update(JSON.stringify(wrong)).digest('hex'), idempotency_key: `offline-${device.id}-2` }] }, randomUUID()))
         .rejects.toThrow(/belongs to another branch/);
+
+      // Attribution: a sale taken by someone else is not credited to whoever syncs it.
+      const cashier = await tx.user.create({ data: { companyId: COMPANY_ID, name: 'Shirin', email: `${randomUUID()}@example.invalid`, passwordHash: 'not-a-login', accessScope: 'multi_branch' } });
+      const theirs = { ...payload, cashier_id: cashier.id, business_date: new Date().toISOString() };
+      const cmd = (n: number, body = theirs) => ({ command_type: 'cash_sale', sequence_number: n, payload: body,
+        payload_hash: createHash('sha256').update(JSON.stringify(body)).digest('hex'), idempotency_key: `offline-${device.id}-${n}` });
+      await expect(syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [cmd(3)] }, randomUUID()))
+        .rejects.toThrow(/Another cashier took this offline sale/);
+      // A manager cannot take it over while that cashier can still sign in...
+      await expect(syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [cmd(3)], adoptReason: 'Shirin left early' }, randomUUID()))
+        .rejects.toThrow(/Shirin can still sign in/);
+      // ...but can once the account is deactivated; the audit log keeps both people.
+      await tx.user.update({ where: { id: cashier.id }, data: { isActive: false } });
+      const adopted = await syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [cmd(3)], adoptReason: 'Shirin left the company' }, randomUUID());
+      expect(adopted.body.results[0].status).toBe('applied');
+      const adoptedSale = await tx.sale.findUniqueOrThrow({ where: { id: adopted.body.results[0].resource_id! } });
+      expect(adoptedSale.billerId).toBe(fx.user.id);
+      const audit = await tx.auditLog.findFirstOrThrow({ where: { companyId: COMPANY_ID, action: 'offline.sale_posted_by_manager', entityId: adoptedSale.id } });
+      expect(JSON.parse(audit.afterValue!)).toMatchObject({ original_cashier_id: cashier.id, original_cashier_name: 'Shirin', posted_by: fx.user.id, reason: 'Shirin left the company' });
+
+      // A revoked till can send nothing more.
+      await tx.device.update({ where: { id: device.id }, data: { status: 'revoked', revokedAt: new Date() } });
+      const mineAgain = { ...payload, business_date: new Date().toISOString() };
+      await expect(syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [cmd(4, mineAgain)] }, randomUUID()))
+        .rejects.toThrow(/not found or revoked/);
     });
   });
 });

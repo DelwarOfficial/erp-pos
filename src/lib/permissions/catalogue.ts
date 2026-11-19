@@ -248,7 +248,7 @@ export const SYSTEM_ROLES = [
   {
     name: 'global_admin',
     description: 'Company global admin. Full access except owner-only operations. MFA mandatory.',
-    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'collection.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*', 'asset.*', 'bank.*'],
+    permissions: ['company.*', 'branch.*', 'warehouse.*', 'user.*', 'role.*', 'device.*', 'product.*', 'category.*', 'tax.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'payment.*', 'gift_card.*', 'coupon.manage', 'journal.*', 'expense.*', 'report.*', 'delivery.*', 'service.*', 'warranty.*', 'lead.*', 'communication.*', 'collection.*', 'payroll.*', 'approval.*', 'reconciliation.*', 'field.*', 'asset.*', 'bank.*'],
   },
   {
     name: 'branch_manager',

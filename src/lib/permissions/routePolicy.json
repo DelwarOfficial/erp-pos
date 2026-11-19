@@ -835,6 +835,22 @@
     "exception": null
   },
   {
+    "file": "v1/customers/[id]/points/confirmations/[cid]/verify/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/points/confirmations/route.ts",
+    "method": "POST",
+    "permissions": [
+      "sale.post"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/customers/[id]/points/route.ts",
     "method": "GET",
     "permissions": [
@@ -1482,7 +1498,8 @@
     "file": "v1/offline/sync/route.ts",
     "method": "POST",
     "permissions": [
-      "sale.post"
+      "sale.post",
+      "approval.resolve"
     ],
     "exception": null
   },

@@ -26,6 +26,8 @@ import {
   getCatalogue, getTill, listSales, offlineLineTotal, queueCashSale, retrySale, saveCatalogue, saveTill, sendQueued, sumMoney,
 } from '@/lib/offline/posQueue';
 import { OFFLINE_MAX_QTY } from '@/lib/offline/syncLimits';
+import { useDashboardSession } from '@/components/dashboard/session';
+import { postAsManager } from '@/lib/offline/posQueue';
 
 /** navigator.onLine, kept current. */
 export function useOnline() {
@@ -76,6 +78,9 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
   const f = useFormat();
   const online = useOnline();
   const { till, catalogue, sales, ready, reload } = useTillState();
+  const session = useDashboardSession();
+  const canPostForOthers = Boolean(session?.is_global || session?.permissions.includes('approval.resolve') || session?.permissions.includes('*'));
+  const [adopting, setAdopting] = useState<{ sequence: number; reason: string } | null>(null);
   const [busy, setBusy] = useState<'' | 'setup' | 'refresh' | 'send'>('');
   const [error, setError] = useState('');
   const [label, setLabel] = useState('');
@@ -99,12 +104,13 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
     if (!till || sending.current) return;
     sending.current = true; setBusy('send'); setError('');
     try {
-      const result = await sendQueued(till, syncSend);
+      if (!session?.id) return;
+      const result = await sendQueued(till, syncSend, session.id);
       if (result.sent) toast.success(t('sent', { count: result.sent }));
       if (result.needsAttention) toast.error(t('refused', { count: result.needsAttention }));
       if (result.stoppedOffline && !quiet) setError(t('send_stopped'));
     } finally { sending.current = false; setBusy(''); await reload(); }
-  }, [till, reload, t]);
+  }, [till, reload, t, session?.id]);
 
   const refresh = useCallback(async (quiet = false) => {
     if (!till) return;
@@ -121,7 +127,6 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
       if (sales.some(s => s.status === 'queued')) await send(true);
       if (!catalogue || new Date(catalogue.expires_at).getTime() - Date.now() < 2 * 60 * 60 * 1000) await refresh(true);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online, till?.device_id]);
 
   async function setup(e: React.FormEvent) {
@@ -143,7 +148,9 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
   }
 
   if (!ready) return null;
-  const queued = sales.filter(s => s.status === 'queued');
+  const mine = (s: QueuedSale) => !s.payload.cashier_id || s.payload.cashier_id === session?.id;
+  const queued = sales.filter(s => s.status === 'queued' && mine(s));
+  const others = sales.filter(s => s.status === 'queued' && !mine(s));
   const attention = sales.filter(s => s.status === 'needs_attention');
 
   if (!till) {
@@ -179,7 +186,7 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
   }
 
   // Nothing waiting and nothing wrong: one quiet line.
-  if (!queued.length && !attention.length && !error) return (
+  if (!queued.length && !attention.length && !others.length && !error) return (
     <section aria-labelledby="till-compact" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card px-3 py-2 text-sm">
       <CloudOff className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       <h2 id="till-compact" className="font-medium">{t('panel_title', { label: till.label })}</h2>
@@ -203,6 +210,36 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
             {busy === 'send' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('send_now', { count: queued.length })}</Button> : null}
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {others.length ? (
+          <section aria-labelledby="till-others" className="space-y-2 rounded-md border p-3">
+            <h3 id="till-others" className="text-sm font-semibold">{t('others_title', { count: others.length })}</h3>
+            <p className="text-sm text-muted-foreground">{t('others_body')}</p>
+            <ul className="space-y-2">
+              {others.map(sale => (
+                <li key={sale.sequence} className="space-y-2 border-t pt-2 text-sm">
+                  <div className="font-medium">{t('sale_name', { n: sale.sequence })} · {f.money(sale.total)} · {f.dateTime(sale.created_at)} · {t('taken_by', { name: sale.cashier_name ?? '—' })}</div>
+                  {canPostForOthers ? (adopting?.sequence === sale.sequence ? (
+                    <form className="flex flex-col gap-2 sm:flex-row sm:items-end" onSubmit={async e => {
+                      e.preventDefault(); if (!till || adopting.reason.trim().length < 3) return;
+                      setBusy('send'); setError('');
+                      try {
+                        const r = await postAsManager(till, sale.sequence, adopting.reason.trim(), syncSend);
+                        if (r.ok) { toast.success(t('posted_by_manager', { n: sale.sequence })); setAdopting(null); } else setError(r.message);
+                      } finally { setBusy(''); await reload(); }
+                    }}>
+                      <div className="flex-1 space-y-1"><Label htmlFor={`adopt-${sale.sequence}`}>{t('adopt_reason')}</Label>
+                        <Input id={`adopt-${sale.sequence}`} required minLength={3} maxLength={300} className="h-10" value={adopting.reason} onChange={e => setAdopting({ sequence: sale.sequence, reason: e.target.value })} /></div>
+                      <Button type="submit" className="min-h-10" disabled={!!busy || !online || adopting.reason.trim().length < 3}>{t('adopt_confirm', { n: sale.sequence })}</Button>
+                      <Button type="button" variant="ghost" className="min-h-10" onClick={() => setAdopting(null)}>{t('adopt_cancel')}</Button>
+                    </form>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" className="min-h-10" disabled={!!busy || !online} onClick={() => setAdopting({ sequence: sale.sequence, reason: '' })}>{t('adopt', { n: sale.sequence })}</Button>
+                  )) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {attention.length ? (
           <section aria-labelledby="till-attention" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
             <h3 id="till-attention" className="text-sm font-semibold">{t('attention_title', { count: attention.length })}</h3>
@@ -228,6 +265,7 @@ export function OfflineSaleScreen() {
   const t = useTranslations('offline');
   const f = useFormat();
   const { till, catalogue, sales, ready, reload } = useTillState();
+  const session = useDashboardSession();
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<Array<{ product: CatalogueProduct; qty: number }>>([]);
   const [cashReceived, setCashReceived] = useState('');
@@ -261,7 +299,8 @@ export function OfflineSaleScreen() {
     if (!till || !cart.length || total === null || saving || expired) return;
     setSaving(true);
     try {
-      const sale = await queueCashSale(till, cart);
+      if (!session?.id) throw new Error(t('no_cashier'));
+      const sale = await queueCashSale(till, cart, { id: session.id, name: session.name });
       setLastSale(sale); setCart([]); setCashReceived('');
       await reload();
     } catch (cause) { toast.error(t('save_failed', { reason: cause instanceof Error ? cause.message : String(cause) })); }

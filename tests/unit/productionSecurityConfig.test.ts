@@ -2,6 +2,7 @@
 // security configuration, and each control must hold at the point of use too.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   INSECURE_TEST_MODE_ACKNOWLEDGEMENT,
   assertProductionSecurityConfig,
@@ -240,12 +241,16 @@ describe('mock providers', () => {
 // only; the example file's values are public by design.
 describe('the three production keys refuse missing, short and example values', () => {
   const example = (name: string) => {
-    const line = require('node:fs').readFileSync('.env.production.example', 'utf8').split(/\r?\n/).find((l: string) => l.startsWith(`${name}=`));
+    // The access-test runner copies the tree without any .env* file; the example check runs where it exists.
+    const file = new URL('../../.env.production.example', import.meta.url);
+    if (!existsSync(file)) return undefined;
+    const line = readFileSync(file, 'utf8').split(/\r?\n/).find((l: string) => l.startsWith(`${name}=`));
     return line?.slice(name.length + 1).replace(/^"|"$/g, '');
   };
   for (const name of ['JWT_SECRET', 'APP_ENCRYPTION_KEY', 'BARCODE_SIGNING_KEY']) {
     it(`${name}: missing, 10 characters, and the published example are each refused`, () => {
-      for (const value of [undefined, 'x'.repeat(10), example(name)]) {
+      const published = example(name);
+      for (const value of [undefined, 'x'.repeat(10), ...(published ? [published] : [])]) {
         const problems = productionSecurityProblems(goodProduction({ [name]: value }));
         expect(problems.some(p => p.includes(name)), `${name}=${value === undefined ? '<unset>' : `<${value.length} chars>`}`).toBe(true);
       }

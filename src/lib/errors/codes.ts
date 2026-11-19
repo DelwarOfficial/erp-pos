@@ -1,4 +1,5 @@
 // src/lib/errors/codes.ts
+import { errorMeta, logger } from '@/lib/logging';
 // Domain error codes per §13.1 of the blueprint. EXACT codes — do not rename.
 
 export const ErrorCodes = {
@@ -43,6 +44,8 @@ export const ErrorCodes = {
   COMPANY_SUSPENDED: 'COMPANY_SUSPENDED',
   EXTERNAL_PROVIDER_ERROR: 'EXTERNAL_PROVIDER_ERROR',
   AUTH_SERVICE_UNAVAILABLE: 'AUTH_SERVICE_UNAVAILABLE',
+  OFFLINE_CASHIER_MISMATCH: 'OFFLINE_CASHIER_MISMATCH',
+  OFFLINE_CASHIER_UNKNOWN: 'OFFLINE_CASHIER_UNKNOWN',
 } as const;
 
 export type ErrorCode = keyof typeof ErrorCodes;
@@ -72,13 +75,15 @@ export class DomainError extends Error {
 
 export function toDomainError(e: unknown, correlationId?: string) {
   if (e instanceof DomainError) return e;
+  // An unexpected error's own message can carry SQL, table names or file paths.
+  // In production the client gets a plain message and the reference id; the
+  // cause is logged on the server. Development keeps the cause for debugging.
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('[api] unexpected error', { correlationId, ...errorMeta(e) });
+    return new DomainError('INTERNAL_ERROR', 'Something went wrong on our side. Please try again; if it keeps happening, quote the reference shown.', {}, 500);
+  }
   const message = e instanceof Error ? e.message : 'Unknown error';
-  return new DomainError(
-    'INTERNAL_ERROR',
-    message,
-    {},
-    500,
-  );
+  return new DomainError('INTERNAL_ERROR', message, {}, 500);
 }
 
 export function errorResponse(e: unknown, correlationId?: string) {

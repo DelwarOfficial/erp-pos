@@ -42,6 +42,7 @@ beforeAll(async () => {
 
   commands = Array.from({ length: COMMANDS }, (_, i) => {
     const payload = {
+      cashier_id: userId,
       branch_id: branchId, warehouse_id: warehouseId, currency_code: 'BDT', exchange_rate: 1,
       business_date: new Date().toISOString(),
       items: [{ product_id: productId, qty: 1, unit_price: 100 }],

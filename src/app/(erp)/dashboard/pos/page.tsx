@@ -364,6 +364,58 @@ export default function POSPage() {
     return { type: 'installments', installments: customRows.map(row => ({ due_date: row.due_date, amount: row.amount.trim() })) };
   }, [timing, scheduleMode, dueDate, installmentCount, firstDue, intervalKind, intervalValue, customRows]);
 
+  // The customer's spendable points, shown when paying with them. A 404/403
+  // (loyalty off, no permission) just hides the balance.
+  const usesPoints = tenders.some(tender => tender.method === 'reward_points');
+  useEffect(() => {
+    if (!usesPoints || !customer?.id || points?.customerId === customer.id) return;
+    let active = true;
+    void apiFetch(`/api/v1/customers/${customer.id}/points`).then(async response => {
+      if (!response.ok || !active) return;
+      const data = await response.json();
+      setPoints({ customerId: customer.id, points: Number(data.points), next_expiry: data.next_expiry ?? null });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [usesPoints, customer?.id, points?.customerId]);
+
+  // The customer's consent to spend points: a code texted to their phone,
+  // checked by the server and tied to this customer, these points and this
+  // cart. Any change to them means a new code (the server would refuse the old one).
+  const pointsTotal = tenders.filter(tender => tender.method === 'reward_points').reduce((sum, tender) => sum + (Number(tender.amount) || 0), 0);
+  const saleItemsForIntent = cart.map(c => { const d = discountOf(c); return { product_id: c.productId, qty: c.qty, unit_price: c.unitPrice, ...(d && d > BigInt(0) ? { discount_amount: Number(fromPaisa(d)) } : {}) }; });
+  const pointsIntent = usesPoints && customer?.id ? JSON.stringify({ customer: customer.id, points: pointsTotal, items: saleItemsForIntent, coupon: couponCode }) : '';
+  const [pointsConfirm, setPointsConfirm] = useState<{ intent: string; id: string; phone: string; verified: boolean } | null>(null);
+  const [pointsCode, setPointsCode] = useState('');
+  const [pointsBusy, setPointsBusy] = useState<'' | 'send' | 'verify'>('');
+  const [pointsError, setPointsError] = useState('');
+  const confirmedPoints = pointsConfirm && pointsConfirm.intent === pointsIntent && pointsConfirm.verified ? pointsConfirm.id : null;
+  const sendPointsCode = async () => {
+    if (!customer?.id || pointsBusy) return;
+    setPointsBusy('send'); setPointsError(''); setPointsCode('');
+    try {
+      const response = await apiFetch(`/api/v1/customers/${customer.id}/points/confirmations`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `points-code-${crypto.randomUUID()}` },
+        body: JSON.stringify({ points: pointsTotal, items: saleItemsForIntent, ...(couponCode ? { coupon_code: couponCode } : {}) }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? response.statusText);
+      setPointsConfirm({ intent: pointsIntent, id: data.confirmation_id, phone: data.phone_masked, verified: false });
+      setTimeout(() => document.getElementById('points-code')?.focus(), 0);
+    } catch (cause) { setPointsError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setPointsBusy(''); }
+  };
+  const verifyPointsCode = async () => {
+    if (!customer?.id || !pointsConfirm || pointsBusy) return;
+    setPointsBusy('verify'); setPointsError('');
+    try {
+      const response = await apiFetch(`/api/v1/customers/${customer.id}/points/confirmations/${pointsConfirm.id}/verify`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `points-verify-${crypto.randomUUID()}` }, body: JSON.stringify({ code: pointsCode }) });
+      const data = await response.json();
+      if (response.ok && data.verified) { setPointsConfirm({ ...pointsConfirm, verified: true }); return; }
+      throw new Error(data?.error?.message ?? t('points_code_wrong', { left: data.attempts_left ?? 0 }));
+    } catch (cause) { setPointsError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setPointsBusy(''); }
+  };
+
   const saleBody = useCallback(() => ({
     branch_id: branchId,
     warehouse_id: warehouseId,
@@ -379,23 +431,10 @@ export default function POSPage() {
     }),
     payments: paymentsFor(),
     ...(couponCode ? { coupon_code: couponCode } : {}),
+    ...(confirmedPoints ? { points_confirmation_id: confirmedPoints } : {}),
     ...(timing === 'full' ? {} : { payment_arrangement: arrangement(), due_reminders_enabled: reminders }),
 
-  }), [branchId, warehouseId, cashierShiftId, customer, cart, paymentsFor, couponCode, timing, arrangement, reminders]);
-
-  // The customer's spendable points, shown when paying with them. A 404/403
-  // (loyalty off, no permission) just hides the balance.
-  const usesPoints = tenders.some(tender => tender.method === 'reward_points');
-  useEffect(() => {
-    if (!usesPoints || !customer?.id || points?.customerId === customer.id) return;
-    let active = true;
-    void apiFetch(`/api/v1/customers/${customer.id}/points`).then(async response => {
-      if (!response.ok || !active) return;
-      const data = await response.json();
-      setPoints({ customerId: customer.id, points: Number(data.points), next_expiry: data.next_expiry ?? null });
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, [usesPoints, customer?.id, points?.customerId]);
+  }), [branchId, warehouseId, cashierShiftId, customer, cart, paymentsFor, couponCode, confirmedPoints, timing, arrangement, reminders]);
 
   /** What is wrong with the sale before it can be sent, or null. */
   const saleProblem = useCallback((): string | null => {
@@ -415,13 +454,14 @@ export default function POSPage() {
         || (payment.payment_method === 'gift_card' && !('method_reference' in payment && payment.method_reference)))) return t('err.tenders');
     if (payments.some(payment => payment.payment_method === 'reward_points') && (!customer
         || payments.some(payment => payment.payment_method === 'reward_points' && !Number.isInteger(payment.amount)))) return t('err.points');
+    if (payments.some(payment => payment.payment_method === 'reward_points') && !confirmedPoints) return t('err.points_confirm');
     if (remainingPaisa === null) return t('err.tenders');
     if (timing === 'full' && remainingPaisa !== BigInt(0)) return t('err.tenders');
     if (timing === 'part' && (remainingPaisa <= BigInt(0) || remainingPaisa >= grandPaisa)) return t('err.part_amount');
     if (timing !== 'full' && scheduleMode === 'custom' && customRows.some(row => !row.due_date || toPaisa(row.amount) === null)) return t('err.custom_rows');
     return null;
    
-  }, [cart, warehouseId, branchId, pricingReady, timing, customer, paymentsFor, financialAccountId, remainingPaisa, grandPaisa, scheduleMode, customRows, t]);
+  }, [cart, warehouseId, branchId, pricingReady, timing, customer, paymentsFor, financialAccountId, remainingPaisa, grandPaisa, scheduleMode, customRows, confirmedPoints, t]);
 
   // Schedule preview: the server's own quote of this exact sale, refreshed
   // whenever the cart, discounts, amount paid now or schedule change.
@@ -936,6 +976,32 @@ export default function POSPage() {
                     )}
                     <Label htmlFor={`tender-amount-${tender.id}`}>{t(tender.method === 'reward_points' ? 'split_points' : 'split_amount')}</Label>
                     <Input id={`tender-amount-${tender.id}`} type="number" inputMode="decimal" min="0" step="any" className="h-11 text-base tabular-nums" value={tender.amount} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, amount: e.target.value } : row))} />
+                    {tender.method === 'reward_points' && customer && pointsTotal > 0 ? (
+                      <div className="space-y-2 rounded-md bg-muted/40 p-2.5" aria-live="polite">
+                        {confirmedPoints ? (
+                          <p role="status" className="flex items-center gap-1.5 text-sm font-medium text-success-foreground"><CheckCircle2 className="size-4" aria-hidden="true" />{t('points_confirmed', { points: pointsTotal })}</p>
+                        ) : pointsConfirm && pointsConfirm.intent === pointsIntent ? (
+                          <>
+                            <Label htmlFor="points-code">{t('points_code_label', { phone: pointsConfirm.phone })}</Label>
+                            <div className="flex gap-2">
+                              <Input id="points-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="h-11 flex-1 text-base tabular-nums tracking-widest"
+                                value={pointsCode} onChange={e => setPointsCode(e.target.value.replace(/\D/g, ''))} aria-describedby="points-code-error"
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void verifyPointsCode(); } }} />
+                              <Button type="button" className="min-h-11" disabled={pointsCode.length !== 6 || !!pointsBusy} onClick={() => void verifyPointsCode()}>
+                                {pointsBusy === 'verify' ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}{t('points_code_confirm')}</Button>
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" className="min-h-9 px-2" disabled={!!pointsBusy} onClick={() => void sendPointsCode()}>{t('points_code_resend')}</Button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-muted-foreground">{t('points_consent_help')}</p>
+                            <Button type="button" variant="outline" className="min-h-11" disabled={!!pointsBusy || !Number.isInteger(pointsTotal)} onClick={() => void sendPointsCode()}>
+                              {pointsBusy === 'send' ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}{t('points_code_send')}</Button>
+                          </>
+                        )}
+                        {pointsError ? <p id="points-code-error" role="alert" className="text-sm text-destructive">{pointsError}</p> : null}
+                      </div>
+                    ) : null}
                     <Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>{t('split_remove', { n: index + 1 })}</Button>
                   </div>
                 ))}

@@ -27,7 +27,9 @@ const SyncSchema = z.object({
   // A batch is applied in one Serializable transaction with a 30-second
   // timeout; see OFFLINE_SYNC_MAX_COMMANDS for how the cap was chosen.
   commands: z.array(OfflineCommandSchema).min(1).max(OFFLINE_SYNC_MAX_COMMANDS),
-});
+  // A manager posting sales whose cashier can no longer sign in (one at a time).
+  adopt_reason: z.string().trim().min(3).max(300).optional(),
+}).refine(b => !b.adopt_reason || b.commands.length === 1, { message: 'Post one sale at a time as a manager', path: ['adopt_reason'] });
 
 export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
     // exactly as the online routes check it (sale.post / shift.* per branch).
     for (const branchId of new Set(body.commands.map(cmd => cmd.payload.branch_id).filter((b): b is string => typeof b === 'string'))) {
       await requirePermission(auth, 'sale.post', branchId);
+      if (body.adopt_reason) await requirePermission(auth, 'approval.resolve', branchId);
     }
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/offline/sync', body });
 
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'offline.sync', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => syncOfflineBatch(tx, {
-            companyId: auth.companyId, userId: auth.userId!, deviceId: body.device_id, commands: body.commands,
+            companyId: auth.companyId, userId: auth.userId!, deviceId: body.device_id, commands: body.commands, adoptReason: body.adopt_reason,
           }, correlationId),
           tx,
         )),

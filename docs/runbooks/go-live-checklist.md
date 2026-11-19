@@ -16,6 +16,16 @@ Per Appendix E — production go-live checklist.
 - [ ] JWT_SECRET set in production env
 - [ ] APP_ENCRYPTION_KEY set in production env
 - [ ] BARCODE_SIGNING_KEY set in production env
+  (each ≥ 32 random characters and not the `.env.production.example` value;
+  the server refuses to start otherwise — `src/lib/config/productionGuards.ts`)
+- [ ] REDIS_URL points at a reachable Redis. Without it, sign-in fails closed
+  with 503 AUTH_SERVICE_UNAVAILABLE ("Sign-in checks are temporarily
+  unavailable") until Redis is back — by design
+- [ ] CRON_API_TOKEN set on the server and in the cron environment
+  ([cron-jobs.md](cron-jobs.md)); the risk-alert script has no fallback
+- [ ] SMS account set up per company (Communications) before switching on
+  loyalty: spending reward points needs a code texted to the customer
+- [ ] Managers know where to revoke a lost till: Access → Users → Tills
 - [ ] Argon2id password hashing (memory≥64MB, time≥3) — verified
 - [ ] Access JWT 15min HttpOnly+Secure+SameSite=Strict — verified
 - [ ] Refresh token rotation + family revocation — verified
@@ -28,7 +38,7 @@ Per Appendix E — production go-live checklist.
 
 ### Database
 - [ ] MariaDB 11.8+ provisioned (PostgreSQL 16+ text is historical; see docs/adr/0007)
-- [ ] All migrations run successfully (0001-0010)
+- [ ] All migrations run successfully — for the 2026-11 release see [production-migration.md](production-migration.md#release-2026-11-pending-migrations)
 - [ ] RLS enabled + forced on all tenant tables
 - [ ] 4 DB roles created (app/migration/backup/reporting)
 - [ ] Partitioning active for stock_movements, journal_entries, payments

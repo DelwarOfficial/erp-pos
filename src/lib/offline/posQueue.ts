@@ -39,6 +39,8 @@ export interface Catalogue {
 }
 
 export interface OfflineSalePayload {
+  /** The cashier signed in when the sale was taken; only they can send it. */
+  cashier_id?: string;
   branch_id: string; warehouse_id: string; currency_code: 'BDT'; exchange_rate: 1; business_date: string;
   items: Array<{ product_id: string; qty: number; unit_price: number }>;
   payments: Array<{ payment_method: 'cash'; amount: number; financial_account_id: string }>;
@@ -51,6 +53,8 @@ export interface QueuedSale {
   payload_hash: string;
   /** For the till's own list only. */
   lines: Array<{ name: string; qty: number; total: string }>;
+  /** For the till's list: who took the sale. */
+  cashier_name?: string;
   total: string;
   created_at: string;
   status: 'queued' | 'needs_attention';
@@ -120,7 +124,7 @@ export function sumMoney(amounts: string[]): string {
 }
 
 /** Queue a cash sale taken offline. The total is the sum of the server's line totals. */
-export async function queueCashSale(till: Till, cart: Array<{ product: CatalogueProduct; qty: number }>): Promise<QueuedSale> {
+export async function queueCashSale(till: Till, cart: Array<{ product: CatalogueProduct; qty: number }>, cashier: { id: string; name: string }): Promise<QueuedSale> {
   const lines = cart.map(({ product, qty }) => {
     const total = offlineLineTotal(product, qty);
     if (total === null) throw new Error(`${product.name} can't be sold offline in that quantity`);
@@ -128,28 +132,38 @@ export async function queueCashSale(till: Till, cart: Array<{ product: Catalogue
   });
   const total = sumMoney(lines.map(line => line.total));
   const payload: OfflineSalePayload = {
+    cashier_id: cashier.id,
     branch_id: till.branch_id, warehouse_id: till.warehouse_id, currency_code: 'BDT', exchange_rate: 1,
     business_date: new Date().toISOString(),
     items: cart.map(({ product, qty }) => ({ product_id: product.id, qty, unit_price: product.price })),
     payments: [{ payment_method: 'cash', amount: Number(total), financial_account_id: till.cash_account_id }],
   };
-  const sequence = till.next_sequence;
-  const sale: QueuedSale = { sequence, idempotency_key: `offline-${till.device_id}-${sequence}`, payload,
-    payload_hash: await sha256Hex(JSON.stringify(payload)), lines, total, created_at: payload.business_date, status: 'queued' };
-  // The sequence is taken and the sale stored in one transaction: two sales never share a number.
+  // The hash covers the payload only (not the sale number), so it is worked out first.
+  const payloadHash = await sha256Hex(JSON.stringify(payload));
+  // The number is read, taken and the sale stored in one transaction, from the
+  // stored till rather than the caller's copy: two sales never share a number,
+  // even from two tabs.
   const db = await open();
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<QueuedSale>((resolve, reject) => {
     const tx = db.transaction(['meta', 'sales'], 'readwrite');
-    tx.objectStore('meta').put({ ...till, next_sequence: sequence + 1 }, 'till');
-    tx.objectStore('sales').add(sale);
-    tx.oncomplete = () => { db.close(); resolve(); };
+    const meta = tx.objectStore('meta');
+    let sale: QueuedSale | null = null;
+    const read = meta.get('till') as IDBRequest<Till | undefined>;
+    read.onsuccess = () => {
+      const stored = read.result ?? till;
+      const sequence = stored.next_sequence;
+      sale = { sequence, idempotency_key: `offline-${stored.device_id}-${sequence}`, payload, payload_hash: payloadHash,
+        lines, total, created_at: payload.business_date, status: 'queued', cashier_name: cashier.name };
+      meta.put({ ...stored, next_sequence: sequence + 1 }, 'till');
+      tx.objectStore('sales').add(sale);
+    };
+    tx.oncomplete = () => { db.close(); if (sale) resolve(sale); else reject(new Error('Sale not stored')); };
     tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
   });
-  till.next_sequence = sequence + 1;
-  return sale;
 }
 
-export interface SendResult { sent: number; needsAttention: number; stoppedOffline: boolean }
+export interface SendResult { sent: number; needsAttention: number; stoppedOffline: boolean; waitingForOthers: number }
 
 /**
  * Send queued sales in order. `send` posts one sync request and returns the
@@ -157,10 +171,12 @@ export interface SendResult { sent: number; needsAttention: number; stoppedOffli
  * rest wait for the next try); a refusal marks that sale for a manager and
  * moves on.
  */
-export async function sendQueued(till: Till, send: (body: string, key: string) => Promise<{ status: number; body: unknown }>): Promise<SendResult> {
-  const result: SendResult = { sent: 0, needsAttention: 0, stoppedOffline: false };
+export async function sendQueued(till: Till, send: (body: string, key: string) => Promise<{ status: number; body: unknown }>, userId: string): Promise<SendResult> {
+  const result: SendResult = { sent: 0, needsAttention: 0, stoppedOffline: false, waitingForOthers: 0 };
   for (const sale of await listSales()) {
     if (sale.status !== 'queued') continue;
+    // Each cashier sends their own sales; another's wait for them (or a manager).
+    if (sale.payload.cashier_id && sale.payload.cashier_id !== userId) { result.waitingForOthers++; continue; }
     let response: { status: number; body: unknown };
     try {
       response = await send(JSON.stringify({ device_id: till.device_id, commands: [{ command_type: 'cash_sale', sequence_number: sale.sequence,
@@ -169,6 +185,7 @@ export async function sendQueued(till: Till, send: (body: string, key: string) =
     const body = response.body as { results?: Array<{ status: string }>; error?: { message?: string; code?: string } };
     const outcome = body.results?.[0]?.status;
     if (response.status < 300 && (outcome === 'applied' || outcome === 'duplicate')) { await deleteSale(sale.sequence); result.sent++; continue; }
+    if (body.error?.code === 'OFFLINE_CASHIER_MISMATCH') { result.waitingForOthers++; continue; }
     if (response.status >= 500 || response.status === 401 || response.status === 429 || body.error?.code === 'CONCURRENT_MODIFICATION' || body.error?.code === 'OFFLINE') {
       result.stoppedOffline = true; break;
     }
@@ -176,6 +193,22 @@ export async function sendQueued(till: Till, send: (body: string, key: string) =
     result.needsAttention++;
   }
   return result;
+}
+
+/**
+ * A manager posts one sale whose cashier can no longer sign in. The server
+ * checks approval.resolve, that the cashier really cannot sign in, and records
+ * both people; the sale is credited to the manager.
+ */
+export async function postAsManager(till: Till, sequence: number, reason: string, send: (body: string, key: string) => Promise<{ status: number; body: unknown }>) {
+  const sale = (await listSales()).find(s => s.sequence === sequence);
+  if (!sale) return { ok: false as const, message: 'Sale not found on this till' };
+  const response = await send(JSON.stringify({ device_id: till.device_id, adopt_reason: reason, commands: [{ command_type: 'cash_sale', sequence_number: sale.sequence,
+    payload: sale.payload, payload_hash: sale.payload_hash, idempotency_key: sale.idempotency_key }] }), `adopt-${sale.idempotency_key}-${sale.attempt ?? 0}-${Date.now()}`);
+  const body = response.body as { results?: Array<{ status: string }>; error?: { message?: string } };
+  const outcome = body.results?.[0]?.status;
+  if (response.status < 300 && (outcome === 'applied' || outcome === 'duplicate')) { await deleteSale(sale.sequence); return { ok: true as const }; }
+  return { ok: false as const, message: body.error?.message ?? `Refused (${response.status})` };
 }
 
 /** Put a sale a manager has looked at back in the queue (e.g. after restocking). */
