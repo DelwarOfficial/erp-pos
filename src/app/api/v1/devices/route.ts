@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
             if (await tx.device.findFirst({ where: { devicePublicKey: body.device_key }, select: { id: true } })) {
               throw new DomainError('VALIDATION_FAILED', 'This till is already registered', {}, 409);
             }
+            // Till names are unique per branch (devices_company_id_branch_id_label_key).
+            if (await tx.device.findFirst({ where: { companyId: auth.companyId, branchId: body.branch_id, label: body.label }, select: { id: true } })) {
+              throw new DomainError('VALIDATION_FAILED', `A till called "${body.label}" already exists in this branch. Choose another name.`, {}, 409);
+            }
             const device = await tx.device.create({ data: { companyId: auth.companyId, branchId: body.branch_id, label: body.label,
               devicePublicKey: body.device_key, registeredBy: auth.userId!, status: 'active', lastSeenAt: new Date() } });
             await tx.auditLog.create({ data: { companyId: auth.companyId, userId: auth.userId, correlationId,

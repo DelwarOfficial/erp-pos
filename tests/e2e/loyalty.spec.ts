@@ -50,6 +50,7 @@ test('make a coupon, use it at the till, and see the customer points', async ({ 
   await page.getByRole('textbox', { name: 'Search products' }).fill('HDMI');
   await page.getByRole('group', { name: 'Product search results' }).getByRole('button', { name: /HDMI cable 2 m/ }).click();
   await page.getByRole('button', { name: 'Increase quantity' }).first().click();
+  await page.getByRole('button', { name: 'Have a coupon?' }).click();
   await page.getByLabel('Coupon code').fill(code.toLowerCase());
   await page.getByRole('button', { name: 'Apply coupon' }).click();
   await expect(page.getByText(`Coupon ${code}`)).toBeVisible({ timeout: 30_000 });
@@ -70,6 +71,7 @@ test('make a coupon, use it at the till, and see the customer points', async ({ 
   await page.goto('/dashboard/pos');
   await page.getByRole('textbox', { name: 'Search products' }).fill('HDMI');
   await page.getByRole('group', { name: 'Product search results' }).getByRole('button', { name: /HDMI cable 2 m/ }).click();
+  await page.getByRole('button', { name: 'Have a coupon?' }).click();
   await page.getByLabel('Coupon code').fill('NOSUCHCODE');
   await page.getByRole('button', { name: 'Apply coupon' }).click();
   await expect(page.getByText(/That coupon code is not valid/)).toBeVisible({ timeout: 30_000 });

@@ -447,7 +447,7 @@
   "pos.line_final": "Line total",
   "pos.pricing_wait_short": "Checking…",
   "pos.discount_total": "Discount",
-  "pos.timing": "When is the customer paying?",
+  "pos.timing": "Paying later or in part?",
   "pos.timing_full": "Pay in full",
   "pos.timing_part": "Pay part now",
   "pos.timing_later": "Pay later",
@@ -598,8 +598,8 @@
   "offline.setup_body": "Set this browser up as a till. It keeps the product list, takes cash sales while offline, and sends them when the connection is back.",
   "offline.setup_label": "Till name",
   "offline.setup_button": "Set up this till",
-  "offline.setup_hint": "Offline sales use the branch, warehouse and cash account chosen below.",
-  "offline.setup_missing": "First choose the warehouse, and pay by cash into a cash drawer account below.",
+  "offline.setup_hint": "Offline sales use the warehouse above and the cash account chosen under Payment.",
+  "offline.setup_missing": "First choose the warehouse above and a cash drawer as the payment account.",
   "offline.setup_done": "This till is ready for offline cash sales.",
   "offline.setup_failed": "We couldn't set up this till — {reason}",
   "offline.panel_title": "Offline till: {label}",
@@ -644,5 +644,12 @@
   "offline.change": "Give back {amount}",
   "offline.cash_short": "{amount} short",
   "offline.save": "Save cash sale — {amount}",
-  "offline.save_failed": "We couldn't save the sale on this till — {reason}"
+  "offline.save_failed": "We couldn't save the sale on this till — {reason}",
+  "pos.paid_in_full_note": "Paid in full: {amount}. To take it two ways, add a split payment.",
+  "pos.coupon_open": "Have a coupon?",
+  "pos.quick_add": "Quick add",
+  "pos.place_label": "Where this sale happens",
+  "offline.setup_short": "Take cash sales here even without internet.",
+  "offline.setup_open": "Set up offline sales",
+  "offline.setup_cancel": "Not now"
 }

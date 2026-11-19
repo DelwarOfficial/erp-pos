@@ -169,6 +169,16 @@ export default function POSPage() {
   const [optionsAttempt, setOptionsAttempt] = useState(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // A coupon is opened on demand; most sales have none.
+  const [couponOpen, setCouponOpen] = useState(false);
+  // Products to tap without typing (touch tills): the first active ones.
+  const [quickProducts, setQuickProducts] = useState<Product[]>([]);
+  useEffect(() => {
+    let active = true;
+    apiFetch('/api/v1/products?limit=12&is_active=true').then(r => r.ok ? r.json() : null)
+      .then(d => { if (active && d) setQuickProducts(d.items ?? []); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A discount that is not a valid amount is left out of pricing and blocks checkout.
@@ -547,6 +557,76 @@ export default function POSPage() {
         </p>
       </div>
 
+      {/* Where this sale happens: set once per shift, not part of each sale. */}
+      <section aria-label={t('place_label')} className="rounded-lg border bg-card p-3">
+        {optionsError && (
+          <div className="space-y-2 border border-destructive/30 bg-destructive/10 rounded-md p-2.5">
+            <p role="alert" className="text-sm text-foreground">{t('options_failed', { reason: optionsError })}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setOptionsAttempt(attempt => attempt + 1)}>{t('options_retry')}</Button>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="warehouse-id">{t('warehouse')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
+            <Select
+              value={warehouseId}
+              onValueChange={handleWarehouseChange}
+              disabled={optionsLoading || !!optionsError || warehouses.length === 0}
+              required
+            >
+              <SelectTrigger id="warehouse-id" className="w-full" aria-required="true" >
+                <SelectValue
+                  placeholder={
+                    optionsLoading ? t('loading') :
+                    warehouses.length === 0 ? t('warehouse_none') :
+                    t('warehouse_placeholder')
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map(w => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name} ({w.code}){w.branch ? ` · ${w.branch.name}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="shift-id">{t('shift')}</Label>
+            <Select
+              value={cashierShiftId}
+              onValueChange={setCashierShiftId}
+              disabled={optionsLoading || cashierShifts.length === 0}
+            >
+              <SelectTrigger id="shift-id" className="w-full" aria-describedby={!optionsLoading && cashierShifts.length === 0 ? 'shift-help' : undefined}>
+                <SelectValue
+                  placeholder={
+                    optionsLoading ? t('loading') :
+                    cashierShifts.length === 0 ? t('shift_none') :
+                    t('shift_placeholder')
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {cashierShifts.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.cashier?.name ?? t('shift_unknown_cashier')} · {f.dateTime(s.opened_at)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!optionsLoading && !optionsError && cashierShifts.length === 0 && (
+              <p id="shift-help" className="text-xs text-muted-foreground text-pretty">
+                {t('shift_none_help')}{' '}
+                {canReadShifts && <Link href="/dashboard/cashier" className="font-medium text-foreground underline underline-offset-4">{t('shift_open_link')}</Link>}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
       <OfflineTillPanel branchId={branchId} warehouseId={warehouseId} canRegister={canRegisterTill}
         cashAccountId={financialAccounts.find(account => account.id === financialAccountId)?.account_type === 'cash' ? financialAccountId : ''} />
 
@@ -630,6 +710,25 @@ export default function POSPage() {
                       </div>
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Quick add: tap a product without searching. */}
+              {!search.trim() && quickProducts.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <h3 className="text-xs font-medium text-muted-foreground">{t('quick_add')}</h3>
+                  <div role="group" aria-label={t('quick_add')} className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+                    {quickProducts.map(p => (
+                      <button key={p.id} type="button" onClick={() => addToCart(p)}
+                        className="flex min-h-16 flex-col justify-between rounded-md border bg-background p-2.5 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-[0.98] motion-reduce:active:scale-100">
+                        <span className="line-clamp-2 font-medium">{p.name}</span>
+                        <span className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground">
+                          <span className="tabular-nums">{f.money(p.default_price)}</span>
+                          {p.is_serialized ? <Badge variant="secondary" className="text-[10px]">{t('needs_serial')}</Badge> : null}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -729,61 +828,11 @@ export default function POSPage() {
           </Card>
         </div>
 
-        {/* Right: payment panel */}
+        {/* Right: payment — who, how, then the total and the button. */}
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card>
-            <CardHeader><CardTitle className="text-base"><h2>{t('payment_title')}</h2></CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="text-base"><h2>{t('payment_title')}</h2></CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">{t('subtotal')}</dt>
-                  <dd className="tabular-nums">{f.money(subtotal)}</dd>
-                </div>
-                {(() => {
-                  // The server's discount total includes the coupon; the coupon has its own row below.
-                  const couponPaisa = pricingReady && pricing!.coupon ? toPaisa(Number(pricing!.coupon.discount).toFixed(2)) ?? BigInt(0) : BigInt(0);
-                  const linePaisa = (pricingReady ? toPaisa(Number(pricing!.discount_total).toFixed(2)) ?? BigInt(0) : BigInt(0)) - couponPaisa;
-                  if (discountTotal <= 0 || linePaisa <= BigInt(0)) return null;
-                  const p = percentText(linePaisa, toPaisa(Number(pricing!.subtotal).toFixed(2)) ?? BigInt(0));
-                  return (
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">{t('discount_total')}</dt>
-                      <dd className="tabular-nums">− {f.money(fromPaisa(linePaisa))}{p ? ` (${p})` : ''}</dd>
-                    </div>
-                  );
-                })()}
-                {pricingReady && pricing!.coupon ? (
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">{t('coupon_line', { code: pricing!.coupon.code })}</dt>
-                    <dd className="tabular-nums">− {f.money(pricing!.coupon.discount)}</dd>
-                  </div>
-                ) : null}
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">{t('vat')}</dt>
-                  <dd className="tabular-nums">{f.money(taxTotal)}</dd>
-                </div>
-                <div className="flex items-baseline justify-between border-t pt-2">
-                  <dt className="text-base font-semibold">{t('total')}</dt>
-                  <dd className="text-2xl font-bold tabular-nums">{f.money(grandTotal)}</dd>
-                </div>
-              </dl>
-
-              <div className="space-y-3 pt-2 border-t">
-                {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
-                {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button>{couponCode ? <Button type="button" variant="outline" onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button> : null}</div></div> : null}
-                <form className="space-y-1.5" onSubmit={e => { e.preventDefault(); setCouponCode(couponInput.trim().toUpperCase()); }}>
-                  <Label htmlFor="coupon-code">{t('coupon_label')}</Label>
-                  <div className="flex gap-2">
-                    <Input id="coupon-code" autoComplete="off" className="h-11 flex-1 text-base uppercase" value={couponInput} disabled={posting} aria-describedby="coupon-status"
-                      onChange={e => setCouponInput(e.target.value)} />
-                    {couponCode
-                      ? <Button type="button" variant="outline" className="min-h-11" disabled={posting} onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button>
-                      : <Button type="submit" variant="outline" className="min-h-11" disabled={posting || !couponInput.trim()}>{t('coupon_apply')}</Button>}
-                  </div>
-                  <p id="coupon-status" role="status" className="text-sm text-muted-foreground">
-                    {couponCode && pricingReady && pricing!.coupon ? t('coupon_applied', { name: pricing!.coupon.name, amount: f.money(pricing!.coupon.discount) }) : couponCode && !pricingError ? t('coupon_checking') : ''}
-                  </p>
-                </form>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1">
                     <EntityPicker label={t(timing === 'full' ? 'customer_label' : 'customer_label_required')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting}
@@ -801,84 +850,6 @@ export default function POSPage() {
                 <QuickCreateCustomer open={canCreateCustomer && addCustomer !== null} onOpenChange={open => { if (!open) setAddCustomer(null); }} prefill={addCustomer?.prefill ?? ''}
                   onSelected={setCustomer} />
                 {customer && timing === 'full' ? <Button type="button" variant="ghost" disabled={posting} onClick={() => setCustomer(null)}>{t('customer_clear')}</Button> : !customer ? <p className={`text-xs ${timing !== 'full' ? 'text-destructive' : 'text-muted-foreground'}`}>{timing !== 'full' ? t('err.credit_customer') : t('customer_walk_in')}</p> : null}
-                {/* When the customer pays — separate from how they pay. */}
-                <div className="space-y-1.5" role="radiogroup" aria-labelledby="timing-label">
-                  <span id="timing-label" className="text-sm font-medium leading-none">{t('timing')}</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['full', 'part', 'later'] as const).map(option => (
-                      <button key={option} type="button" role="radio" aria-checked={timing === option}
-                        onClick={() => setTiming(option)}
-                        className={`min-h-12 rounded-md border px-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${timing === option ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}>
-                        {t(`timing_${option}`)}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground text-pretty">{t(`timing_${timing}_help`)}</p>
-                </div>
-                {optionsError && (
-                  <div className="space-y-2 border border-destructive/30 bg-destructive/10 rounded-md p-2.5">
-                    <p role="alert" className="text-sm text-foreground">{t('options_failed', { reason: optionsError })}</p>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setOptionsAttempt(attempt => attempt + 1)}>{t('options_retry')}</Button>
-                  </div>
-                )}
-                <div className="space-y-1.5">
-                  <Label htmlFor="warehouse-id">{t('warehouse')}<span aria-hidden="true" className="text-destructive"> *</span></Label>
-                  <Select
-                    value={warehouseId}
-                    onValueChange={handleWarehouseChange}
-                    disabled={optionsLoading || !!optionsError || warehouses.length === 0}
-                    required
-                  >
-                    <SelectTrigger id="warehouse-id" className="w-full" aria-required="true" aria-describedby="warehouse-help">
-                      <SelectValue
-                        placeholder={
-                          optionsLoading ? t('loading') :
-                          warehouses.length === 0 ? t('warehouse_none') :
-                          t('warehouse_placeholder')
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses.map(w => (
-                        <SelectItem key={w.id} value={w.id}>
-                          {w.name} ({w.code}){w.branch ? ` · ${w.branch.name}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p id="warehouse-help" className="text-xs text-muted-foreground">{t('warehouse_help')}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="shift-id">{t('shift')}</Label>
-                  <Select
-                    value={cashierShiftId}
-                    onValueChange={setCashierShiftId}
-                    disabled={optionsLoading || cashierShifts.length === 0}
-                  >
-                    <SelectTrigger id="shift-id" className="w-full" aria-describedby={!optionsLoading && cashierShifts.length === 0 ? 'shift-help' : undefined}>
-                      <SelectValue
-                        placeholder={
-                          optionsLoading ? t('loading') :
-                          cashierShifts.length === 0 ? t('shift_none') :
-                          t('shift_placeholder')
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cashierShifts.map(s => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.cashier?.name ?? t('shift_unknown_cashier')} · {f.dateTime(s.opened_at)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!optionsLoading && !optionsError && cashierShifts.length === 0 && (
-                    <p id="shift-help" className="text-xs text-muted-foreground text-pretty">
-                      {t('shift_none_help')}{' '}
-                      {canReadShifts && <Link href="/dashboard/cashier" className="font-medium text-foreground underline underline-offset-4">{t('shift_open_link')}</Link>}
-                    </p>
-                  )}
-                </div>
                 {timing !== 'later' && <>
                 <div className="space-y-1.5" role="radiogroup" aria-labelledby="payment-method-label">
                   <span id="payment-method-label" className="text-sm font-medium leading-none">{t('method')}</span>
@@ -920,16 +891,19 @@ export default function POSPage() {
                   <p id="account-help" className="text-xs text-muted-foreground">{t('account_help')}</p>
                 </div>
                 </>}
-              </div>
 
               {timing !== 'later' && (
               <div className="space-y-3 border-t pt-3">
+                {timing === 'full' && tenders.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" role="status">{pricingReady ? t('paid_in_full_note', { amount: f.money(grandTotal) }) : t('amount_wait')}</p>
+                ) : (
                 <div className="space-y-1.5">
                   <Label htmlFor="primary-payment-amount">{t(timing === 'part' ? 'amount_part' : 'amount_now')}{timing === 'part' ? <span aria-hidden="true" className="text-destructive"> *</span> : null}</Label>
                   <Input id="primary-payment-amount" type="number" inputMode="decimal" min="0" step="any" className="h-12 text-base tabular-nums" aria-describedby="amount-now-help"
                     placeholder={timing === 'part' ? '0' : pricingReady ? String(grandTotal) : t('amount_wait')} value={primaryAmount} onChange={e => setPrimaryAmount(e.target.value)} />
                   <p id="amount-now-help" className="text-xs text-muted-foreground text-pretty">{t(timing === 'part' ? 'amount_part_help' : 'amount_now_help')}</p>
                 </div>
+                )}
                 {paymentMethod === 'cash' && (
                   <div className="space-y-1.5">
                     <Label htmlFor="cash-received">{t('cash_received')}</Label>
@@ -965,9 +939,45 @@ export default function POSPage() {
                     <Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>{t('split_remove', { n: index + 1 })}</Button>
                   </div>
                 ))}
-                <Button type="button" variant="outline" className="w-full" onClick={() => setTenders(current => [...current, { id: crypto.randomUUID(), method: 'card', account: null, amount: '' }])}>{t('split_add')}</Button>
+                <Button type="button" variant="ghost" size="sm" className="min-h-10 px-2" onClick={() => setTenders(current => [...current, { id: crypto.randomUUID(), method: 'card', account: null, amount: '' }])}><Plus aria-hidden="true" />{t('split_add')}</Button>
               </div>
               )}
+                {/* When the customer pays — separate from how they pay. */}
+                <div className="space-y-1.5" role="radiogroup" aria-labelledby="timing-label">
+                  <span id="timing-label" className="text-sm font-medium leading-none text-muted-foreground">{t('timing')}</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['full', 'part', 'later'] as const).map(option => (
+                      <button key={option} type="button" role="radio" aria-checked={timing === option}
+                        onClick={() => setTiming(option)}
+                        className={`min-h-10 rounded-md border px-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${timing === option ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent'}`}>
+                        {t(`timing_${option}`)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground text-pretty">{t(`timing_${timing}_help`)}</p>
+                </div>
+
+              <div className="space-y-2">
+                {couponOpen || couponCode ? (
+                <form className="space-y-1.5" onSubmit={e => { e.preventDefault(); setCouponCode(couponInput.trim().toUpperCase()); }}>
+                  <Label htmlFor="coupon-code">{t('coupon_label')}</Label>
+                  <div className="flex gap-2">
+                    <Input id="coupon-code" autoComplete="off" className="h-11 flex-1 text-base uppercase" value={couponInput} disabled={posting} aria-describedby="coupon-status"
+                      onChange={e => setCouponInput(e.target.value)} />
+                    {couponCode
+                      ? <Button type="button" variant="outline" className="min-h-11" disabled={posting} onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button>
+                      : <Button type="submit" variant="outline" className="min-h-11" disabled={posting || !couponInput.trim()}>{t('coupon_apply')}</Button>}
+                  </div>
+                  <p id="coupon-status" role="status" className="text-sm text-muted-foreground">
+                    {couponCode && pricingReady && pricing!.coupon ? t('coupon_applied', { name: pricing!.coupon.name, amount: f.money(pricing!.coupon.discount) }) : couponCode && !pricingError ? t('coupon_checking') : ''}
+                  </p>
+                </form>
+                ) : (
+                  <Button type="button" variant="ghost" size="sm" className="min-h-10 px-2" onClick={() => { setCouponOpen(true); setTimeout(() => document.getElementById('coupon-code')?.focus(), 0); }}>
+                    <Plus aria-hidden="true" />{t('coupon_open')}
+                  </Button>
+                )}
+              </div>
               {timing !== 'full' && (
                 <section aria-labelledby="schedule-title" className="space-y-3 border-t pt-3">
                   <h3 id="schedule-title" className="text-sm font-semibold">{t('schedule_title')}</h3>
@@ -1046,11 +1056,45 @@ export default function POSPage() {
                   ) : !preview && !previewProblem ? <p role="status" className="text-xs text-muted-foreground">{t('schedule_checking')}</p> : null}
                 </section>
               )}
+                {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
+                {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button>{couponCode ? <Button type="button" variant="outline" onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button> : null}</div></div> : null}
               <dl className="space-y-1.5 rounded-md border bg-muted/40 p-3 text-sm" aria-label={t('summary_label')}>
-                <div className="flex justify-between"><dt>{t('total')}</dt><dd className="font-semibold tabular-nums">{f.money(grandTotal)}</dd></div>
-                <div className="flex justify-between"><dt>{t('paid_now')}</dt><dd className="tabular-nums">{f.money(paidPaisa === null ? '0' : fromPaisa(paidPaisa))}</dd></div>
-                <div className="flex justify-between"><dt className="font-medium">{t('remaining_due')}</dt>
-                  <dd className={`font-semibold tabular-nums ${remainingPaisa !== null && remainingPaisa > BigInt(0) ? 'text-destructive' : ''}`}>{f.money(remainingPaisa === null || remainingPaisa < BigInt(0) ? '0' : fromPaisa(remainingPaisa))}</dd></div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">{t('subtotal')}</dt>
+                  <dd className="tabular-nums">{f.money(subtotal)}</dd>
+                </div>
+                {(() => {
+                  // The server's discount total includes the coupon; the coupon has its own row below.
+                  const couponPaisa = pricingReady && pricing!.coupon ? toPaisa(Number(pricing!.coupon.discount).toFixed(2)) ?? BigInt(0) : BigInt(0);
+                  const linePaisa = (pricingReady ? toPaisa(Number(pricing!.discount_total).toFixed(2)) ?? BigInt(0) : BigInt(0)) - couponPaisa;
+                  if (discountTotal <= 0 || linePaisa <= BigInt(0)) return null;
+                  const p = percentText(linePaisa, toPaisa(Number(pricing!.subtotal).toFixed(2)) ?? BigInt(0));
+                  return (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">{t('discount_total')}</dt>
+                      <dd className="tabular-nums">− {f.money(fromPaisa(linePaisa))}{p ? ` (${p})` : ''}</dd>
+                    </div>
+                  );
+                })()}
+                {pricingReady && pricing!.coupon ? (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">{t('coupon_line', { code: pricing!.coupon.code })}</dt>
+                    <dd className="tabular-nums">− {f.money(pricing!.coupon.discount)}</dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">{t('vat')}</dt>
+                  <dd className="tabular-nums">{f.money(taxTotal)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between border-t pt-2">
+                  <dt className="text-base font-semibold">{t('total')}</dt>
+                  <dd className="text-2xl font-bold tabular-nums">{f.money(grandTotal)}</dd>
+                </div>
+                {timing !== 'full' || tenders.length > 0 ? <>
+                  <div className="flex justify-between"><dt>{t('paid_now')}</dt><dd className="tabular-nums">{f.money(paidPaisa === null ? '0' : fromPaisa(paidPaisa))}</dd></div>
+                  <div className="flex justify-between"><dt className="font-medium">{t('remaining_due')}</dt>
+                    <dd className={`font-semibold tabular-nums ${remainingPaisa !== null && remainingPaisa > BigInt(0) ? 'text-destructive' : ''}`}>{f.money(remainingPaisa === null || remainingPaisa < BigInt(0) ? '0' : fromPaisa(remainingPaisa))}</dd></div>
+                </> : null}
               </dl>
               {previewProblem && timing !== 'full' && cart.length > 0 ? <p className="text-xs text-muted-foreground" role="status">{previewProblem}</p> : null}
               <Button type="button" onClick={() => void handleCheckout()} disabled={posting || cart.length === 0 || !pricingReady || !!optionsError} className="w-full min-h-14 text-base" size="lg">

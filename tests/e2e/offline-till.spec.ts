@@ -34,7 +34,8 @@ test('take a cash sale offline and have it posted when back online', async ({ pa
   expect((await page.request.patch('/api/v1/feature-flags/offline_pos_enabled', { headers: headers(), data: { enabled: true } })).ok()).toBe(true);
   const salesBefore = (await (await page.request.get('/api/v1/sales?limit=1')).json()).total ?? null;
 
-  // 1. Set the till up from New Sale.
+  // 1. Set the till up from New Sale (till names are unique per branch).
+  const label = `Counter ${randomUUID().slice(0, 4)}`;
   await page.goto('/dashboard/pos');
   await page.evaluate(() => new Promise(resolve => { const r = indexedDB.deleteDatabase('erp-pos-till'); r.onsuccess = r.onerror = r.onblocked = () => resolve(null); }));
   await page.reload();
@@ -42,9 +43,10 @@ test('take a cash sale offline and have it posted when back online', async ({ pa
   if (!wh?.includes('Dhanmondi')) await pick(page, 'Warehouse', /Dhanmondi showroom/);
   await pick(page, 'Payment account', /cash/i);
   await expect(page.getByRole('heading', { name: 'Keep selling if the internet drops' })).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel('Till name').fill('Counter 1');
+  await page.getByRole('button', { name: 'Set up offline sales' }).click();
+  await page.getByLabel('Till name').fill(label);
   await page.getByRole('button', { name: 'Set up this till' }).click();
-  await expect(page.getByRole('heading', { name: 'Offline till: Counter 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: `Offline till: ${label}` })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/products saved for offline sales/)).toBeVisible();
   await page.screenshot({ path: `${shots}/01-till-ready.png`, fullPage: true });
 
@@ -61,11 +63,11 @@ test('take a cash sale offline and have it posted when back online', async ({ pa
   await page.screenshot({ path: `${shots}/02-offline-sale.png`, fullPage: true });
   await page.getByRole('button', { name: /^Save cash sale — / }).click();
   await expect(page.getByText(/Offline sale 1 saved on this till/)).toBeVisible();
-  await expect(page.getByText(/Counter 1 · 1 waiting to be sent/)).toBeVisible();
+  await expect(page.getByText(`${label} · 1 waiting to be sent`)).toBeVisible();
 
   // 3. Back online: sent by itself and posted.
   await context.setOffline(false);
-  await expect(page.getByRole('heading', { name: 'Offline till: Counter 1' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: `Offline till: ${label}` })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('All offline sales have been sent.')).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: `${shots}/03-sent.png`, fullPage: true });
   const salesAfter = (await (await page.request.get('/api/v1/sales?limit=1')).json()).total ?? null;

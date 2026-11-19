@@ -74,7 +74,7 @@ test('full, discounted and pay-later on one New Sale page', async ({ page }) => 
   const shiftCount = await page.getByRole('combobox', { name: 'Warehouse' }).textContent();
   if (!shiftCount?.includes('Dhanmondi')) await pick(page, 'Warehouse', /Dhanmondi showroom/);
   await pick(page, 'Payment account', /cash/i);
-  await expect(page.getByText('Remaining due')).toBeVisible();
+  await expect(page.getByText(/^Paid in full: /)).toBeVisible();
   await page.screenshot({ path: `${shots}/02-pay-in-full.png`, fullPage: true });
   await page.getByRole('button', { name: /^Complete Sale — / }).first().click();
   await expect(page.getByRole('heading', { name: /^Sale saved: INV-/, level: 2 })).toBeVisible({ timeout: 30_000 });

@@ -79,6 +79,7 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
   const [busy, setBusy] = useState<'' | 'setup' | 'refresh' | 'send'>('');
   const [error, setError] = useState('');
   const [label, setLabel] = useState('');
+  const [setupOpen, setSetupOpen] = useState(false);
   const sending = useRef(false);
   // The set-up card only shows where offline sales are switched on.
   const [flagOn, setFlagOn] = useState(false);
@@ -148,6 +149,15 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
   if (!till) {
     if (!canRegister || !flagOn) return null;
     const missing = !branchId || !warehouseId || !cashAccountId;
+    // A quiet line until someone chooses to set the till up.
+    if (!setupOpen) return (
+      <section aria-labelledby="till-setup-compact" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed bg-card px-3 py-2 text-sm">
+        <CloudOff className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 id="till-setup-compact" className="font-medium">{t('setup_title')}</h2>
+        <span className="text-muted-foreground">{t('setup_short')}</span>
+        <Button type="button" variant="outline" size="sm" className="ml-auto min-h-9" onClick={() => { setSetupOpen(true); setTimeout(() => document.getElementById('till-label')?.focus(), 0); }}>{t('setup_open')}</Button>
+      </section>
+    );
     return (
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CloudOff className="h-5 w-5" aria-hidden="true" /><h2>{t('setup_title')}</h2></CardTitle>
@@ -159,6 +169,7 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
               <Input id="till-label" required maxLength={80} className="h-11" value={label} onChange={e => setLabel(e.target.value)} aria-describedby="till-setup-hint" />
             </div>
             <Button type="submit" className="min-h-11" disabled={!!busy || missing || !label.trim()}>{busy === 'setup' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('setup_button')}</Button>
+            <Button type="button" variant="ghost" className="min-h-11" disabled={!!busy} onClick={() => setSetupOpen(false)}>{t('setup_cancel')}</Button>
           </form>
           <p id="till-setup-hint" className="mt-2 text-sm text-muted-foreground">{missing ? t('setup_missing') : t('setup_hint')}</p>
           {error ? <p role="alert" className="mt-2 text-sm text-destructive">{error}</p> : null}
@@ -166,6 +177,18 @@ export function OfflineTillPanel({ branchId, warehouseId, cashAccountId, canRegi
       </Card>
     );
   }
+
+  // Nothing waiting and nothing wrong: one quiet line.
+  if (!queued.length && !attention.length && !error) return (
+    <section aria-labelledby="till-compact" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card px-3 py-2 text-sm">
+      <CloudOff className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+      <h2 id="till-compact" className="font-medium">{t('panel_title', { label: till.label })}</h2>
+      <span className="text-muted-foreground">{catalogue ? t('panel_products', { count: catalogue.products.length, when: f.dateTime(catalogue.generated_at) }) : t('panel_no_products')}</span>
+      <span role="status" className="text-muted-foreground">{t('panel_nothing_queued')}</span>
+      <Button type="button" variant="ghost" size="sm" className="ml-auto min-h-9" disabled={!!busy || !online} onClick={() => void refresh()}>
+        {busy === 'refresh' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}{t('refresh')}</Button>
+    </section>
+  );
 
   return (
     <Card>

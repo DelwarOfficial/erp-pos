@@ -447,7 +447,7 @@
   "pos.line_final": "এই পণ্যের মোট",
   "pos.pricing_wait_short": "যাচাই হচ্ছে…",
   "pos.discount_total": "ছাড়",
-  "pos.timing": "কাস্টমার কখন টাকা দেবেন?",
+  "pos.timing": "পরে বা আংশিক পরিশোধ?",
   "pos.timing_full": "পুরো টাকা এখন",
   "pos.timing_part": "কিছু এখন",
   "pos.timing_later": "পরে দেবেন",
@@ -598,8 +598,8 @@
   "offline.setup_body": "এই ব্রাউজারকে টিল হিসেবে সেট করুন। এটি পণ্যের তালিকা রাখবে, অফলাইনে নগদ বিক্রি নেবে এবং সংযোগ ফিরলে পাঠিয়ে দেবে।",
   "offline.setup_label": "টিলের নাম",
   "offline.setup_button": "এই টিল সেট করুন",
-  "offline.setup_hint": "অফলাইন বিক্রিতে নিচে বেছে নেওয়া ব্রাঞ্চ, গুদাম ও ক্যাশ অ্যাকাউন্ট ব্যবহার হবে।",
-  "offline.setup_missing": "প্রথমে নিচে গুদাম বেছে নিন এবং পেমেন্ট অ্যাকাউন্ট হিসেবে একটি ক্যাশ ড্রয়ার দিন।",
+  "offline.setup_hint": "অফলাইন বিক্রিতে উপরের গুদাম ও পেমেন্টে বেছে নেওয়া ক্যাশ অ্যাকাউন্ট ব্যবহার হবে।",
+  "offline.setup_missing": "প্রথমে উপরে গুদাম এবং পেমেন্ট অ্যাকাউন্ট হিসেবে একটি ক্যাশ ড্রয়ার বেছে নিন।",
   "offline.setup_done": "এই টিল অফলাইন নগদ বিক্রির জন্য প্রস্তুত।",
   "offline.setup_failed": "টিল সেট করা যায়নি — {reason}",
   "offline.panel_title": "অফলাইন টিল: {label}",
@@ -644,5 +644,12 @@
   "offline.change": "ফেরত দিন {amount}",
   "offline.cash_short": "{amount} কম",
   "offline.save": "নগদ বিক্রি সেভ করুন — {amount}",
-  "offline.save_failed": "বিক্রিটি এই টিলে সেভ করা যায়নি — {reason}"
+  "offline.save_failed": "বিক্রিটি এই টিলে সেভ করা যায়নি — {reason}",
+  "pos.paid_in_full_note": "পুরো {amount} এখনই পরিশোধ। দুইভাবে নিতে হলে আলাদা পেমেন্ট যোগ করুন।",
+  "pos.coupon_open": "কুপন আছে?",
+  "pos.quick_add": "দ্রুত যোগ করুন",
+  "pos.place_label": "বিক্রি কোথা থেকে হচ্ছে",
+  "offline.setup_short": "ইন্টারনেট ছাড়াও এখানে নগদ বিক্রি নিন।",
+  "offline.setup_open": "অফলাইন বিক্রি চালু করুন",
+  "offline.setup_cancel": "এখন না"
 }
