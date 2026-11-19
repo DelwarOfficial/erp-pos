@@ -971,6 +971,14 @@
     "exception": null
   },
   {
+    "file": "v1/devices/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "device.revoke"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/devices/route.ts",
     "method": "GET",
     "permissions": [

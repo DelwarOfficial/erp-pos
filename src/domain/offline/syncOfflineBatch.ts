@@ -25,6 +25,12 @@ export async function syncOfflineBatch(
     where: { id: input.deviceId, companyId: input.companyId, status: 'active' },
   });
   if (!device) throw new DomainError('VALIDATION_FAILED', 'Device not found or revoked', {}, 404);
+  // A till sells for its own branch only: a command naming another branch is refused.
+  const elsewhere = input.commands.find(cmd => typeof cmd.payload.branch_id === 'string' && cmd.payload.branch_id !== device.branchId);
+  if (elsewhere) {
+    throw new DomainError('FORBIDDEN_SCOPE', `Sequence ${elsewhere.sequence_number} is for another branch than this till's`,
+      { sequence_number: elsewhere.sequence_number }, 403);
+  }
 
   // Create sync batch, numbered per device. This was Date.now() -- about
   // 1.8 × 10^12 -- into an INT column, which MariaDB rejects: every offline

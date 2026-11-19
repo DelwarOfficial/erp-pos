@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
     await runInTenantContext(auth.ctx, () => requireFeatureFlag('offline_pos_enabled'));
     const idempotencyKey = requireIdempotencyKey(req);
     const body = SyncSchema.parse(await req.json());
+    // Each command acts in a branch: the user must hold the permission there,
+    // exactly as the online routes check it (sale.post / shift.* per branch).
+    for (const branchId of new Set(body.commands.map(cmd => cmd.payload.branch_id).filter((b): b is string => typeof b === 'string'))) {
+      await requirePermission(auth, 'sale.post', branchId);
+    }
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/offline/sync', body });
 
     const result = await runInTenantContext(auth.ctx, () =>

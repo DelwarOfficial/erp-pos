@@ -1,54 +1,54 @@
 # Graph Report - erp-pos  (2026-11-19)
 
 ## Corpus Check
-- 912 files · ~769,348 words
+- 913 files · ~770,237 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 29 file(s) not represented in the graph (top: .prisma 12, (none) 6, .example 3)
 
 ## Summary
-- 5416 nodes · 19016 edges · 265 communities (230 shown, 35 thin omitted)
+- 5421 nodes · 19050 edges · 278 communities (242 shown, 36 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 264 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1155977a`
+- Built from commit: `9e8e9948`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- Shared components
-- withTenant
-- logging/index.ts
-- react
+- ref_node_fs
+- DomainError
+- providers.ts
+- Button
 - codes.ts
-- service.ts
+- accessApiAuthorization.test.ts
 - dependencies
 - apiFetch
 - reports/index.ts
 - importProcessor.ts
 - bn/README.md
-- risk-tuning/page.tsx
+- Badge
 - checks.ts
-- ref_node_fs
+- ref_node_path
 - saleRequest.ts
 - ref_node_crypto
-- reminders.ts
+- templateSettings.ts
 - postJournalEntry
-- DomainError
+- runInTenantContext
 - workers/index.ts
 - package.json
-- storage/index.ts
-- PostExpense.ts
+- S3StorageAdapter
+- @prisma/client
 - pos/page.tsx
 - UI/UX v2: audit, terminology and slice report
 - navigation-menu.tsx
-- Input
-- collectionReports.ts
-- mfaSessionAtomicity.test.ts
+- users.tsx
+- collections.ts
+- systemDb
 - app/layout.tsx
 - use-toast.ts
 - mimsms.ts
-- offlineTill.test.ts
+- applyOfflineCommand.ts
 - collectionFollowThrough.test.ts
 - dashboard/layout.tsx
 - PostStockAdjustment.ts
@@ -56,27 +56,27 @@
 - sms/page.tsx
 - gen_migrations.py
 - @playwright/test
-- download/route.ts
-- sessions.ts
+- export-jobs/route.ts
+- refresh/route.ts
 - productionGuards.ts
 - ERP_Pos_Blueprint_v4.2.md
 - reconcile.ts
-- collectionsOverview.test.ts
-- dataSubjectRequests.ts
-- Button
+- reminders.ts
+- job.ts
+- Card
 - carousel.tsx
 - dropdown-menu.tsx
-- featureFlags/index.ts
+- zod
 - mocks/index.ts
 - drawer.tsx
 - devDependencies
 - verify-ui-health.mjs
 - overview.md
-- zod
+- journal-entries/route.ts
 - 7. Transaction and Workflow Specifications
 - runtime.ts
 - ERP/POS
-- @prisma/client
+- service.ts
 - What You Must Do When Invoked
 - What You Must Do When Invoked
 - Final Blueprint Compliance & Relational Validation Audit
@@ -85,9 +85,9 @@
 - Provider Sandbox Credentials Setup Guide
 - chart.tsx
 - cn
-- systemDb
+- catalogue.ts
 - dueReminders.test.ts
-- providers.ts
+- registerProviders
 - i18n/index.ts
 - Loyalty.ts
 - approvals/route.ts
@@ -101,22 +101,22 @@
 - 5.7 Quotations, Sales, Taxes, and Returns
 - scripts
 - providerRegistry
-- buildTenantContext
+- tenantContext.test.ts
 - crypto/index.ts
 - campaigns.ts
 - Provider Integration Guide
 - e2e-smoke.ts
 - compilerOptions
-- Static review findings
+- ERP repository inventory
 - graphify reference: extra exports and benchmark
-- productActivation.ts
+- graphify reference: query, path, explain
 - components.json
 - 5. Production Database Schema
 - escpos/index.ts
 - 5.4 Catalogue, Pricing, and Tax
 - PostgreSQL Quickstart
-- logger
-- mfaChallenge.ts
+- smoke-test-providers.ts
+- sessions.ts
 - AssetManagement.ts
 - Decisions
 - index-plans.mjs
@@ -128,15 +128,15 @@
 - §21 — EXTENDED MODULES (Post-Blueprint Additions)
 - 9.4 Frontend Application Contract
 - Pre-Go-Live
-- ERP repository inventory
+- reset.ts
 - audit-production-db.mjs
 - e2e-staging-suite.ts
 - Database performance review — 2026-11-18
 - ছয়টি ব্যবসায়িক পরিস্থিতির টিউটোরিয়াল
 - UI modernization audit - started 2026-09-23
 - manifest.json
-- enrollment.ts
-- transactionContext.ts
+- verify/route.ts
+- tenantClient.ts
 - generate/route.ts
 - 5.11 Payments, Advances, Installments, and Cashier Control
 - 5.14 HR and Payroll
@@ -148,7 +148,7 @@
 - Decision
 - Gift-card issuance remediation and relational resume
 - 5.7A Delivery, Courier, Service, and Warranty
-- inline-customer.spec.ts
+- enrollment.ts
 - 8. Multi-Tenant, Branch Isolation, and RBAC
 - admin/health/route.ts
 - §21.1 — Fixed Asset Management
@@ -178,27 +178,27 @@
 - ADR 0006 — Document Numbering
 - outboundUrl.ts
 - P1 remediation evidence — 2026-09-16
-- reminder-policy/route.ts
+- reminder/route.ts
 - 5.10 Accounting
-- M8 — UAT Scenarios
+- purchaseAndTenderAccounting.test.ts
 - ১৭. সেটিংস ও প্রশাসনিক কাজ
 - 5.1 Organization and Currency
 - 6. Entity Relationships
 - 5.5 Inventory, Costing, Batches, and IMEI
 - refundCriticalIntegrity.test.ts
-- ৪. কোম্পানি, শাখা ও গুদাম
-- tenantClient.ts
+- context-menu.tsx
+- modelBranchScope.ts
 - ADR 0001 — Database Roles
-- localDate
+- login/route.ts
 - Overview and System Health contract
 - ১. গাইডের নিয়ম ও ERP কী
 - Remediation — P0 tier complete (2026-09-23)
 - Missing controls and workflow audit
-- S3StorageAdapter
+- dataSubjectRequests.ts
 - product-search.k6.js
 - post-restore-reconciliation.sh
-- cookieNames.ts
-- paymentReversalAccounting.test.ts
+- proxy.ts
+- workerHeartbeat.ts
 - run-postgres-migrations.ts
 - status
 - QrErrorBoundary
@@ -210,10 +210,10 @@
 - graphify reference: incremental update and cluster-only
 - Historical dashboard engineering notes
 - §21.20 — Cron Job Infrastructure
-- InternalRiskProvider
-- errorResponse
-- ৫. ব্যবহারকারী, ভূমিকা ও অনুমতি
-- Phase 3 — Concurrency, idempotency, transactions
+- riskProvider.ts
+- idempotency/index.ts
+- accessQueryCount.test.ts
+- MimSmsGateway
 - ৭. কাস্টমার ও সাপ্লায়ার
 - §21.2 — Banking Reconciliation
 - stockMovement.ts
@@ -224,9 +224,9 @@
 - graphify reference: transcribe video and audio
 - hover-card.tsx
 - ৮. ক্রয়, পণ্য গ্রহণ ও শুরুর স্টক
-- sw.js
+- generate-mariadb-tenant-fks.mjs
 - ৯. স্টক গণনা, সমন্বয় ও ট্রান্সফার
-- sms-account/route.ts
+- 5.11A Customer Receivables and Collection Management
 - 5.12 Expenses
 - courier/[provider]/route.ts
 - MASTER_GAP_AUDIT_PROMPT.md
@@ -248,13 +248,13 @@
 - run-e2e-individual.sh
 - validate-postgres-migrations.sh
 - §21.4 — Provider Adapters (Extended)
-- importCommitIntegrity.test.ts
+- CourierProvider
 - ১০. POS, ক্যাশিয়ার শিফট ও রসিদ
 - ১১. বাকিতে বিক্রি, কিস্তি ও আদায়
 - ১৬. CRM, HR, গিফট কার্ড ও SMS
 - vitest
 - ২. লগইন, লগআউট ও নিরাপত্তা
-- §21.11 — Backup & DR
+- PaymentProvider
 - ৩. ড্যাশবোর্ড ও নেভিগেশন
 - ৬. পণ্য, ক্যাটাগরি, বারকোড ও সিরিয়াল
 - ১২. বিক্রয় ফেরত ও টাকা ফেরত
@@ -267,26 +267,39 @@
 - 5.6A CRM and Party Engagement
 - পৃষ্ঠা ও মডিউলের coverage তালিকা
 - ERP/POS ব্যবহারিক গাইড
-- scroll-area.tsx
-- §21.5 — Import/Export Jobs
+- access-control.spec.ts
+- toggle-group.tsx
 - §21.8 — Multi-Currency Revaluation
 - §21.9 — Period-End Close Workflow
+- productActivation.ts
+- Static review findings
 - 5.5A Stock Count, Adjustment, and Operational Inventory Documents
+- ADR 0007 — MariaDB 11.8.x Is Authoritative Production Database
 - nextDocumentNumber
+- SmsProvider
+- giftCardIssuance.test.ts
 - 5.15 Audit, Approval, Statutory, and Reconciliation
+- ERP presentation system
+- UI/UX debugging with taste-skill guidelines
+- accordion.tsx
+- seed-coa.ts
 - §21.6 — Statutory Document Generation
+- mimsmsGateway.test.ts
+- ADR 0008 — Customer dues, collections and SMS due reminders
+- §21.13 — Credit Sales (D05 Extended)
+- schema.ts
 
 ## God Nodes (most connected - your core abstractions)
-1. `DomainError` - 546 edges
-2. `runInTenantContext()` - 478 edges
-3. `authenticateRequest()` - 475 edges
-4. `requirePermission()` - 459 edges
-5. `errorResponse()` - 429 edges
-6. `getCorrelationId()` - 427 edges
-7. `withTenant()` - 284 edges
-8. `requireIdempotencyKey()` - 273 edges
-9. `next` - 271 edges
-10. `withIdempotency()` - 236 edges
+1. `DomainError` - 548 edges
+2. `runInTenantContext()` - 480 edges
+3. `authenticateRequest()` - 477 edges
+4. `requirePermission()` - 461 edges
+5. `errorResponse()` - 431 edges
+6. `getCorrelationId()` - 429 edges
+7. `withTenant()` - 286 edges
+8. `requireIdempotencyKey()` - 275 edges
+9. `next` - 272 edges
+10. `withIdempotency()` - 238 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Prerequisites` --references--> `psql()`  [INFERRED]
@@ -303,31 +316,27 @@
 ## Import Cycles
 - None detected.
 
-## Communities (265 total, 35 thin omitted)
+## Communities (278 total, 36 thin omitted)
 
-### Community 0 - "Shared components"
-Cohesion: 0.19
-Nodes (9): Shared components, useOfflineSync(), ApprovalBadge(), STATUS_CONFIG, OfflineStatus(), PermissionGate(), PermissionGateProps, AuthUser (+1 more)
-
-### Community 1 - "withTenant"
-Cohesion: 0.04
-Nodes (132): POST(), POST(), POST(), POST(), POST(), GET(), POST(), POST() (+124 more)
-
-### Community 2 - "logging/index.ts"
-Cohesion: 0.12
-Nodes (23): bullmq, ioredis, POST(), expirePoints(), errorMeta(), log(), LogEntry, LogLevel (+15 more)
-
-### Community 3 - "react"
+### Community 1 - "DomainError"
 Cohesion: 0.06
-Nodes (94): Implementation progress — 2026-10-01, Deliberately not changed, react, sonner, Period, LeadDetail, LeadEditor(), LeadStatus (+86 more)
+Nodes (151): POST(), POST(), PUT(), POST(), RevaluateSchema, POST(), POST(), POST() (+143 more)
+
+### Community 2 - "providers.ts"
+Cohesion: 0.12
+Nodes (23): bullmq, ioredis, POST(), getTenantContext(), errorMeta(), log(), LogEntry, logger (+15 more)
+
+### Community 3 - "Button"
+Cohesion: 0.05
+Nodes (110): Implementation progress — 2026-10-01, Deliberately not changed, FiscalPeriodsPage(), Period, CRMPage(), convert(), view(), LeadDetail (+102 more)
 
 ### Community 4 - "codes.ts"
 Cohesion: 0.07
-Nodes (56): next, GET(), BrandCreateSchema, GET(), CategoryCreateSchema, GET(), CoaSchema, GET() (+48 more)
+Nodes (64): next, GET(), BrandCreateSchema, GET(), CategoryCreateSchema, GET(), CoaSchema, GET() (+56 more)
 
-### Community 5 - "service.ts"
-Cohesion: 0.06
-Nodes (71): ADR 0002 — RLS via Prisma Client Extension (Sandbox), Blueprint deviation, Context, Decision, Limitations, Production migration path, GET(), GET() (+63 more)
+### Community 5 - "accessApiAuthorization.test.ts"
+Cohesion: 0.18
+Nodes (24): GET(), GET(), GET(), Context, DELETE(), GET(), PATCH(), GET() (+16 more)
 
 ### Community 6 - "dependencies"
 Cohesion: 0.02
@@ -335,103 +344,103 @@ Nodes (88): dependencies, argon2, @aws-sdk/client-s3, @aws-sdk/s3-request-presig
 
 ### Community 7 - "apiFetch"
 Cohesion: 0.04
-Nodes (68): handleSubmit(), loadEntries(), handleAcquire(), handleDepreciate(), handleDispose(), handleAutoMatch(), handleCreate(), handleFinalize() (+60 more)
+Nodes (57): handleSubmit(), loadEntries(), FixedAssetsPage(), handleAcquire(), handleDepreciate(), handleDispose(), BankReconciliationPage(), handleAutoMatch() (+49 more)
 
 ### Community 8 - "reports/index.ts"
 Cohesion: 0.06
 Nodes (58): computeTrialBalance(), LEDGER_STATUSES, TrialBalance, TrialBalanceAccount, Tx, accountTotals(), agingTotals(), BUCKET (+50 more)
 
 ### Community 9 - "importProcessor.ts"
-Cohesion: 0.24
-Nodes (13): parseCsv(), rowToObject(), validateRowColumns(), checkDuplicate(), commitImport(), ImportValidationResult, insertEntity(), updateJobStatus() (+5 more)
+Cohesion: 0.17
+Nodes (16): Commits, parseCsv(), rowToObject(), validateRowColumns(), checkDuplicate(), commitImport(), ImportValidationResult, insertEntity() (+8 more)
 
-### Community 11 - "risk-tuning/page.tsx"
-Cohesion: 0.08
-Nodes (57): Bar(), CollectionReportsPage(), iso(), num(), Report, shift(), Notification, severityBadgeVariant() (+49 more)
+### Community 11 - "Badge"
+Cohesion: 0.05
+Nodes (80): Shared components, Bar(), CollectionReportsPage(), iso(), num(), Report, shift(), CommunicationsPage() (+72 more)
 
 ### Community 12 - "checks.ts"
-Cohesion: 0.05
-Nodes (33): MEDIUM / verification priorities (confirmed, bounded, or needing runtime evidence), payPayrollRun(), controlBackdating(), PeriodCloseProgress, PeriodCloseResult, PeriodStatus, reviewDrafts(), runPeriodCloseWorkflow() (+25 more)
+Cohesion: 0.06
+Nodes (30): MEDIUM / verification priorities (confirmed, bounded, or needing runtime evidence), payPayrollRun(), controlBackdating(), PeriodCloseProgress, PeriodCloseResult, PeriodStatus, reviewDrafts(), runPeriodCloseWorkflow() (+22 more)
 
-### Community 13 - "ref_node_fs"
-Cohesion: 0.05
-Nodes (23): root, schema, sourcePath, targetPath, direct, models, output, parents (+15 more)
+### Community 13 - "ref_node_path"
+Cohesion: 0.08
+Nodes (15): root, schema, sourcePath, targetPath, schema, SCHEMA_PATH, FUNCTIONS_DIR, MIGRATIONS_DIR (+7 more)
 
 ### Community 14 - "saleRequest.ts"
 Cohesion: 0.24
 Nodes (9): PostSaleInput, PaymentArrangement, arrangement(), IsoDate, Money, PaymentSchema, PostSaleBody, postSaleInput() (+1 more)
 
 ### Community 15 - "ref_node_crypto"
-Cohesion: 0.04
-Nodes (43): ConvertLeadInput, checkPendingRefunds(), db, auth, db, db, ROLLBACK, db (+35 more)
+Cohesion: 0.03
+Nodes (48): jose, WRITE_CONFLICT_ATTEMPTS, checkPendingRefunds(), db, modules, db, healthy, db (+40 more)
 
-### Community 16 - "reminders.ts"
-Cohesion: 0.09
-Nodes (38): BulkReminderPreview, COUNTED, DEFAULT_POLICY, isConflict(), ManualReminderPreview, Occurrence, occurrenceInclude, renderFor() (+30 more)
+### Community 16 - "templateSettings.ts"
+Cohesion: 0.17
+Nodes (21): DEFAULT_REMINDER_TEMPLATES, formatDueDate(), formatTaka(), REMINDER_PLACEHOLDERS, reminderKind, ReminderLocale, ReminderValues, renderReminder() (+13 more)
 
 ### Community 17 - "postJournalEntry"
 Cohesion: 0.04
-Nodes (63): Areas checked and found sound, Findings — Phase 1 (static sweep), Findings — Phase 2, Findings — Phase 3, Full bug hunt — Phases 1–5, Gate results (executed, not inferred), Hypotheses — not yet concrete, Immediate observations for Phase 2 (+55 more)
+Nodes (59): Areas checked and found sound, Findings — Phase 1 (static sweep), Findings — Phase 2, Full bug hunt — Phases 1–5, Gate results (executed, not inferred), Hypotheses — not yet concrete, Immediate observations for Phase 2, Phase 2 — Domain correctness (+51 more)
 
-### Community 18 - "DomainError"
+### Community 18 - "runInTenantContext"
 Cohesion: 0.04
-Nodes (145): RISK_CONFIG, POST(), RevaluateSchema, POST(), GET(), generateRecommendations(), GET(), GET() (+137 more)
+Nodes (133): CreateTransferSchema, GET(), POST(), GET(), POST(), generateRecommendations(), GET(), GET() (+125 more)
 
 ### Community 19 - "workers/index.ts"
-Cohesion: 0.11
-Nodes (22): @sentry/node, assertProductionSecurityConfig(), clearWorkerHeartbeat(), HeartbeatReader, HeartbeatWriter, readWorkerHealth(), WORKER_HEARTBEAT_INTERVAL_MS, WORKER_HEARTBEAT_KEY (+14 more)
+Cohesion: 0.12
+Nodes (26): Initial finding classification, @sentry/node, completeFinishedCampaigns(), planDueReminders(), recoverInterruptedSends(), sendableMessageIds(), assertProductionSecurityConfig(), expireStaleReservations() (+18 more)
 
 ### Community 20 - "package.json"
 Cohesion: 0.03
-Nodes (57): name, prisma, schema, private, version, argon2, bun-types, clsx (+49 more)
+Nodes (56): name, prisma, schema, private, version, argon2, bun-types, clsx (+48 more)
 
-### Community 21 - "storage/index.ts"
-Cohesion: 0.14
-Nodes (3): @aws-sdk/s3-request-presigner, MemoryStorageAdapter, StorageAdapter
+### Community 21 - "S3StorageAdapter"
+Cohesion: 0.10
+Nodes (4): @aws-sdk/s3-request-presigner, MemoryStorageAdapter, S3StorageAdapter, StorageAdapter
 
-### Community 22 - "PostExpense.ts"
-Cohesion: 0.07
-Nodes (24): CRITICAL, postExpense(), PostExpenseInput, postExpenseJournal(), PostExpenseResult, PayrollItemInput, postPayrollRun(), PostPayrollRunInput (+16 more)
+### Community 22 - "@prisma/client"
+Cohesion: 0.09
+Nodes (22): @prisma/client, postExpense(), PostExpenseInput, postExpenseJournal(), PostExpenseResult, PostCodSettlementInput, postCourierCodSettlement(), PayrollItemInput (+14 more)
 
 ### Community 23 - "pos/page.tsx"
-Cohesion: 0.05
-Nodes (80): Language, locale and shared page anatomy (added 2026-11-17), next-intl, CashierPage(), handleClose(), handleOpen(), Shift, CartItem, CashierShiftOption (+72 more)
+Cohesion: 0.06
+Nodes (72): Language, locale and shared page anatomy (added 2026-11-17), CashierPage(), handleClose(), handleOpen(), Shift, CartItem, CashierShiftOption, FinancialAccountOption (+64 more)
 
 ### Community 24 - "UI/UX v2: audit, terminology and slice report"
 Cohesion: 0.12
 Nodes (15): Bengali glossary, Bengali review, New Sale and Add Customer (2026-11-18), Defects noticed and not fixed (outside presentation scope), Design system (before the slices), How the audit was done, Scored gap table, Slice 1: shell and navigation, Slice 2: login and sign-in code (+7 more)
 
 ### Community 25 - "navigation-menu.tsx"
-Cohesion: 0.12
-Nodes (18): class-variance-authority, @radix-ui/react-navigation-menu, @radix-ui/react-toggle, @radix-ui/react-toggle-group, NavigationMenu(), NavigationMenuContent(), NavigationMenuIndicator(), NavigationMenuItem() (+10 more)
+Cohesion: 0.22
+Nodes (10): @radix-ui/react-navigation-menu, NavigationMenu(), NavigationMenuContent(), NavigationMenuIndicator(), NavigationMenuItem(), NavigationMenuLink(), NavigationMenuList(), NavigationMenuTrigger() (+2 more)
 
-### Community 26 - "Input"
-Cohesion: 0.15
-Nodes (24): Page(), Page(), Page(), Page(), Page(), ResetPasswordPage(), submit(), AccessHeading() (+16 more)
+### Community 26 - "users.tsx"
+Cohesion: 0.07
+Nodes (41): উদাহরণ, কোথায় পাবেন, ধাপে ধাপে, শুরুর আগে, সফল হলে কী দেখবেন, সমস্যা ও সতর্কতা, ৪. কোম্পানি, শাখা ও গুদাম, উদাহরণ (+33 more)
 
-### Community 27 - "collectionReports.ts"
-Cohesion: 0.15
-Nodes (28): addDays(), dateFromIso(), daysBetween(), IsoDate, isoFromDate(), localMinuteOfDay(), zonedMidnight(), collectionCalendar() (+20 more)
+### Community 27 - "collections.ts"
+Cohesion: 0.10
+Nodes (44): Collections and SMS workspace — IMPLEMENTED (Phase 2), openInstallmentsCte(), addDays(), dateFromIso(), daysBetween(), IsoDate, localMinuteOfDay(), zonedMidnight() (+36 more)
 
-### Community 28 - "mfaSessionAtomicity.test.ts"
-Cohesion: 0.24
-Nodes (7): @otplib/preset-default, MfaSetupResult, setupMfa(), verifyMfaCode(), db, state, db
+### Community 28 - "systemDb"
+Cohesion: 0.16
+Nodes (11): @otplib/preset-default, productData, products, REFRESH_TOKEN_TTL_MS, MfaSetupResult, verifyMfaCode(), generateRefreshToken(), issueRefreshToken() (+3 more)
 
 ### Community 29 - "app/layout.tsx"
-Cohesion: 0.07
-Nodes (26): next-themes, EN_MESSAGES, geistMono, geistSans, MESSAGES, metadata, notoBengali, RootLayout() (+18 more)
+Cohesion: 0.06
+Nodes (34): next-themes, EN_MESSAGES, geistMono, geistSans, MESSAGES, metadata, notoBengali, RootLayout() (+26 more)
 
 ### Community 30 - "use-toast.ts"
 Cohesion: 0.12
 Nodes (25): @radix-ui/react-toast, Toast, ToastAction, ToastActionElement, ToastClose, ToastDescription, ToastProps, ToastTitle (+17 more)
 
 ### Community 31 - "mimsms.ts"
-Cohesion: 0.08
-Nodes (27): 8. SMS providers sit behind a gateway; each company uses its own account, 5.11A Customer Receivables and Collection Management, Authoritative balance — IMPLEMENTED, Collections and SMS workspace — IMPLEMENTED (Phase 2), Credit sale workflow — IMPLEMENTED, Data flow — IMPLEMENTED (Phase 1), Dates — IMPLEMENTED, Follow-through, bulk reminders, texts and reports — IMPLEMENTED (Phase 3) (+19 more)
+Cohesion: 0.27
+Nodes (8): SmsDeliveryStatus, SmsSendOutcome, SmsSendRequest, causeCode(), Fetch, MimSmsCredentials, NOT_SENT, scrub()
 
-### Community 32 - "offlineTill.test.ts"
+### Community 32 - "applyOfflineCommand.ts"
 Cohesion: 0.09
-Nodes (25): closeCashierShift(), CloseShiftInput, openCashierShift(), OpenShiftInput, applyOfflineCommand(), CashSalePayload, OfflineCommandOutcome, parse() (+17 more)
+Nodes (27): closeCashierShift(), CloseShiftInput, openCashierShift(), OpenShiftInput, applyOfflineCommand(), CashSalePayload, OfflineCommandOutcome, parse() (+19 more)
 
 ### Community 33 - "collectionFollowThrough.test.ts"
 Cohesion: 0.11
@@ -450,64 +459,64 @@ Cohesion: 0.12
 Nodes (11): typescript, files, write, mocks, PARAMS, ADR-0004, catalogue, grants (+3 more)
 
 ### Community 37 - "sms/page.tsx"
-Cohesion: 0.05
-Nodes (123): Applied, CustomerCollectionPage(), collect(), METHODS, Option, Receivable, TimelineEvent, CollectionsPage() (+115 more)
+Cohesion: 0.07
+Nodes (106): Applied, CustomerCollectionPage(), collect(), METHODS, Option, Receivable, TimelineEvent, CollectionsPage() (+98 more)
 
 ### Community 38 - "gen_migrations.py"
 Cohesion: 0.09
 Nodes (17): decimal_precision(), enum_check_from_comment(), gen_table_ddl(), get_table_name(), is_currency_code_col(), map_type(), parse_default(), parse_fields() (+9 more)
 
 ### Community 39 - "@playwright/test"
-Cohesion: 0.04
-Nodes (3): @playwright/test, Cookies, MODULES
+Cohesion: 0.05
+Nodes (6): @axe-core/playwright, @playwright/test, Cookies, existing, SaleBody, user
 
-### Community 40 - "download/route.ts"
-Cohesion: 0.27
-Nodes (13): GET(), regenCustomerList(), regenerateExport(), regenInventoryValuation(), regenProductList(), regenSalesSummary(), exportCustomerList(), exportInventoryValuation() (+5 more)
+### Community 40 - "export-jobs/route.ts"
+Cohesion: 0.29
+Nodes (14): GET(), regenCustomerList(), regenerateExport(), regenInventoryValuation(), regenProductList(), regenSalesSummary(), exportCustomerList(), exportInventoryValuation() (+6 more)
 
-### Community 41 - "sessions.ts"
-Cohesion: 0.12
-Nodes (33): LoginSchema, POST(), ActivateSchema, POST(), GET(), MfaSchema, POST(), POST() (+25 more)
+### Community 41 - "refresh/route.ts"
+Cohesion: 0.19
+Nodes (14): ActivateSchema, POST(), GET(), POST(), getRefreshCookieName(), applyCookiesToResponse(), clearMfaSetupCookie(), getMfaSetupCookie() (+6 more)
 
 ### Community 42 - "productionGuards.ts"
 Cohesion: 0.13
 Nodes (24): @simplewebauthn/server, @simplewebauthn/types, beginAuthentication(), beginRegistration(), finishAuthentication(), finishRegistration(), getOrigin(), getRpId() (+16 more)
 
 ### Community 43 - "ERP_Pos_Blueprint_v4.2.md"
-Cohesion: 0.07
-Nodes (28): 0. Document Rules, 10.1 Offline Command Whitelist, 10.2 Local Storage Model, 10.3 Conflict Resolution UI, 10. Offline POS Synchronization Rules, 13.1 Domain Errors, 13.2 Concurrency Controls, 13.3 Logging, Tracing, and Metrics (+20 more)
+Cohesion: 0.06
+Nodes (34): 0. Document Rules, 10.1 Offline Command Whitelist, 10.2 Local Storage Model, 10.3 Conflict Resolution UI, 10. Offline POS Synchronization Rules, 13.1 Domain Errors, 13.2 Concurrency Controls, 13.3 Logging, Tracing, and Metrics (+26 more)
 
 ### Community 44 - "reconcile.ts"
 Cohesion: 0.09
 Nodes (21): report, target, targetInfo, report, source, target, targetInfo, report (+13 more)
 
-### Community 45 - "collectionsOverview.test.ts"
-Cohesion: 0.10
-Nodes (33): Client, InstallmentBalance, installmentBalances(), OPEN_SALE_STATUSES, openInstallmentsCte(), Row, saleOutstanding(), collectionOverview() (+25 more)
+### Community 45 - "reminders.ts"
+Cohesion: 0.11
+Nodes (37): postSale(), installmentBalances(), isoFromDate(), localDate(), rescheduleInstallment(), blockReason(), bulkPlan(), BulkReminderPreview (+29 more)
 
-### Community 46 - "dataSubjectRequests.ts"
-Cohesion: 0.10
-Nodes (24): buildSubjectExport(), fulfilDataSubjectRequest(), loadOpenRequest(), requireSubject(), Subject, subjectOf(), Tx, DEFAULT_AUDIT_RETENTION_DAYS (+16 more)
+### Community 46 - "job.ts"
+Cohesion: 0.16
+Nodes (14): DEFAULT_AUDIT_RETENTION_DAYS, DEFAULT_CUSTOMER_ANONYMIZE_DAYS, RetentionCompanyResult, retentionDaysFor(), RetentionPolicy, RetentionResult, runForCompany(), AUDIT_HOLD_TYPES (+6 more)
 
-### Community 48 - "Button"
-Cohesion: 0.06
-Nodes (98): lucide-react, KNOWN_ERRORS, LoginPage(), handleSubmit(), validate(), MfaPage(), MfaSetupPage(), FiscalPeriodsPage() (+90 more)
+### Community 48 - "Card"
+Cohesion: 0.07
+Nodes (99): class-variance-authority, lucide-react, next-intl, react, sonner, KNOWN_ERRORS, LoginPage(), handleSubmit() (+91 more)
 
 ### Community 49 - "carousel.tsx"
 Cohesion: 0.17
 Nodes (14): embla-carousel-react, Carousel(), CarouselApi, CarouselContent(), CarouselContext, CarouselContextProps, CarouselItem(), CarouselNext() (+6 more)
 
 ### Community 50 - "dropdown-menu.tsx"
-Cohesion: 0.16
-Nodes (17): @radix-ui/react-dropdown-menu, LanguageControl(), ThemeControl(), DropdownMenu(), DropdownMenuCheckboxItem(), DropdownMenuContent(), DropdownMenuItem(), DropdownMenuLabel() (+9 more)
+Cohesion: 0.18
+Nodes (15): @radix-ui/react-dropdown-menu, LanguageControl(), ThemeControl(), DropdownMenu(), DropdownMenuCheckboxItem(), DropdownMenuContent(), DropdownMenuItem(), DropdownMenuLabel() (+7 more)
 
-### Community 51 - "featureFlags/index.ts"
-Cohesion: 0.12
-Nodes (23): PATCH(), ToggleSchema, GET(), Context, POST(), POST(), hasPlatformOnboardPermission(), OnboardSchema (+15 more)
+### Community 51 - "zod"
+Cohesion: 0.06
+Nodes (40): zod, CouponSchema, GET(), Money, view(), GET(), SettlementItemSchema, SettlementSchema (+32 more)
 
 ### Community 52 - "mocks/index.ts"
-Cohesion: 0.13
-Nodes (12): RiskProvider, clearMockCallLog(), getMockCalls(), logCall(), MockCall, mockCallLog, MockCourierProvider, MockEmailProvider (+4 more)
+Cohesion: 0.12
+Nodes (13): EmailProvider, RiskProvider, clearMockCallLog(), getMockCalls(), logCall(), MockCall, mockCallLog, MockCourierProvider (+5 more)
 
 ### Community 53 - "drawer.tsx"
 Cohesion: 0.20
@@ -522,28 +531,28 @@ Cohesion: 0.07
 Nodes (26): entryPoints, files, misplaced, packageLocations, root, base, db, env (+18 more)
 
 ### Community 56 - "overview.md"
-Cohesion: 0.08
-Nodes (21): Inspect and diagnose, Make targeted improvements, Redesign existing ERP/POS screens, Verify and report, Binary logs / PITR, Disposable restore, Logical backup, MariaDB backup and restore (+13 more)
+Cohesion: 0.09
+Nodes (16): Inspect and diagnose, Make targeted improvements, Redesign existing ERP/POS screens, Verify and report, Binary logs / PITR, Disposable restore, Logical backup, MariaDB backup and restore (+8 more)
 
-### Community 57 - "zod"
-Cohesion: 0.12
-Nodes (18): zod, Body, POST(), Context, POST(), POST(), EDITABLE_STATUSES, ExpenseUpdateSchema (+10 more)
+### Community 57 - "journal-entries/route.ts"
+Cohesion: 0.13
+Nodes (13): CloseSchema, CollectSchema, POST(), GET(), JournalLineSchema, PostJournalSchema, POST(), PricingSchema (+5 more)
 
 ### Community 58 - "7. Transaction and Workflow Specifications"
 Cohesion: 0.08
 Nodes (26): 7.10 Product Creation, Media, and Barcode Printing, 7.11 Stock Count and Adjustment, 7.12 Hold, Recall, and Complete POS Sale, 7.13 Delivery and Courier COD, 7.14 Service and Warranty, 7.15 CRM Lead Conversion, 7.16 Communication Campaign, 7.17 Payroll Run (+18 more)
 
 ### Community 59 - "runtime.ts"
-Cohesion: 0.22
-Nodes (13): CheckState, checkStateSchema, HealthResponse, healthResponseSchema, overallHealth(), parseHealth(), timing, bounded() (+5 more)
+Cohesion: 0.21
+Nodes (14): checkLabel(), CheckState, checkStateSchema, HealthResponse, healthResponseSchema, overallHealth(), parseHealth(), timing (+6 more)
 
 ### Community 60 - "ERP/POS"
 Cohesion: 0.20
 Nodes (10): Backup and recovery, Build and run, ERP/POS, Legacy helpers, License, Local development, Repository hygiene, Repository map (+2 more)
 
-### Community 61 - "@prisma/client"
-Cohesion: 0.11
-Nodes (14): jose, @prisma/client, db, modules, db, healthy, cleanupCompanyScope(), isInvariantBlock() (+6 more)
+### Community 61 - "service.ts"
+Cohesion: 0.22
+Nodes (20): assertBranchAssignment(), assertCompanyScope(), assertGrantAuthority(), forbidden(), platformOnly(), accessAudit(), AccessIdempotency, accessMutation() (+12 more)
 
 ### Community 62 - "What You Must Do When Invoked"
 Cohesion: 0.08
@@ -558,8 +567,8 @@ Cohesion: 0.08
 Nodes (23): 10. Gift-Card Invariant Validation (previously confirmed failure — RE-VALIDATED), 11. Tenant Isolation & RBAC, 12. Authentication / MFA / Redis / Security, 13. Automated Test Evidence, 14. Build & Runtime Evidence, 15. Backup / Recovery Evidence, 16. Operational Evidence, 17. Confirmed Gaps (+15 more)
 
 ### Community 65 - "form.tsx"
-Cohesion: 0.17
-Nodes (13): @radix-ui/react-label, @radix-ui/react-slot, react-hook-form, FormControl(), FormDescription(), FormFieldContext, FormFieldContextValue, FormItem() (+5 more)
+Cohesion: 0.19
+Nodes (12): @radix-ui/react-label, react-hook-form, FormControl(), FormDescription(), FormFieldContext, FormFieldContextValue, FormItem(), FormItemContext (+4 more)
 
 ### Community 66 - "computeLineTax.ts"
 Cohesion: 0.15
@@ -574,32 +583,32 @@ Cohesion: 0.24
 Nodes (11): recharts, ChartConfig, ChartContainer(), ChartContext, ChartContextProps, ChartLegendContent(), ChartStyle(), ChartTooltipContent() (+3 more)
 
 ### Community 69 - "cn"
-Cohesion: 0.04
-Nodes (71): cmdk, @radix-ui/react-accordion, @radix-ui/react-context-menu, @radix-ui/react-radio-group, @radix-ui/react-separator, @radix-ui/react-tooltip, AccordionContent(), AccordionItem() (+63 more)
+Cohesion: 0.05
+Nodes (62): cmdk, @radix-ui/react-radio-group, @radix-ui/react-scroll-area, @radix-ui/react-slot, react-resizable-panels, BreadcrumbEllipsis(), BreadcrumbItem(), BreadcrumbLink() (+54 more)
 
-### Community 70 - "systemDb"
-Cohesion: 0.10
-Nodes (20): main(), main(), main(), productData, products, CoaSpec, DEFAULT_COA, seedDefaultCoa() (+12 more)
+### Community 70 - "catalogue.ts"
+Cohesion: 0.32
+Nodes (8): main(), main(), seedFeatureFlagsForCompany(), seedLocalizationForCompany(), PERMISSIONS, PermissionSpec, seedPermissions(), SYSTEM_ROLES
 
 ### Community 71 - "dueReminders.test.ts"
-Cohesion: 0.11
-Nodes (23): completeFinishedCampaigns(), planDueReminders(), queueDueReminderMessages(), recoverInterruptedSends(), sendableMessageIds(), yieldOnConflict(), companiesWithSms(), reminderContext() (+15 more)
+Cohesion: 0.16
+Nodes (11): A, at(), B, Behaviour, creditSale(), ctx(), db, fetchImpl (+3 more)
 
-### Community 72 - "providers.ts"
-Cohesion: 0.05
-Nodes (23): 1. CONFIRMED CRITICAL — external refund target not bound to authorized payment — FIXED, envChecks, Result, results, CourierProvider, EmailProvider, PaymentProvider, SmsProvider (+15 more)
+### Community 72 - "registerProviders"
+Cohesion: 0.12
+Nodes (7): 1. CONFIRMED CRITICAL — external refund target not bound to authorized payment — FIXED, BkashPaymentProvider, PathaoCourierProvider, registerProviders(), ResendEmailProvider, SesEmailProvider, StubRiskProvider
 
 ### Community 73 - "i18n/index.ts"
 Cohesion: 0.17
 Nodes (18): GET(), Money(), MoneyProps, Quantity(), QuantityProps, BN_MONTHS, DEFAULT_LOCALE, EN_MONTHS (+10 more)
 
 ### Community 74 - "Loyalty.ts"
-Cohesion: 0.15
-Nodes (15): Findings, HIGH, LOW / documentation, What Phase 2 confirms about Phase 1, Verification pass, 2026-11-17 (afternoon), Coupon, earnRewardPoints(), GiftCardFunding (+7 more)
+Cohesion: 0.13
+Nodes (17): CRITICAL, Findings, HIGH, LOW / documentation, What Phase 2 confirms about Phase 1, Verification pass, 2026-11-17 (afternoon), Coupon, earnRewardPoints() (+9 more)
 
 ### Community 75 - "approvals/route.ts"
-Cohesion: 0.19
-Nodes (7): CreateSchema, GET(), POST(), createApprovalRequest(), CreateApprovalRequestParams, AUTH, mocks
+Cohesion: 0.09
+Nodes (21): POST(), POST(), POST(), ResolveSchema, CreateSchema, GET(), POST(), APPROVABLE_STATUSES (+13 more)
 
 ### Community 76 - "Rules"
 Cohesion: 0.09
@@ -637,17 +646,17 @@ Nodes (9): 5.7 Quotations, Sales, Taxes, and Returns, `quotation_items`, `quotat
 Cohesion: 0.10
 Nodes (21): scripts, build, db:generate, db:migrate, db:push, db:reset, dev, lint (+13 more)
 
-### Community 86 - "buildTenantContext"
-Cohesion: 0.08
-Nodes (32): POST(), getAccessCookieName(), getRefreshCookieName(), SessionActivationResult, ACCESS_TOKEN_TTL_MS, AccessClaims, getSecret(), issueAccessToken() (+24 more)
+### Community 86 - "tenantContext.test.ts"
+Cohesion: 0.12
+Nodes (22): POST(), getAccessCookieName(), ACCESS_TOKEN_TTL_MS, getSecret(), issueAccessToken(), verifyAccessToken(), verifyLogoutIdentity(), revokeFamily() (+14 more)
 
 ### Community 87 - "crypto/index.ts"
-Cohesion: 0.23
-Nodes (13): pollDeliveryReports(), sendOutboundMessage(), decrypt(), decryptString(), encrypt(), EncryptedPayload, encryptString(), getMasterKey() (+5 more)
+Cohesion: 0.20
+Nodes (13): pollDeliveryReports(), decrypt(), decryptString(), encrypt(), EncryptedPayload, encryptString(), getMasterKey(), Client (+5 more)
 
 ### Community 88 - "campaigns.ts"
-Cohesion: 0.08
-Nodes (35): audience(), CAMPAIGN_AUDIENCE_MAX, CAMPAIGN_PLACEHOLDERS, CAMPAIGN_TEXT_MAX, CampaignPreview, cancelCampaign(), Candidate, checkCampaignText() (+27 more)
+Cohesion: 0.07
+Nodes (39): audience(), CAMPAIGN_AUDIENCE_MAX, CAMPAIGN_PLACEHOLDERS, CAMPAIGN_TEXT_MAX, CampaignPreview, cancelCampaign(), Candidate, checkCampaignText() (+31 more)
 
 ### Community 89 - "Provider Integration Guide"
 Cohesion: 0.10
@@ -661,17 +670,17 @@ Nodes (19): APIS, cookieHeader(), cookies, http(), main(), PAGES, Result, result
 Cohesion: 0.10
 Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+11 more)
 
-### Community 92 - "Static review findings"
-Cohesion: 0.07
-Nodes (23): Architecture, Gathered ERP/POS project blueprint, Module map, Product and authority, Representative sale posting, Test and release blueprint, Change since the 2026-10-03 review, Explicitly unavailable / unverified this pass (+15 more)
+### Community 92 - "ERP repository inventory"
+Cohesion: 0.08
+Nodes (20): Architecture, Gathered ERP/POS project blueprint, Module map, Product and authority, Representative sale posting, Test and release blueprint, API routes (197), Documentation (39) (+12 more)
 
 ### Community 93 - "graphify reference: extra exports and benchmark"
 Cohesion: 0.11
 Nodes (17): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000) (+9 more)
 
-### Community 94 - "productActivation.ts"
-Cohesion: 0.11
-Nodes (17): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal, For /graphify explain, For /graphify path, graphify reference: query, path, explain (+9 more)
+### Community 94 - "graphify reference: query, path, explain"
+Cohesion: 0.15
+Nodes (11): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal, For /graphify explain, For /graphify path, graphify reference: query, path, explain (+3 more)
 
 ### Community 95 - "components.json"
 Cohesion: 0.11
@@ -682,8 +691,8 @@ Cohesion: 0.11
 Nodes (19): 5.13 Gift Cards, Coupons, and Loyalty, 5.3 Numbering, Events, and Idempotency, 5.6 Parties, 5.9 Transfers, 5. Production Database Schema, `business_events`, `coupon_redemptions`, `coupons` (+11 more)
 
 ### Community 97 - "escpos/index.ts"
-Cohesion: 0.26
-Nodes (12): align(), bold(), buildReceiptBytes(), cut(), feed(), init(), padLine(), ReceiptData (+4 more)
+Cohesion: 0.19
+Nodes (14): align(), bold(), buildReceiptBytes(), cut(), feed(), init(), padLine(), ReceiptData (+6 more)
 
 ### Community 98 - "5.4 Catalogue, Pricing, and Tax"
 Cohesion: 0.12
@@ -693,21 +702,21 @@ Nodes (17): 5.4 Catalogue, Pricing, and Tax, `brands`, `categories`, `customer_g
 Cohesion: 0.12
 Nodes (16): 1. Start Postgres + Redis + MinIO, 2. Set environment variables, 3. Switch schema + run migrations, 4. Verify, 5. Start the worker process (production), Migrations fail mid-way, Option A: Local Docker Stack, Option B: Managed Postgres (AWS RDS / Supabase / etc.) (+8 more)
 
-### Community 100 - "logger"
-Cohesion: 0.12
-Nodes (10): NotificationProvider, MockNotificationProvider, SEVERITY_COLORS, SEVERITY_EMOJI, SlackWebhookProvider, escapeHtml(), SEVERITY_EMOJI, TelegramBotProvider (+2 more)
+### Community 100 - "smoke-test-providers.ts"
+Cohesion: 0.11
+Nodes (12): envChecks, Result, results, NotificationProvider, MockNotificationProvider, SEVERITY_COLORS, SEVERITY_EMOJI, SlackWebhookProvider (+4 more)
 
-### Community 101 - "mfaChallenge.ts"
-Cohesion: 0.27
-Nodes (11): activeWhere(), consumeMfaChallenge(), issueMfaChallenge(), MfaLoginChallenge, nonceHash(), payloadSchema, readMfaChallenge(), signature() (+3 more)
+### Community 101 - "sessions.ts"
+Cohesion: 0.16
+Nodes (17): ACCESS_COOKIE_NAME, MFA_PENDING_COOKIE_NAME, REFRESH_COOKIE_NAME, AccessClaims, activeWhere(), consumeMfaChallenge(), issueMfaChallenge(), MfaLoginChallenge (+9 more)
 
 ### Community 102 - "AssetManagement.ts"
 Cohesion: 0.16
 Nodes (13): Domain Commands, postAssetAcquisition(), PostAssetAcquisitionInput, PostAssetAcquisitionResult, postAssetDisposal(), PostAssetDisposalInput, PostAssetDisposalResult, postDepreciation() (+5 more)
 
 ### Community 103 - "Decisions"
-Cohesion: 0.12
-Nodes (15): 10. Dates are company-local calendar dates, 11. Promises are kept beside the contract, not written over it (Phase 3), 12. Bulk sends are confirmed against exactly what was previewed (Phase 3), 1. The ledger stays the only financial truth; schedules are derived, 2. Every credit sale has a schedule, 3. Collections are applied oldest due first, 4. Promise-to-pay does not rewrite the due date *(planned, Phase 3)*, 5. Reminders are asynchronous and idempotent by construction (+7 more)
+Cohesion: 0.17
+Nodes (12): 10. Dates are company-local calendar dates, 11. Promises are kept beside the contract, not written over it (Phase 3), 12. Bulk sends are confirmed against exactly what was previewed (Phase 3), 1. The ledger stays the only financial truth; schedules are derived, 2. Every credit sale has a schedule, 3. Collections are applied oldest due first, 4. Promise-to-pay does not rewrite the due date *(planned, Phase 3)*, 5. Reminders are asynchronous and idempotent by construction (+4 more)
 
 ### Community 104 - "index-plans.mjs"
 Cohesion: 0.13
@@ -722,8 +731,8 @@ Cohesion: 0.18
 Nodes (11): Return দিলে কি টাকা ফেরত যায়?, Save/Post-এর পরে network error এলে আবার চাপব?, SMS unknown মানে কি ব্যর্থ?, কীভাবে সহায়তা চাইব?, নতুন product তৈরি হলেও বিক্রি হচ্ছে না কেন?, পাসওয়ার্ড ভুলে গেলে কী করব?, পরিমাণ আছে, তবু বিক্রি করা যাচ্ছে না?, মেনু বা বোতাম নেই কেন? (+3 more)
 
 ### Community 107 - "accounting-policies/route.ts"
-Cohesion: 0.13
-Nodes (11): FIELD_MAP, GET(), POLICY_FIELDS, PUT(), UpdatePolicySchema, GET(), POST(), GET() (+3 more)
+Cohesion: 0.15
+Nodes (9): FIELD_MAP, GET(), POLICY_FIELDS, UpdatePolicySchema, GET(), ProductCreateSchema, GET(), SupplierSchema (+1 more)
 
 ### Community 108 - "The prompt"
 Cohesion: 0.14
@@ -735,7 +744,7 @@ Nodes (14): 18A.1 Milestones, 18A.2 Environment Contract, 18A.3 Migration and Cu
 
 ### Community 110 - "§21 — EXTENDED MODULES (Post-Blueprint Additions)"
 Cohesion: 0.12
-Nodes (17): §21.10 — PWA + Print, §21.13 — Credit Sales (D05 Extended), §21.14 — Action-Time MFA, §21.15 — CSP Hardening, §21.16 — SQL Views (§11.2), §21.17 — Supplemental SQL Functions, §21.18 — Immutable Ledger Triggers (Extended), §21.19 — Localization Assets (+9 more)
+Nodes (17): §21.10 — PWA + Print, §21.11 — Backup & DR, §21.14 — Action-Time MFA, §21.15 — CSP Hardening, §21.16 — SQL Views (§11.2), §21.17 — Supplemental SQL Functions, §21.18 — Immutable Ledger Triggers (Extended), §21.19 — Localization Assets (+9 more)
 
 ### Community 111 - "9.4 Frontend Application Contract"
 Cohesion: 0.14
@@ -745,9 +754,9 @@ Nodes (14): 9.1 REST Endpoint Contract, 9.2 API Mutation Requirements, 9.3 Provi
 Cohesion: 0.14
 Nodes (13): Accessibility, Accounting, Code Quality, Database, Deployment, External Sign-Offs (Appendix B), Feature Flags, Infrastructure (+5 more)
 
-### Community 113 - "ERP repository inventory"
-Cohesion: 0.20
-Nodes (10): API routes (197), Documentation (39), Domain (53), ERP repository inventory, Libraries and workers (92), MariaDB migrations (15), MariaDB models, Operations (56) (+2 more)
+### Community 113 - "reset.ts"
+Cohesion: 0.18
+Nodes (16): invalid(), issuePasswordReset(), payloadSchema, redeemPasswordReset(), signature(), targetUser(), HASH_OPTIONS, hashPassword() (+8 more)
 
 ### Community 114 - "audit-production-db.mjs"
 Cohesion: 0.30
@@ -773,13 +782,13 @@ Nodes (13): Complete route inventory, Implementation record (2026-09-26), Phased
 Cohesion: 0.15
 Nodes (12): background_color, categories, description, dir, display, icons, lang, name (+4 more)
 
-### Community 120 - "enrollment.ts"
-Cohesion: 0.11
-Nodes (32): checkDistributedRateLimit(), digest(), resetDistributedRateLimit(), withRedis(), activateEnrollment(), ActivationResult, EnrollmentContext, getEnrollmentChallenge() (+24 more)
+### Community 120 - "verify/route.ts"
+Cohesion: 0.13
+Nodes (21): MfaSchema, POST(), checkDistributedRateLimit(), digest(), resetDistributedRateLimit(), withRedis(), buildRateLimitKey(), checkRateLimit() (+13 more)
 
-### Community 121 - "transactionContext.ts"
-Cohesion: 0.23
-Nodes (6): globalForPrisma, tenantDb, applyTenantIsolation(), tenantStorage, ctx, harness()
+### Community 121 - "tenantClient.ts"
+Cohesion: 0.11
+Nodes (13): globalForPrisma, tenantDb, applyTenantIsolation(), DIRECT_TENANT_MODELS, FILTERED_OPERATIONS, GLOBAL_MODELS, INDIRECT_CREATE_PARENTS, INDIRECT_SCOPES (+5 more)
 
 ### Community 122 - "generate/route.ts"
 Cohesion: 0.24
@@ -825,9 +834,9 @@ Nodes (10): 11–12. Current-source verification, 13–14. Resumed validation an
 Cohesion: 0.18
 Nodes (11): 5.7A Delivery, Courier, Service, and Warranty, `courier_cod_settlement_items`, `courier_cod_settlements`, `courier_shipments`, `delivery_events`, `delivery_items`, `delivery_orders`, `service_events` (+3 more)
 
-### Community 133 - "inline-customer.spec.ts"
-Cohesion: 0.18
-Nodes (4): @axe-core/playwright, existing, SaleBody, user
+### Community 133 - "enrollment.ts"
+Cohesion: 0.19
+Nodes (18): activateEnrollment(), ActivationResult, EnrollmentContext, getEnrollmentChallenge(), isAwaitingActivation(), IssueSession, loadEnrollableUser(), SessionActivationResult (+10 more)
 
 ### Community 134 - "8. Multi-Tenant, Branch Isolation, and RBAC"
 Cohesion: 0.29
@@ -851,27 +860,27 @@ Nodes (9): Collection follow-through, Due reminders — operations runbook, Fail
 
 ### Community 139 - "BankReconciliation.ts"
 Cohesion: 0.25
-Nodes (14): Domain Commands, Verified Production Readiness Evidence, addStatementLine(), addStatementLinesBulk(), AutoMatchResult, autoMatchTransactions(), createBankReconciliation(), CreateBankReconciliationInput (+6 more)
+Nodes (13): Domain Commands, Verified Production Readiness Evidence, addStatementLine(), AutoMatchResult, autoMatchTransactions(), createBankReconciliation(), CreateBankReconciliationInput, CreateBankReconciliationResult (+5 more)
 
 ### Community 140 - "customerCollections.test.ts"
-Cohesion: 0.29
-Nodes (8): A, B, balances(), collect(), ctx(), db, outstanding(), sell()
+Cohesion: 0.15
+Nodes (14): Client, InstallmentBalance, OPEN_SALE_STATUSES, Row, saleOutstanding(), A, B, balances() (+6 more)
 
 ### Community 141 - "tenantScopeAudit.test.ts"
 Cohesion: 0.20
 Nodes (7): API_ROOT, EXEMPT, Handler, PRINT_ROOT, routeFiles(), SCOPERS, SERVICE_CALLS
 
 ### Community 142 - "PostSale.ts"
-Cohesion: 0.08
-Nodes (33): 3. CONFIRMED CRITICAL — high-value gateway refund bypasses required approval — UNRESOLVED, postSale(), PostSaleResult, SaleProduct, postSaleReturn(), PostSaleReturnInput, voidSale(), VoidSaleInput (+25 more)
+Cohesion: 0.06
+Nodes (40): 3. CONFIRMED CRITICAL — high-value gateway refund bypasses required approval — UNRESOLVED, PostSaleResult, SaleProduct, postSaleReturn(), PostSaleReturnInput, voidSale(), VoidSaleInput, restoreGiftCardTender() (+32 more)
 
 ### Community 143 - "generate-mariadb-triggers.mjs"
 Cohesion: 0.22
 Nodes (7): immutableTables, joinChecks, output, root, sql, table(), event()
 
 ### Community 144 - "barcode.ts"
-Cohesion: 0.35
-Nodes (9): barcodeSigningKey(), generateSignedQrPayload(), Symbology, VALID_SYMBOLOGIES, validateBarcodeFormat(), validateBarcodeUniqueness(), verifySignedQrPayload(), hmacSha256() (+1 more)
+Cohesion: 0.36
+Nodes (8): barcodeSigningKey(), generateSignedQrPayload(), Symbology, VALID_SYMBOLOGIES, validateBarcodeFormat(), validateBarcodeUniqueness(), verifySignedQrPayload(), db
 
 ### Community 145 - "Relational feature validation — stopped on confirmed failure"
 Cohesion: 0.22
@@ -898,8 +907,8 @@ Cohesion: 0.25
 Nodes (8): APP_ENCRYPTION_KEY, E2E_BASE_URL, E2E_TESTING, ERP_ALLOW_INSECURE_TEST_MODE, JWT_SECRET, run-full-e2e.sh script, SKIP_WEBKIT, start_server()
 
 ### Community 151 - "12. Security and Privacy Controls"
-Cohesion: 0.14
-Nodes (13): 12.1 Authentication and Sessions, 12.2 Application and Infrastructure Security, 12.3 Maker-Checker, 12.4 Privacy and Retention, 12.5 File, Template, and Communication Security, 12.6 Data Classification, 12. Security and Privacy Controls, 17.1 Mandatory Test Suites (+5 more)
+Cohesion: 0.29
+Nodes (7): 12.1 Authentication and Sessions, 12.2 Application and Infrastructure Security, 12.3 Maker-Checker, 12.4 Privacy and Retention, 12.5 File, Template, and Communication Security, 12.6 Data Classification, 12. Security and Privacy Controls
 
 ### Community 152 - "ADR 0004 — Idempotency Middleware"
 Cohesion: 0.25
@@ -926,8 +935,8 @@ Cohesion: 0.25
 Nodes (7): APP_ENCRYPTION_KEY, E2E_BASE_URL, E2E_TESTING, ERP_ALLOW_INSECURE_TEST_MODE, JWT_SECRET, run-e2e-batch.sh script, SKIP_WEBKIT
 
 ### Community 158 - "outboxWorker.ts"
-Cohesion: 0.18
-Nodes (15): Initial finding classification, dispatchTransferBatches(), receiveTransferBatches(), validateIndirectCreate(), generateDeliveryId(), generateWebhookSecret(), getTimestampHeader(), signWebhook() (+7 more)
+Cohesion: 0.27
+Nodes (11): generateDeliveryId(), generateWebhookSecret(), getTimestampHeader(), signWebhook(), verifyWebhookSignature(), computeBackoff(), deliverWebhook(), DeliveryOutcome (+3 more)
 
 ### Community 159 - "১৪. ডেলিভারি ও কুরিয়ার"
 Cohesion: 0.25
@@ -945,17 +954,17 @@ Nodes (8): assertSafeOutboundUrl(), blocked, guardedLookup(), isForbiddenAddress
 Cohesion: 0.29
 Nodes (6): Changes, Closure, Executed verification, Files changed, Limits and operational handoff, P1 remediation evidence — 2026-09-16
 
-### Community 163 - "reminder-policy/route.ts"
-Cohesion: 0.48
-Nodes (6): DEFAULTS, GET(), PolicySchema, present(), PUT(), parseStageOffsets()
+### Community 163 - "reminder/route.ts"
+Cohesion: 0.17
+Nodes (12): Body, GET(), GET(), Locale, present(), DEFAULTS, GET(), PolicySchema (+4 more)
 
 ### Community 164 - "5.10 Accounting"
 Cohesion: 0.29
 Nodes (7): 5.10 Accounting, `accounting_policies`, `chart_of_accounts`, `financial_accounts`, `fiscal_periods`, `journal_entries`, `journal_lines`
 
-### Community 165 - "M8 — UAT Scenarios"
-Cohesion: 0.22
-Nodes (9): M8 — UAT Scenarios, Pass Criteria, Scenario 1: Cashier Flow, Scenario 2: Inventory Flow, Scenario 3: Accountant Flow, Scenario 4: Service Flow, Scenario 5: Manager Flow, Scenario 6: Offline Flow (+1 more)
+### Community 165 - "purchaseAndTenderAccounting.test.ts"
+Cohesion: 0.14
+Nodes (12): postLandedCost(), PostLandedCostInput, postSupplierInvoice(), PostSupplierInvoiceInput, PostSupplierInvoiceResult, receivePurchase(), ReceivePurchaseInput, ReceivePurchaseResult (+4 more)
 
 ### Community 166 - "১৭. সেটিংস ও প্রশাসনিক কাজ"
 Cohesion: 0.25
@@ -977,21 +986,21 @@ Nodes (7): 5.5 Inventory, Costing, Batches, and IMEI, `product_batches`, `serial
 Cohesion: 0.33
 Nodes (6): ctx, m, payment, request(), run(), tx
 
-### Community 171 - "৪. কোম্পানি, শাখা ও গুদাম"
-Cohesion: 0.22
-Nodes (8): উদাহরণ, কোথায় পাবেন, ধাপে ধাপে, শুরুর আগে, সফল হলে কী দেখবেন, সমস্যা ও সতর্কতা, ৪. কোম্পানি, শাখা ও গুদাম, Company
+### Community 171 - "context-menu.tsx"
+Cohesion: 0.12
+Nodes (10): @radix-ui/react-context-menu, ContextMenuCheckboxItem(), ContextMenuContent(), ContextMenuItem(), ContextMenuLabel(), ContextMenuRadioItem(), ContextMenuSeparator(), ContextMenuShortcut() (+2 more)
 
-### Community 172 - "tenantClient.ts"
-Cohesion: 0.15
-Nodes (9): BRANCH_PARENTS, branchScopeFor(), modelByName, DIRECT_TENANT_MODELS, FILTERED_OPERATIONS, GLOBAL_MODELS, INDIRECT_CREATE_PARENTS, INDIRECT_SCOPES (+1 more)
+### Community 172 - "modelBranchScope.ts"
+Cohesion: 0.70
+Nodes (3): BRANCH_PARENTS, branchScopeFor(), modelByName
 
 ### Community 173 - "ADR 0001 — Database Roles"
 Cohesion: 0.33
 Nodes (5): ADR 0001 — Database Roles, Blueprint deviation, Consequences, Context, Decision
 
-### Community 174 - "localDate"
-Cohesion: 0.36
-Nodes (9): localDate(), bulkPlan(), manualTarget(), previewBulkReminders(), previewManualReminder(), queueBulkReminders(), queueManualReminder(), sha256() (+1 more)
+### Community 174 - "login/route.ts"
+Cohesion: 0.31
+Nodes (13): LoginSchema, POST(), recordSecurityEvent(), issueEnrollment(), getLockoutDuration(), verifyPassword(), isProd(), sameSiteMode() (+5 more)
 
 ### Community 175 - "Overview and System Health contract"
 Cohesion: 0.33
@@ -1002,12 +1011,16 @@ Cohesion: 0.29
 Nodes (7): উদাহরণ, এটি কী এবং কেন ব্যবহার করবেন, কোথায় পাবেন, ধাপে ধাপে, সফল হলে কী দেখবেন, সমস্যা ও সতর্কতা, ১. গাইডের নিয়ম ও ERP কী
 
 ### Community 177 - "Remediation — P0 tier complete (2026-09-23)"
-Cohesion: 0.25
-Nodes (8): Commits, Correction to the audit, Fixture defect found and fixed at source, Gate set after the tier, Next, Remediation — P0 tier complete (2026-09-23), Two things the operator must still do for F-02, What changed, by finding
+Cohesion: 0.29
+Nodes (7): Correction to the audit, Fixture defect found and fixed at source, Gate set after the tier, Next, Remediation — P0 tier complete (2026-09-23), Two things the operator must still do for F-02, What changed, by finding
 
 ### Community 178 - "Missing controls and workflow audit"
 Cohesion: 0.33
 Nodes (5): Fixed during this review, High-priority missing workflows, Missing controls and workflow audit, Route inventory, Verification
+
+### Community 179 - "dataSubjectRequests.ts"
+Cohesion: 0.22
+Nodes (10): buildSubjectExport(), fulfilDataSubjectRequest(), loadOpenRequest(), requireSubject(), Subject, subjectOf(), Tx, db (+2 more)
 
 ### Community 180 - "product-search.k6.js"
 Cohesion: 0.33
@@ -1017,21 +1030,21 @@ Nodes (3): options, options, SEARCH_TERMS
 Cohesion: 0.67
 Nodes (5): check(), check_nonzero(), log(), PGPASSWORD, post-restore-reconciliation.sh script
 
-### Community 182 - "cookieNames.ts"
-Cohesion: 0.22
-Nodes (9): ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, contentSecurityPolicy(), newNonce(), config, EXEMPT_PATHS, MUTATION_METHODS, proxy() (+1 more)
+### Community 182 - "proxy.ts"
+Cohesion: 0.36
+Nodes (7): contentSecurityPolicy(), newNonce(), config, EXEMPT_PATHS, MUTATION_METHODS, proxy(), withNonce()
 
-### Community 183 - "paymentReversalAccounting.test.ts"
-Cohesion: 0.33
-Nodes (3): AUTH, mocks, PAYMENT
+### Community 183 - "workerHeartbeat.ts"
+Cohesion: 0.23
+Nodes (8): clearWorkerHeartbeat(), HeartbeatReader, HeartbeatWriter, readWorkerHealth(), WORKER_HEARTBEAT_INTERVAL_MS, WORKER_HEARTBEAT_KEY, WORKER_HEARTBEAT_STALE_MS, writeWorkerHeartbeat()
 
 ### Community 184 - "run-postgres-migrations.ts"
 Cohesion: 0.24
 Nodes (12): applyDir(), applyMigration(), FUNCTIONS_DIR, main(), MIGRATIONS_DIR, psql(), PSQL_DB_URL, psqlStdout() (+4 more)
 
 ### Community 185 - "status"
-Cohesion: 0.13
-Nodes (15): Areas checked and found sound, Areas checked and found sound, Final severity roll-up, Findings — Phase 4, Next, Phase 4 — Security and access control, Phase 5 — Framework, performance, operations, Rubric score (+7 more)
+Cohesion: 0.10
+Nodes (20): Areas checked and found sound, Areas checked and found sound, Areas checked and found sound, Asynchronous infrastructure is wired at only one end, Final severity roll-up, Findings — Phase 4, Next, Phase 3 — Concurrency, idempotency, transactions (+12 more)
 
 ### Community 187 - "graphify reference: add a URL and watch a folder"
 Cohesion: 0.50
@@ -1065,17 +1078,21 @@ Nodes (3): Historical dashboard engineering notes, src/app/(erp)/dashboard/page.
 Cohesion: 0.50
 Nodes (4): §21.20 — Cron Job Infrastructure, BullMQ Repeatable Job, External Cron (cron-job.org), Scripts
 
-### Community 196 - "errorResponse"
+### Community 195 - "riskProvider.ts"
+Cohesion: 0.16
+Nodes (6): SendGridEmailProvider, CONFIG, InternalRiskProvider, RISK_CONFIG, RuleResult, fetchMock
+
+### Community 196 - "idempotency/index.ts"
 Cohesion: 0.05
-Nodes (75): CreateTransferSchema, GET(), POST(), GET(), POST(), ReceiveAdvanceSchema, CreateReconciliationSchema, GET() (+67 more)
+Nodes (40): Context, DELETE(), PATCH(), Context, DELETE(), PATCH(), Body, CustomerUpdateSchema (+32 more)
 
-### Community 197 - "৫. ব্যবহারকারী, ভূমিকা ও অনুমতি"
-Cohesion: 0.33
-Nodes (6): উদাহরণ, কোথায় পাবেন, ধাপে ধাপে, সফল হলে কী দেখবেন, সমস্যা ও সীমা, ৫. ব্যবহারকারী, ভূমিকা ও অনুমতি
+### Community 197 - "accessQueryCount.test.ts"
+Cohesion: 0.15
+Nodes (11): ADR 0002 — RLS via Prisma Client Extension (Sandbox), Blueprint deviation, Context, Decision, Limitations, Production migration path, listUsers(), AuthResult (+3 more)
 
-### Community 198 - "Phase 3 — Concurrency, idempotency, transactions"
-Cohesion: 0.40
-Nodes (5): Areas checked and found sound, Asynchronous infrastructure is wired at only one end, Phase 3 — Concurrency, idempotency, transactions, Severity roll-up, The shape of the problem after three phases
+### Community 198 - "MimSmsGateway"
+Cohesion: 0.25
+Nodes (5): 8. SMS providers sit behind a gateway; each company uses its own account, Data flow — IMPLEMENTED (Phase 1), SMS provider — IMPLEMENTED, SmsGateway, MimSmsGateway
 
 ### Community 199 - "৭. কাস্টমার ও সাপ্লায়ার"
 Cohesion: 0.29
@@ -1087,27 +1104,27 @@ Nodes (5): §21.2 — Banking Reconciliation, Database Tables (§5 addition), De
 
 ### Community 201 - "stockMovement.ts"
 Cohesion: 0.07
-Nodes (43): postOpeningStock(), PostOpeningStockInput, PostOpeningStockResult, postPurchaseReturn(), PostPurchaseReturnInput, cancelTransfer(), createTransfer(), CreateTransferInput (+35 more)
+Nodes (44): postPurchaseReturn(), PostPurchaseReturnInput, cancelTransfer(), createTransfer(), CreateTransferInput, dispatchTransfer(), DispatchTransferInput, moveTransferSerial() (+36 more)
 
 ### Community 202 - "docs/README.md"
-Cohesion: 0.09
-Nodes (16): Documentation location, graphify, This is NOT the Next.js you know, Inline customers in New Sale, Verification, Maintenance check, Project documentation, Required location exceptions (+8 more)
+Cohesion: 0.08
+Nodes (19): Documentation location, graphify, This is NOT the Next.js you know, Inline customers in New Sale, Verification, Maintenance check, Project documentation, Required location exceptions (+11 more)
 
 ### Community 208 - "৮. ক্রয়, পণ্য গ্রহণ ও শুরুর স্টক"
 Cohesion: 0.29
 Nodes (7): উদাহরণ, কোথায় পাবেন, ক্রয় ও পণ্য গ্রহণ: ধাপে ধাপে, শুরুর স্টক, সফলতার চিহ্ন, সমস্যা ও সতর্কতা, ৮. ক্রয়, পণ্য গ্রহণ ও শুরুর স্টক
 
-### Community 209 - "sw.js"
-Cohesion: 0.60
-Nodes (4): APP_SHELL, openQueueDB(), queueMutation(), replayOutbox()
+### Community 209 - "generate-mariadb-tenant-fks.mjs"
+Cohesion: 0.18
+Nodes (7): direct, models, output, parents, relations, root, statements
 
 ### Community 210 - "৯. স্টক গণনা, সমন্বয় ও ট্রান্সফার"
 Cohesion: 0.29
 Nodes (7): উদাহরণ, কোথায় পাবেন, কারণভিত্তিক সমন্বয়, গুদাম বদল: ধাপে ধাপে, বাস্তব গুনতি, সমস্যা ও সতর্কতা, ৯. স্টক গণনা, সমন্বয় ও ট্রান্সফার
 
-### Community 211 - "sms-account/route.ts"
-Cohesion: 0.50
-Nodes (4): AccountSchema, GET(), PUT(), validateMimSmsCredentials()
+### Community 211 - "5.11A Customer Receivables and Collection Management"
+Cohesion: 0.20
+Nodes (10): 5.11A Customer Receivables and Collection Management, Authoritative balance — IMPLEMENTED, Credit sale workflow — IMPLEMENTED, Dates — IMPLEMENTED, Follow-through, bulk reminders, texts and reports — IMPLEMENTED (Phase 3), Marketing SMS campaigns and customer SMS preferences — IMPLEMENTED, Payment allocation — IMPLEMENTED, PLANNED (+2 more)
 
 ### Community 212 - "5.12 Expenses"
 Cohesion: 0.33
@@ -1134,16 +1151,12 @@ Cohesion: 0.29
 Nodes (6): CRM: সম্ভাব্য ক্রেতা, HR: কর্মী, SMS ও reminders, গিফট কার্ড ও loyalty, ১৬. CRM, HR, গিফট কার্ড ও SMS, Overview
 
 ### Community 241 - "vitest"
-Cohesion: 0.04
-Nodes (17): vitest, CustomerSchema, WRITE_CONFLICT_ATTEMPTS, counter, raw, APPROVED_TEST_DATABASE, assertDisposableDatabaseUrl(), ReceiptData (+9 more)
+Cohesion: 0.05
+Nodes (13): vitest, APPROVED_TEST_DATABASE, assertDisposableDatabaseUrl(), ReceiptData, db, AUTH, featureFlag, mocks (+5 more)
 
 ### Community 242 - "২. লগইন, লগআউট ও নিরাপত্তা"
 Cohesion: 0.33
 Nodes (6): উদাহরণ ও সফলতার চিহ্ন, কোথায় পাবেন, ধাপে ধাপে, পাসওয়ার্ড ভুলে গেলে, সাধারণ সমস্যা, ২. লগইন, লগআউট ও নিরাপত্তা
-
-### Community 243 - "§21.11 — Backup & DR"
-Cohesion: 0.67
-Nodes (3): §21.11 — Backup & DR, Decision, Scripts
 
 ### Community 244 - "৩. ড্যাশবোর্ড ও নেভিগেশন"
 Cohesion: 0.33
@@ -1170,8 +1183,8 @@ Cohesion: 0.33
 Nodes (6): উদাহরণ ও সফলতার চিহ্ন, দিনের মধ্যে, দিনের শুরু, দিনের শেষে, প্রথম দিনের শেখার পরিকল্পনা, ২০. দৈনিক চেকলিস্ট ও প্রথম দিনের শেখার পরিকল্পনা
 
 ### Community 250 - "§21.12 — Approval Workflow (Maker-Checker)"
-Cohesion: 0.67
-Nodes (3): §21.12 — Approval Workflow (Maker-Checker), Decision, Thresholds (§20.D04)
+Cohesion: 0.27
+Nodes (6): §21.12 — Approval Workflow (Maker-Checker), §21.5 — Import/Export Jobs, Decision, Decision, Import Templates, Thresholds (§20.D04)
 
 ### Community 251 - "১৯. ভূমিকা অনুযায়ী দ্রুত নির্দেশিকা"
 Cohesion: 0.40
@@ -1193,13 +1206,13 @@ Nodes (4): Inline কাজ ও page file-বহির্ভূত surface, Runt
 Cohesion: 0.50
 Nodes (4): ERP/POS ব্যবহারিক গাইড, অধ্যায়, অনুশীলন ও প্রমাণ, প্রমাণের সীমা
 
-### Community 256 - "scroll-area.tsx"
-Cohesion: 0.67
-Nodes (3): @radix-ui/react-scroll-area, ScrollArea(), ScrollBar()
+### Community 256 - "access-control.spec.ts"
+Cohesion: 0.24
+Nodes (7): ADMIN_GRANTS, setupMfa(), login(), Persona, privateFill(), raw, tenant()
 
-### Community 257 - "§21.5 — Import/Export Jobs"
-Cohesion: 0.67
-Nodes (3): §21.5 — Import/Export Jobs, Decision, Import Templates
+### Community 257 - "toggle-group.tsx"
+Cohesion: 0.31
+Nodes (7): @radix-ui/react-toggle, @radix-ui/react-toggle-group, ToggleGroup(), ToggleGroupContext, ToggleGroupItem(), Toggle(), toggleVariants
 
 ### Community 258 - "§21.8 — Multi-Currency Revaluation"
 Cohesion: 0.67
@@ -1209,36 +1222,84 @@ Nodes (3): §21.8 — Multi-Currency Revaluation, Database Table, Decision
 Cohesion: 0.67
 Nodes (3): §21.9 — Period-End Close Workflow, Close Steps, Decision
 
+### Community 261 - "productActivation.ts"
+Cohesion: 0.36
+Nodes (6): ComboEdge, detectComboCycle(), validateComboGraph(), ProductActivationParams, validateProductActivation(), db
+
+### Community 262 - "Static review findings"
+Cohesion: 0.29
+Nodes (6): Change since the 2026-10-03 review, Explicitly unavailable / unverified this pass, Red-team pass and fixes, 2026-11-16 (working tree on top of `05cbc96`, uncommitted), Review limits, Static review findings, Strengths verified this pass (STATIC)
+
 ### Community 263 - "5.5A Stock Count, Adjustment, and Operational Inventory Documents"
 Cohesion: 0.25
 Nodes (8): 5.5A Stock Count, Adjustment, and Operational Inventory Documents, `inventory_reason_codes`, `stock_adjustment_item_serials`, `stock_adjustment_items`, `stock_adjustments`, `stock_count_items`, `stock_count_serials`, `stock_counts`
 
+### Community 264 - "ADR 0007 — MariaDB 11.8.x Is Authoritative Production Database"
+Cohesion: 0.29
+Nodes (7): ADR 0007 — MariaDB 11.8.x Is Authoritative Production Database, Consequences, Decision, PostgreSQL RLS Is Not Available in MariaDB, Preserves (unchanged outcomes), Reason, Type / Mechanism Mappings (summary; blueprint §4 governs)
+
 ### Community 265 - "nextDocumentNumber"
-Cohesion: 0.06
-Nodes (36): ADR 0003 — SQLite vs PostgreSQL 16, Blueprint deviation, Consequences, Context, Decision, Findings — Phase 5, `document_sequences`, ALLOWED_TRANSITIONS (+28 more)
+Cohesion: 0.07
+Nodes (33): ADR 0003 — SQLite vs PostgreSQL 16, Blueprint deviation, Consequences, Context, Decision, Findings — Phase 3, Findings — Phase 5, `document_sequences` (+25 more)
+
+### Community 266 - "SmsProvider"
+Cohesion: 0.29
+Nodes (3): SmsProvider, MimSmsProvider, SslSmsProvider
+
+### Community 267 - "giftCardIssuance.test.ts"
+Cohesion: 0.29
+Nodes (3): db, injected, request()
 
 ### Community 268 - "5.15 Audit, Approval, Statutory, and Reconciliation"
 Cohesion: 0.33
 Nodes (6): 5.15 Audit, Approval, Statutory, and Reconciliation, `audit_logs`, `reconciliation_findings`, `reconciliation_runs`, `statutory_documents`, `tax_return_periods`
 
+### Community 269 - "ERP presentation system"
+Cohesion: 0.33
+Nodes (5): ERP presentation system, Interaction rules, Tokens, Typography, spacing and density, Verification
+
+### Community 270 - "UI/UX debugging with taste-skill guidelines"
+Cohesion: 0.33
+Nodes (6): Confirmed defects and changes, Design direction, Remaining coverage, Sequential follow-up (2026-09-26 through 2026-09-27), UI/UX debugging with taste-skill guidelines, Verification and limits
+
+### Community 271 - "accordion.tsx"
+Cohesion: 0.33
+Nodes (4): @radix-ui/react-accordion, AccordionContent(), AccordionItem(), AccordionTrigger()
+
+### Community 272 - "seed-coa.ts"
+Cohesion: 0.47
+Nodes (4): main(), CoaSpec, DEFAULT_COA, seedDefaultCoa()
+
 ### Community 273 - "§21.6 — Statutory Document Generation"
 Cohesion: 0.67
 Nodes (3): §21.6 — Statutory Document Generation, Decision, Document Types
 
+### Community 274 - "mimsmsGateway.test.ts"
+Cohesion: 0.33
+Nodes (3): MIMSMS_BASE_URL, ACCEPTED, credentials
+
+### Community 275 - "ADR 0008 — Customer dues, collections and SMS due reminders"
+Cohesion: 0.50
+Nodes (3): ADR 0008 — Customer dues, collections and SMS due reminders, Consequences, Context
+
+### Community 276 - "§21.13 — Credit Sales (D05 Extended)"
+Cohesion: 0.67
+Nodes (3): §21.13 — Credit Sales (D05 Extended), Decision, Validation Checks (in PostSale)
+
 ## Knowledge Gaps
-- **2037 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `config` (+2032 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2519 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **35 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **2038 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `config` (+2033 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2520 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **36 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `next` connect `codes.ts` to `withTenant`, `logging/index.ts`, `credit/page.tsx`, `react`, `service.ts`, `admin/health/route.ts`, `risk-tuning/page.tsx`, `checks.ts`, `ref_node_crypto`, `DomainError`, `package.json`, `pos/page.tsx`, `Input`, `mfaSessionAtomicity.test.ts`, `app/layout.tsx`, `dashboard/layout.tsx`, `reminder-policy/route.ts`, `sms/page.tsx`, `download/route.ts`, `sessions.ts`, `refundCriticalIntegrity.test.ts`, `Button`, `dropdown-menu.tsx`, `featureFlags/index.ts`, `cookieNames.ts`, `paymentReversalAccounting.test.ts`, `zod`, `errorResponse`, `providers.ts`, `i18n/index.ts`, `approvals/route.ts`, `instrumentation.ts`, `sms-account/route.ts`, `courier/[provider]/route.ts`, `buildTenantContext`, `api/route.ts`, `app/page.tsx`, `accounting-policies/route.ts`, `importCommitIntegrity.test.ts`, `vitest`, `generate/route.ts`?**
-  _High betweenness centrality (0.207) - this node is a cross-community bridge._
-- **Why does `@prisma/client` connect `@prisma/client` to `withTenant`, `codes.ts`, `service.ts`, `reports/index.ts`, `nextDocumentNumber`, `BankReconciliation.ts`, `checks.ts`, `ref_node_fs`, `PostSale.ts`, `ref_node_crypto`, `barcode.ts`, `postJournalEntry`, `DomainError`, `reminders.ts`, `package.json`, `customerCollections.test.ts`, `PostExpense.ts`, `collectionReports.ts`, `mfaSessionAtomicity.test.ts`, `outboxWorker.ts`, `offlineTill.test.ts`, `collectionFollowThrough.test.ts`, `PostStockAdjustment.ts`, `download/route.ts`, `sessions.ts`, `refundCriticalIntegrity.test.ts`, `reconcile.ts`, `collectionsOverview.test.ts`, `dataSubjectRequests.ts`, `tenantClient.ts`, `featureFlags/index.ts`, `cookieNames.ts`, `verify-ui-health.mjs`, `paymentReversalAccounting.test.ts`, `zod`, `runtime.ts`, `computeLineTax.ts`, `errorResponse`, `systemDb`, `dueReminders.test.ts`, `providers.ts`, `stockMovement.ts`, `Loyalty.ts`, `approvals/route.ts`, `i18n/index.ts`, `buildTenantContext`, `crypto/index.ts`, `campaigns.ts`, `productActivation.ts`, `mfaChallenge.ts`, `AssetManagement.ts`, `index-plans.mjs`, `vitest`, `audit-production-db.mjs`, `transactionContext.ts`?**
-  _High betweenness centrality (0.082) - this node is a cross-community bridge._
-- **Why does `status()` connect `status` to `service.ts`, `inline-customer.spec.ts`, `admin/health/route.ts`, `refundCriticalIntegrity.test.ts`, `risk-tuning/page.tsx`, `Button`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
+- **Why does `next` connect `codes.ts` to `DomainError`, `providers.ts`, `Button`, `credit/page.tsx`, `accessApiAuthorization.test.ts`, `admin/health/route.ts`, `importProcessor.ts`, `Badge`, `giftCardIssuance.test.ts`, `ref_node_crypto`, `postJournalEntry`, `runInTenantContext`, `package.json`, `pos/page.tsx`, `users.tsx`, `app/layout.tsx`, `dashboard/layout.tsx`, `reminder/route.ts`, `sms/page.tsx`, `export-jobs/route.ts`, `refresh/route.ts`, `refundCriticalIntegrity.test.ts`, `login/route.ts`, `Card`, `dropdown-menu.tsx`, `zod`, `proxy.ts`, `journal-entries/route.ts`, `idempotency/index.ts`, `i18n/index.ts`, `approvals/route.ts`, `instrumentation.ts`, `courier/[provider]/route.ts`, `tenantContext.test.ts`, `sessions.ts`, `api/route.ts`, `app/page.tsx`, `accounting-policies/route.ts`, `vitest`, `verify/route.ts`, `generate/route.ts`?**
+  _High betweenness centrality (0.204) - this node is a cross-community bridge._
+- **Why does `@prisma/client` connect `@prisma/client` to `access-control.spec.ts`, `DomainError`, `codes.ts`, `productActivation.ts`, `reports/index.ts`, `nextDocumentNumber`, `BankReconciliation.ts`, `customerCollections.test.ts`, `checks.ts`, `PostSale.ts`, `ref_node_crypto`, `barcode.ts`, `postJournalEntry`, `runInTenantContext`, `templateSettings.ts`, `package.json`, `seed-coa.ts`, `collections.ts`, `systemDb`, `applyOfflineCommand.ts`, `collectionFollowThrough.test.ts`, `reminder/route.ts`, `PostStockAdjustment.ts`, `purchaseAndTenderAccounting.test.ts`, `export-jobs/route.ts`, `refresh/route.ts`, `refundCriticalIntegrity.test.ts`, `reconcile.ts`, `reminders.ts`, `modelBranchScope.ts`, `zod`, `dataSubjectRequests.ts`, `proxy.ts`, `verify-ui-health.mjs`, `journal-entries/route.ts`, `runtime.ts`, `service.ts`, `giftCardIssuance.test.ts`, `computeLineTax.ts`, `idempotency/index.ts`, `accessQueryCount.test.ts`, `dueReminders.test.ts`, `stockMovement.ts`, `Loyalty.ts`, `approvals/route.ts`, `i18n/index.ts`, `generate-mariadb-tenant-fks.mjs`, `tenantContext.test.ts`, `crypto/index.ts`, `campaigns.ts`, `sessions.ts`, `AssetManagement.ts`, `index-plans.mjs`, `reset.ts`, `audit-production-db.mjs`, `vitest`, `tenantClient.ts`?**
+  _High betweenness centrality (0.098) - this node is a cross-community bridge._
+- **Why does `status()` connect `status` to `accessApiAuthorization.test.ts`, `admin/health/route.ts`, `@playwright/test`, `refundCriticalIntegrity.test.ts`, `Badge`?**
+  _High betweenness centrality (0.074) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `DomainError` (e.g. with `Findings — Phase 2` and `Findings — Phase 3`) actually correct?**
   _`DomainError` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 2 inferred relationships involving `runInTenantContext()` (e.g. with `CRITICAL` and `4. CONFIRMED CRITICAL — refund record and GL are separately committed — FIXED LOCALLY`) actually correct?**
@@ -1246,4 +1307,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Are the 3 inferred relationships involving `requirePermission()` (e.g. with `Findings — Phase 3` and `What changed, by finding`) actually correct?**
   _`requirePermission()` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `$schema`, `style`, `rsc` to the rest of the system?**
-  _2037 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2038 weakly-connected nodes found - possible documentation gaps or missing edges._

@@ -56,7 +56,7 @@ const SALE_PAYLOAD = {
   warehouse_id: '33333333-3333-4333-8333-333333333333',
   currency_code: 'BDT',
   exchange_rate: 1,
-  business_date: '2026-09-20T10:00:00.000Z',
+  business_date: new Date(Date.now() - 60_000).toISOString(),
   items: [{ product_id: '44444444-4444-4444-8444-444444444444', qty: 2, unit_price: 150 }],
   payments: [{ payment_method: 'cash', amount: 300, financial_account_id: '55555555-5555-4555-8555-555555555555' }],
 };
@@ -89,7 +89,7 @@ describe('offline sync applies the commands it accepts', () => {
       offlineCommand: { findMany: mocks.commandFindMany, create: mocks.commandCreate },
       auditLog: { create: mocks.auditCreate },
     }));
-    mocks.deviceFindFirst.mockResolvedValue({ id: DEVICE_ID, companyId: 'company-a', status: 'active' });
+    mocks.deviceFindFirst.mockResolvedValue({ id: DEVICE_ID, companyId: 'company-a', branchId: SALE_PAYLOAD.branch_id, status: 'active' });
     mocks.batchCreate.mockResolvedValue({ id: 'batch-1' });
     mocks.batchUpdate.mockResolvedValue({});
     mocks.commandFindMany.mockResolvedValue([]);
@@ -97,6 +97,33 @@ describe('offline sync applies the commands it accepts', () => {
     mocks.commandCreate.mockResolvedValue({});
     mocks.auditCreate.mockResolvedValue({});
     mocks.postSale.mockResolvedValue({ saleId: 'sale-1', referenceNo: 'INV-000001' });
+  });
+
+  const one = (payload: Record<string, unknown>) => request([{ command_type: 'cash_sale', sequence_number: 1, payload, payload_hash: hashOf(payload), idempotency_key: 'c'.repeat(16) }]);
+
+  it('checks sale.post in the branch each offline sale names', async () => {
+    mocks.permission.mockImplementation(async (_auth: unknown, _perm: string, branch?: string) => {
+      if (branch) throw Object.assign(new Error('Forbidden'), { name: 'DomainError' });
+    });
+    const response = await syncRoute(one(SALE_PAYLOAD));
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(mocks.permission).toHaveBeenCalledWith(AUTH, 'sale.post', SALE_PAYLOAD.branch_id);
+    expect(mocks.postSale).not.toHaveBeenCalled();
+  });
+
+  it("refuses a sale for another branch than the till's own", async () => {
+    const payload = { ...SALE_PAYLOAD, branch_id: '66666666-6666-4666-8666-666666666666' };
+    const response = await syncRoute(one(payload));
+    expect(response.status).toBe(403);
+    expect(mocks.postSale).not.toHaveBeenCalled();
+  });
+
+  it('refuses an offline sale dated in the future or over a week ago', async () => {
+    for (const when of [Date.now() + 60 * 60_000, Date.now() - 8 * 86_400_000]) {
+      const response = await syncRoute(one({ ...SALE_PAYLOAD, business_date: new Date(when).toISOString() }));
+      expect(response.status).toBe(400);
+    }
+    expect(mocks.postSale).not.toHaveBeenCalled();
   });
 
   it('refuses an offline sale paid any way but cash, and posts nothing', async () => {
@@ -130,7 +157,7 @@ describe('offline sync applies the commands it accepts', () => {
     expect(posted.items).toHaveLength(1);
     // The terminal's capture time is preserved, so the sale lands in the
     // period it happened in rather than the period it was uploaded in.
-    expect(posted.businessDate.toISOString()).toBe('2026-09-20T10:00:00.000Z');
+    expect(posted.businessDate.toISOString()).toBe(SALE_PAYLOAD.business_date);
     expect(mocks.commandCreate).toHaveBeenCalledTimes(1);
     expect(mocks.commandCreate.mock.calls[0][0].data.status).toBe('applied');
   });
@@ -149,7 +176,7 @@ describe('offline sync applies the commands it accepts', () => {
   });
 
   it('rejects a cash sale whose payload is not a valid sale', async () => {
-    const malformed = { branch_id: 'not-a-uuid' };
+    const malformed = { branch_id: SALE_PAYLOAD.branch_id, warehouse_id: 'not-a-uuid' };
     const response = await syncRoute(request([{
       command_type: 'cash_sale',
       sequence_number: 1,

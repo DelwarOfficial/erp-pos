@@ -646,6 +646,11 @@ export async function postSale(
       if (!fa || !fa.isActive || fa.currencyCode !== input.currencyCode) {
         throw new DomainError('VALIDATION_FAILED', 'Payment account must be active, tenant-owned and in the sale currency', {}, 409);
       }
+      // Money taken at this branch goes into this branch's drawer, bank or
+      // wallet (or a company-wide account), never another branch's.
+      if (fa.branchId && fa.branchId !== input.branchId) {
+        throw new DomainError('VALIDATION_FAILED', 'That payment account belongs to another branch', { financial_account_id: fa.id }, 400);
+      }
       if (fa) {
         // A gift card pays by using up the liability its sale created, not cash.
         const giftCard = payment.paymentMethod === 'gift_card';

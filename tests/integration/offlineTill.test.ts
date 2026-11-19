@@ -70,6 +70,16 @@ describe('offline till', () => {
       expect(again.body.results[0].status).toBe('duplicate');
       expect(await tx.sale.count({ where: { companyId: COMPANY_ID, id: sale.id } })).toBe(1);
       expect(await tx.offlineCommand.count({ where: { deviceId: device.id } })).toBe(1);
+
+      // Cash taken at branch A cannot be put in branch B's drawer (online or offline).
+      const otherDrawer = await tx.financialAccount.create({ data: { companyId: COMPANY_ID, branchId: fx.branches[1].id, name: `B drawer ${randomUUID().slice(0, 4)}`,
+        accountType: 'cash', currencyCode: 'BDT', isActive: true,
+        chartOfAccountId: (await tx.chartOfAccount.create({ data: { companyId: COMPANY_ID, code: `CB-${randomUUID().slice(0, 6)}`, name: 'B drawer',
+          accountClass: 'asset', accountSubtype: 'cash', normalBalance: 'D', isActive: true } })).id } });
+      const wrong = { ...payload, payments: [{ ...payload.payments[0], financial_account_id: otherDrawer.id }] };
+      await expect(syncOfflineBatch(tx, { companyId: COMPANY_ID, userId: fx.user.id, deviceId: device.id, commands: [{ ...command, sequence_number: 2, payload: wrong,
+        payload_hash: createHash('sha256').update(JSON.stringify(wrong)).digest('hex'), idempotency_key: `offline-${device.id}-2` }] }, randomUUID()))
+        .rejects.toThrow(/belongs to another branch/);
     });
   });
 });

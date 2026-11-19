@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { postSale } from '@/domain/commands/m3/PostSale';
 import { openCashierShift, closeCashierShift } from '@/domain/commands/m3/CashierShift';
 import { DomainError } from '@/lib/errors/codes';
+import { OFFLINE_CLOCK_SKEW_MS, OFFLINE_MAX_AGE_MS } from '@/lib/offline/syncLimits';
 
 /** 'applied' performed the business effect; 'stored' recorded it only. */
 export type OfflineCommandOutcome =
@@ -75,6 +76,15 @@ export async function applyOfflineCommand(
   switch (params.commandType) {
     case 'cash_sale': {
       const payload = parse(CashSalePayload, params.payload, 'cash_sale');
+      // The capture time comes from the till, so it is bounded: not ahead of
+      // the server (5 minutes for clock drift) and not older than a till can
+      // plausibly hold sales. Otherwise a sale could be dated into any open period.
+      const capturedAt = new Date(payload.business_date).getTime();
+      if (capturedAt > Date.now() + OFFLINE_CLOCK_SKEW_MS || capturedAt < Date.now() - OFFLINE_MAX_AGE_MS) {
+        throw new DomainError('VALIDATION_FAILED',
+          `An offline sale must be dated within the last ${OFFLINE_MAX_AGE_MS / 86_400_000} days and not in the future`,
+          { business_date: payload.business_date }, 400);
+      }
       const sale = await postSale(tx, {
         companyId: params.companyId,
         branchId: payload.branch_id,
