@@ -16,7 +16,14 @@ export async function register() {
     // published secret, a localhost passkey origin or a test-mode bypass
     // switched on must not start and accept requests.
     const { assertProductionSecurityConfig } = await import('@/lib/config/productionGuards');
-    assertProductionSecurityConfig();
+    try {
+      assertProductionSecurityConfig();
+    } catch (e) {
+      // Throwing here only makes Next answer every request with 500 while the
+      // server keeps listening. Stop the process so the container fails visibly.
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
 
     // Sentry first, so an error during OTel bootstrap is itself reported.
     const { register: registerSentry } = await import('./sentry.server.config');

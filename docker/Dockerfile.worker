@@ -1,40 +1,35 @@
 # docker/Dockerfile.worker
-# Worker process for outbox delivery, reconciliation, retention, offline sync.
+# Worker process: outbox delivery, daily reconciliation + risk alerts,
+# reservations, retention, due reminders, SMS sending (src/workers/index.ts).
 
-FROM node:20-slim AS base
+FROM node:22-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json bun.lock ./
-RUN npm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npx prisma generate
+RUN npx prisma generate --schema=prisma/mariadb/schema.prisma
 
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 worker
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 worker
+# Installed at build time: npx would otherwise download tsx on every start.
+RUN npm install -g tsx@4
 
 COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/src ./src
 COPY --from=builder --chown=worker:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=worker:nodejs /app/package.json ./
-# tsx resolves the @/ path alias from tsconfig.json; without it every import
-# in src/workers/index.ts fails at startup.
+# tsx resolves the @/ path alias from tsconfig.json.
 COPY --from=builder --chown=worker:nodejs /app/tsconfig.json ./
 
-# Installed at build time: npx would otherwise download tsx on every container
-# start, as a non-root user, and fail with no network.
-RUN npm install -g tsx@4
-
 USER worker
-
-# src/workers/index.ts is the orchestrator that starts every BullMQ worker.
-# outboxWorker.ts only exports functions and exits immediately when run.
 CMD ["tsx", "src/workers/index.ts"]

@@ -38,6 +38,7 @@
   ],
   "exclude": [
     ".local",
+    "graphify",
     "node_modules",
     "tests/e2e",
     "scripts",
