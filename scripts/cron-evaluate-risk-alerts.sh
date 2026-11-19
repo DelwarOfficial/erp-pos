@@ -1,62 +1,51 @@
 #!/usr/bin/env bash
 # scripts/cron-evaluate-risk-alerts.sh
-# Cron job script — triggers the risk alert evaluation endpoint daily.
+# Cron job: run the daily risk alert evaluation.
 #
-# Setup (add to crontab with `crontab -e`):
-#   # Run daily at 9am Asia/Dhaka (UTC 3am)
-#   0 3 * * * /home/z/my-project/scripts/cron-evaluate-risk-alerts.sh >> /var/log/risk-alerts.log 2>&1
+# Calls POST /api/v1/cron/risk-alerts with the shared cron token
+# (Authorization: Bearer $CRON_API_TOKEN). It does not log in as an
+# administrator and holds no password. See docs/operations/cron-jobs.md.
 #
-# Or using systemd timer / scheduled task / etc.
+# Required environment (set in the cron environment, never in this file):
+#   ERP_POS_BASE_URL  — the app's base URL, e.g. https://erp.example.com
+#   CRON_API_TOKEN    — the same value the server has in CRON_API_TOKEN
 #
-# Required env vars (set in .env or in the cron environment):
-#   ERP_POS_BASE_URL — e.g. http://localhost:3000
-#   ERP_POS_ADMIN_EMAIL — admin login email
-#   ERP_POS_ADMIN_PASSWORD — admin login password
+# Example crontab (09:00 Asia/Dhaka = 03:00 UTC):
+#   0 3 * * * /opt/erp-pos/scripts/cron-evaluate-risk-alerts.sh >> /var/log/erp-pos/risk-alerts.log 2>&1
 
 set -euo pipefail
 
-BASE_URL="${ERP_POS_BASE_URL:-http://localhost:3000}"
-ADMIN_EMAIL="${ERP_POS_ADMIN_EMAIL:-admin@erp-platform.local}"
-ADMIN_PASSWORD="${ERP_POS_ADMIN_PASSWORD:-ChangeMe!2026}"
+ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Risk alert evaluation starting..."
-
-# 1. Login to get auth cookie
-COOKIE=$(curl -s -c - -X POST "${BASE_URL}/api/v1/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" \
-  | grep erp_access | awk '{print $NF}')
-
-if [ -z "$COOKIE" ]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: Login failed"
-  exit 1
+if [ -z "${ERP_POS_BASE_URL:-}" ]; then
+  echo "[$(ts)] ERROR: ERP_POS_BASE_URL is not set. Set it to the app's base URL." >&2
+  exit 2
+fi
+if [ -z "${CRON_API_TOKEN:-}" ]; then
+  echo "[$(ts)] ERROR: CRON_API_TOKEN is not set. Set it to the server's CRON_API_TOKEN value." >&2
+  exit 2
 fi
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Login successful, triggering alert evaluation..."
+echo "[$(ts)] Risk alert evaluation starting..."
 
-# 2. Trigger alert evaluation
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/api/v1/admin/risk-alerts/evaluate" \
-  -H "Content-Type: application/json" \
-  -b "erp_access=${COOKIE}")
-
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -n -1)
-
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] HTTP ${HTTP_CODE}"
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Response: ${BODY}"
-
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: Alert evaluation failed"
+# The header is read from stdin (-H @-) so the token never appears in the
+# process list or in this log.
+RESPONSE=$(printf 'Authorization: Bearer %s\n' "$CRON_API_TOKEN" | curl -sS --max-time 120 -w "\n%{http_code}" \
+  -X POST "${ERP_POS_BASE_URL%/}/api/v1/cron/risk-alerts" \
+  -H @- -H 'Content-Type: application/json' -d '{}') || {
+  echo "[$(ts)] ERROR: could not reach ${ERP_POS_BASE_URL%/}" >&2
   exit 1
-fi
+}
 
-# 3. Parse response
+HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+
+case "$HTTP_CODE" in
+  200) ;;
+  401) echo "[$(ts)] ERROR: the server refused the cron token (HTTP 401). Check CRON_API_TOKEN matches the server." >&2; exit 1 ;;
+  503) echo "[$(ts)] ERROR: the server has no CRON_API_TOKEN configured (HTTP 503)." >&2; exit 1 ;;
+  *)   echo "[$(ts)] ERROR: alert evaluation failed (HTTP ${HTTP_CODE})." >&2; exit 1 ;;
+esac
+
 ALERTS_TRIGGERED=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('alertsTriggered', 0))" 2>/dev/null || echo "0")
-
-if [ "$ALERTS_TRIGGERED" -gt 0 ]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ✓ ${ALERTS_TRIGGERED} alert(s) triggered — emails + notifications sent"
-else
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ✓ No alerts triggered — risk performance within thresholds"
-fi
-
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Done."
+echo "[$(ts)] Done: ${ALERTS_TRIGGERED} alert(s) triggered."

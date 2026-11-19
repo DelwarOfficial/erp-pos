@@ -28,10 +28,10 @@ export async function GET(req: NextRequest) {
     await requirePermission(auth, 'device.read');
     const items = await runInTenantContext(auth.ctx, () => db.device.findMany({
       where: { companyId: auth.companyId }, orderBy: { createdAt: 'desc' }, take: 200,
-      select: { id: true, label: true, status: true, lastSeenAt: true, lastBootstrapAt: true, createdAt: true, branch: { select: { id: true, name: true } } },
+      select: { id: true, label: true, status: true, lastSeenAt: true, lastBootstrapAt: true, createdAt: true, revokedAt: true, branch: { select: { id: true, name: true } }, registeredByUser: { select: { id: true, name: true } } },
     }));
     return NextResponse.json({ items: items.map(d => ({ id: d.id, label: d.label, status: d.status, branch: d.branch,
-      last_seen_at: d.lastSeenAt, last_bootstrap_at: d.lastBootstrapAt, created_at: d.createdAt })) });
+      last_seen_at: d.lastSeenAt, last_bootstrap_at: d.lastBootstrapAt, created_at: d.createdAt, revoked_at: d.revokedAt, registered_by: d.registeredByUser })) });
   } catch (e) { return errorResponse(e, correlationId); }
 }
 

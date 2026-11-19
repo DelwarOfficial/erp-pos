@@ -47,7 +47,8 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     logger.error('[cron:risk-alerts] evaluation failed', errorMeta(e));
     return NextResponse.json(
-      { error: { code: 'INTERNAL', message: e instanceof Error ? e.message : 'Unknown' } },
+      // The cause is logged above; the caller gets no internals.
+      { error: { code: 'INTERNAL', message: 'Risk alert evaluation failed' } },
       { status: 500 },
     );
   }

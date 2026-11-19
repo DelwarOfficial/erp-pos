@@ -9,7 +9,7 @@ import { finishAuthentication } from '@/lib/auth/webauthn';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { recordSecurityEvent } from '@/lib/audit';
-import { checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { AUTH_UNAVAILABLE_MESSAGE, checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
 import { DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
 
 const FinishSchema = z.object({
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     const limited = await checkDistributedRateLimit('webauthn-assertion-finish', `${auth.companyId}:${auth.userId}`, DEFAULT_MFA_LIMIT);
+    if (limited.unavailable) return NextResponse.json({ error: { code: 'AUTH_SERVICE_UNAVAILABLE', message: AUTH_UNAVAILABLE_MESSAGE } }, { status: 503 });
     if (!limited.allowed) return NextResponse.json({ error: { code: 'RATE_LIMITED', message: 'Too many authentication attempts. Please try again later.' } }, { status: 429 });
     const body = FinishSchema.parse(await req.json());
 

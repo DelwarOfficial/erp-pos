@@ -13,7 +13,7 @@ import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
 import { buildRateLimitKey, resetRateLimit, DEFAULT_MFA_LIMIT } from '@/lib/auth/rateLimiter';
-import { checkDistributedRateLimit, resetDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { AUTH_UNAVAILABLE_MESSAGE, checkDistributedRateLimit, resetDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
 import { issueRefreshToken } from '@/lib/auth/refreshToken';
 import { logger } from '@/lib/logging';
 
@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
     // Rate limit: 5 attempts per 5 min, then 15-min lock with progressive backoff
     const rlKey = buildRateLimitKey('mfa_verify', ip, pending.userId);
     const rl = await checkDistributedRateLimit('mfa-verify', rlKey, DEFAULT_MFA_LIMIT);
+    if (rl.unavailable) {
+      return NextResponse.json({ error: { code: 'AUTH_SERVICE_UNAVAILABLE', message: AUTH_UNAVAILABLE_MESSAGE }, correlation_id: correlationId }, { status: 503 });
+    }
     if (!rl.allowed) {
       const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000);
       return NextResponse.json(

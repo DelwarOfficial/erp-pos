@@ -61,6 +61,8 @@ export interface RateLimitResult {
   remaining: number;
   retryAfterMs: number;
   lockedUntil?: number;
+  /** The shared limiter could not be reached (production fails closed): not the caller's fault. */
+  unavailable?: boolean;
 }
 
 export function checkRateLimit(

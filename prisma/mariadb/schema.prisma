@@ -4575,6 +4575,33 @@ model CouponRedemption {
   @@map("coupon_redemptions")
 }
 
+// A customer's consent to spend reward points on one sale: a one-time code
+// texted to the customer's phone on file. Short-lived, single-use, and bound to
+// the company, customer, points and cart (intent_hash). Only the keyed hash of
+// the code is stored. Status: pending -> verified -> consumed, or locked after
+// too many wrong codes; expired is implied by expires_at.
+model RewardPointConfirmation {
+  id             String    @id @default(uuid())
+  companyId      String    @map("company_id")
+  customerId     String    @map("customer_id")
+  points         Int
+  intentHash     String    @map("intent_hash") @db.Char(64)
+  codeHash       String    @map("code_hash") @db.Char(64)
+  phoneMasked    String    @map("phone_masked")
+  status         String    @default("pending")
+  attempts       Int       @default(0)
+  expiresAt      DateTime  @map("expires_at")
+  verifiedAt     DateTime? @map("verified_at")
+  consumedAt     DateTime? @map("consumed_at")
+  consumedSaleId String?   @unique @map("consumed_sale_id")
+  requestedBy    String    @map("requested_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([companyId, customerId])
+  @@index([expiresAt])
+  @@map("reward_point_confirmations")
+}
+
 model RewardPointTransaction {
   id              String   @id @default(uuid())
   companyId       String   @map("company_id")

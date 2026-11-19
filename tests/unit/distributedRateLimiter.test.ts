@@ -42,6 +42,21 @@ describe('distributed rate limiter', () => {
     const result = await checkDistributedRateLimit('login', 'private@example.invalid', cfg);
     expect(result.allowed).toBe(false); expect(result.retryAfterMs).toBe(cfg.lockMs);
   });
+  it('says the limiter is unavailable (not a limit) and recovers once Redis is healthy', async () => {
+    vi.stubEnv('NODE_ENV', 'production'); state.fail = true;
+    const down = await checkDistributedRateLimit('login', 'recover@example.invalid', cfg);
+    expect(down).toMatchObject({ allowed: false, unavailable: true });
+    state.fail = false;
+    const up = await checkDistributedRateLimit('login', 'recover@example.invalid', cfg);
+    expect(up).toMatchObject({ allowed: true, remaining: cfg.maxAttempts - 1 });
+    expect(up.unavailable).toBeUndefined();
+  });
+  it('the outage reply is a 503 with no internals, distinct from 429 and 401', async () => {
+    const { unavailableError, AUTH_UNAVAILABLE_MESSAGE } = await import('@/lib/auth/distributedRateLimiter');
+    const error = unavailableError();
+    expect(error).toMatchObject({ code: 'AUTH_SERVICE_UNAVAILABLE', httpStatus: 503, message: AUTH_UNAVAILABLE_MESSAGE });
+    expect(AUTH_UNAVAILABLE_MESSAGE).not.toMatch(/redis|offline|ECONN|127.0.0.1/i);
+  });
   it('uses bounded local fallback outside production and never becomes unlimited', async () => {
     state.fail = true;
     const results = await Promise.all(Array.from({ length: 7 }, () => checkDistributedRateLimit('mfa', 'sandbox', cfg)));

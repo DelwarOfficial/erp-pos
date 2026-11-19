@@ -234,3 +234,23 @@ describe('mock providers', () => {
     expect(productionSecurityProblems({ NODE_ENV: 'development', PROVIDER_MODE: 'mock' })).toEqual([]);
   });
 });
+
+// Release check: each of the three keys is refused when missing, short, or
+// left at the value published in .env.production.example. Synthetic values
+// only; the example file's values are public by design.
+describe('the three production keys refuse missing, short and example values', () => {
+  const example = (name: string) => {
+    const line = require('node:fs').readFileSync('.env.production.example', 'utf8').split(/\r?\n/).find((l: string) => l.startsWith(`${name}=`));
+    return line?.slice(name.length + 1).replace(/^"|"$/g, '');
+  };
+  for (const name of ['JWT_SECRET', 'APP_ENCRYPTION_KEY', 'BARCODE_SIGNING_KEY']) {
+    it(`${name}: missing, 10 characters, and the published example are each refused`, () => {
+      for (const value of [undefined, 'x'.repeat(10), example(name)]) {
+        const problems = productionSecurityProblems(goodProduction({ [name]: value }));
+        expect(problems.some(p => p.includes(name)), `${name}=${value === undefined ? '<unset>' : `<${value.length} chars>`}`).toBe(true);
+      }
+      expect(() => assertProductionSecurityConfig(goodProduction({ [name]: undefined }))).toThrow(name);
+      expect(productionSecurityProblems(goodProduction())).toEqual([]);
+    });
+  }
+});

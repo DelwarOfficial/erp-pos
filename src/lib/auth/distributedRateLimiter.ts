@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRateLimitRedis } from './rateLimitRedis';
 import { checkRateLimit, type RateLimitConfig, type RateLimitResult } from './rateLimiter';
+import { DomainError } from '@/lib/errors/codes';
 
 // Redis-backed limiter: one Lua script atomically increments and sets the window TTL.
 const LUA = `local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('PEXPIRE',KEYS[1],ARGV[1]); end; return {n,redis.call('PTTL',KEYS[1])}`;
@@ -31,8 +32,17 @@ export async function checkDistributedRateLimit(action: string, identity: string
     // Local/test sandboxes have no Redis; retain bounded local protection. Production fails closed.
     if (process.env.NODE_ENV !== 'production') return checkRateLimit(`distributed:${action}:${digest(identity)}`, config);
     // Fail closed: Redis outage must never silently remove brute-force protection.
-    return { allowed: false, remaining: 0, retryAfterMs: config.lockMs };
+    return { allowed: false, remaining: 0, retryAfterMs: config.lockMs, unavailable: true };
   }
+}
+
+/**
+ * The reply when the shared limiter is down: 503, distinct from a real limit
+ * (429) and from wrong credentials (401), and with no detail of the cause.
+ */
+export const AUTH_UNAVAILABLE_MESSAGE = 'Sign-in checks are temporarily unavailable. Please try again in a few minutes.';
+export function unavailableError() {
+  return new DomainError('AUTH_SERVICE_UNAVAILABLE', AUTH_UNAVAILABLE_MESSAGE, {}, 503);
 }
 
 export async function resetDistributedRateLimit(action: string, identity: string): Promise<boolean> {

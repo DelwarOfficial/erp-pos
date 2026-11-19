@@ -14,7 +14,7 @@ import { withTenant, buildTenantContext } from '@/lib/db/transaction';
 import { recordSecurityEvent } from '@/lib/audit';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
-import { checkDistributedRateLimit } from '@/lib/auth/distributedRateLimiter';
+import { checkDistributedRateLimit, unavailableError } from '@/lib/auth/distributedRateLimiter';
 import { DEFAULT_LOGIN_LIMIT } from '@/lib/auth/rateLimiter';
 
 const LoginSchema = z.object({
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     const identity = body.email.toLowerCase();
     const identityLimit = await checkDistributedRateLimit('login-identity', identity, DEFAULT_LOGIN_LIMIT);
     const ipLimit = await checkDistributedRateLimit('login-ip', ip || 'unknown', { ...DEFAULT_LOGIN_LIMIT, maxAttempts: 100 });
+    if (identityLimit.unavailable || ipLimit.unavailable) throw unavailableError();
     if (!identityLimit.allowed || !ipLimit.allowed) {
       throw new DomainError('RATE_LIMITED', 'Too many login attempts. Please try again later.', {}, 429);
     }
