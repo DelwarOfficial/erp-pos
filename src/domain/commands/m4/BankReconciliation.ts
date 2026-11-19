@@ -99,8 +99,8 @@ export async function createBankReconciliation(
       companyId: input.companyId,
       financialAccountId: input.financialAccountId,
       paymentStatus: { in: ['posted', 'reversed'] },
-      // A gift-card tender moves no money through this account.
-      paymentMethod: { not: 'gift_card' },
+      // Gift-card and reward-point tenders move no money through this account.
+      paymentMethod: { notIn: ['gift_card', 'reward_points'] },
       businessDate: { gte: importSince, lte: input.statementDate },
     },
     orderBy: { businessDate: 'asc' },

@@ -112,23 +112,19 @@ describe('featureFlags', () => {
       toggleFeatureFlag({ companyId, flagKey: 'quotation_enabled', enabled: true, updatedBy: userId }));
   });
 
-  it('rejects enabling a flag for an unimplemented module with 409 MODULE_NOT_IMPLEMENTED', async () => {
-    // offline_pos_enabled has module='offline', which is not in IMPLEMENTED_MODULES
-    // (there is no offline POS client); multi-currency is blocked by BLOCKED_FLAGS.
-    await expect(
-      runInTenantContext(ctx(), async () =>
-        toggleFeatureFlag({ companyId, flagKey: 'offline_pos_enabled', enabled: true, updatedBy: userId })),
-    ).rejects.toThrow(/not implemented/);
-    await expect(
-      runInTenantContext(ctx(), async () =>
-        toggleFeatureFlag({ companyId, flagKey: 'multi_currency_enabled', enabled: true, updatedBy: userId })),
-    ).rejects.toThrow(/not implemented/);
+  it('lets offline cash sales be switched on now that the till exists', async () => {
+    // offline_pos_enabled was refused while there was no offline POS client.
+    await runInTenantContext(ctx(), async () =>
+      toggleFeatureFlag({ companyId, flagKey: 'offline_pos_enabled', enabled: true, updatedBy: userId }));
+    await runInTenantContext(ctx(), async () => expect(await isFeatureEnabled('offline_pos_enabled')).toBe(true));
+    await runInTenantContext(ctx(), async () =>
+      toggleFeatureFlag({ companyId, flagKey: 'offline_pos_enabled', enabled: false, updatedBy: userId }));
+  });
 
-    // Verify a security event was recorded
-    const events = await runInTenantContext(ctx(), async () => db.securityEvent.findMany({
-      where: { companyId, eventType: 'feature_flag_enable_unimplemented_module' },
-    }));
-    expect(events.length).toBeGreaterThan(0);
+  it('every catalogued module can be switched on', () => {
+    // A flag for a module not in IMPLEMENTED_MODULES is refused with 409 MODULE_NOT_IMPLEMENTED;
+    // none is left, so nothing in Optional Features is a dead switch.
+    expect(FEATURE_FLAG_CATALOGUE.filter(flag => !IMPLEMENTED_MODULES.has(flag.module))).toEqual([]);
   });
 
   it('catalogue covers the 10 §20.D02 flags plus credit_sales', () => {

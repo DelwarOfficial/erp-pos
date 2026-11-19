@@ -37,8 +37,11 @@ const CashSalePayload = z.object({
     discount_amount: z.number().nonnegative().optional(),
     serials: z.array(z.string()).optional(),
   })).min(1),
+  // Offline sales are cash only and paid in full: card, wallet, gift card and
+  // points need the server at the moment of sale, and nothing may be left
+  // owing (postSale refuses an unpaid balance without a payment arrangement).
   payments: z.array(z.object({
-    payment_method: z.string().min(1),
+    payment_method: z.literal('cash'),
     amount: z.number().positive(),
     financial_account_id: z.string().uuid(),
     method_reference: z.string().optional(),

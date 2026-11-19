@@ -18,8 +18,8 @@ const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 const Money = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/, 'An amount with at most two decimal places, as a string');
 
 const PaymentSchema = z.object({
-  // gift_card: method_reference carries the card code.
-  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'gift_card', 'other']),
+  // gift_card: method_reference carries the card code. reward_points: amount in ৳ (1 point = ৳1).
+  payment_method: z.enum(['cash', 'card', 'cheque', 'bkash', 'nagad', 'rocket', 'bank_transfer', 'gift_card', 'reward_points', 'other']),
   amount: z.number().positive(),
   financial_account_id: z.string().uuid(),
   method_reference: z.string().max(120).optional(),
@@ -50,6 +50,7 @@ export const PostSaleSchema = z.object({
   ]).optional(),
   reminder_phone: z.string().max(20).optional(),
   due_reminders_enabled: z.boolean().optional(),
+  coupon_code: z.string().trim().min(1).max(40).optional(),
 });
 export type PostSaleBody = z.infer<typeof PostSaleSchema>;
 
@@ -79,5 +80,6 @@ export function postSaleInput(body: PostSaleBody, auth: { companyId: string; use
     paymentArrangement: arrangement(body),
     reminderPhone: body.reminder_phone,
     dueRemindersEnabled: body.due_reminders_enabled,
+    couponCode: body.coupon_code,
   };
 }

@@ -103,6 +103,10 @@ async function deliverWebhook(event: any, endpoint: any): Promise<DeliveryOutcom
       data: { companyId: event.companyId, webhookEndpointId: endpoint.id, outboxEventId: event.id,
         deliveryId: deliveryIdToUse, signature, timestampHeader: timestamp, status: 'pending' },
     });
+  } else {
+    // Each attempt is signed afresh (a receiver's replay window counts from the
+    // timestamp); keep the record to what this attempt actually sends.
+    await db.webhookDelivery.update({ where: { deliveryId: deliveryIdToUse }, data: { signature, timestampHeader: timestamp } });
   }
 
   try {

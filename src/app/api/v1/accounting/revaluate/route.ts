@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
               periodEndDate: new Date(body.period_end_date),
               periodEndRate: body.period_end_rate,
               createdBy: auth.userId,
-            });
+            }, tx, correlationId);
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
                 action: 'revaluation.run', entityType: 'currency_revaluation', entityId: out.revaluationId,

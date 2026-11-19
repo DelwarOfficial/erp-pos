@@ -99,6 +99,16 @@ describe('offline sync applies the commands it accepts', () => {
     mocks.postSale.mockResolvedValue({ saleId: 'sale-1', referenceNo: 'INV-000001' });
   });
 
+  it('refuses an offline sale paid any way but cash, and posts nothing', async () => {
+    for (const method of ['card', 'bkash', 'gift_card', 'reward_points']) {
+      const payload = { ...SALE_PAYLOAD, payments: [{ ...SALE_PAYLOAD.payments[0], payment_method: method }] };
+      const response = await syncRoute(request([{ command_type: 'cash_sale', sequence_number: 1, payload, payload_hash: hashOf(payload), idempotency_key: 'c'.repeat(16) }]));
+      expect(response.status).toBe(400);
+    }
+    expect(mocks.postSale).not.toHaveBeenCalled();
+    expect(mocks.commandCreate).not.toHaveBeenCalled();
+  });
+
   it('posts an offline cash sale through the same command the online path uses', async () => {
     const response = await syncRoute(request([{
       command_type: 'cash_sale',

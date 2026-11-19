@@ -57,6 +57,16 @@ export async function register() {
     process.on('SIGTERM', () => {
       sdk.shutdown().then(() => console.log('[instrumentation] OTel SDK shut down cleanly'));
     });
+
+    // Outbound webhooks (outbox events) are delivered by the BullMQ worker
+    // (src/workers/index.ts) wherever Redis is configured. Without Redis --
+    // local development -- startOutboxWorker() polls from inside this server;
+    // nothing called it, so there webhooks stayed pending for ever.
+    // OUTBOX_POLLER=off turns the in-process poller off.
+    if (process.env.OUTBOX_POLLER !== 'off' && !(process.env.NODE_ENV === 'production' && process.env.REDIS_URL)) {
+      const { startOutboxWorker } = await import('@/workers/outboxWorker');
+      startOutboxWorker();
+    }
   }
 
   if (process.env.NEXT_RUNTIME === 'edge') {

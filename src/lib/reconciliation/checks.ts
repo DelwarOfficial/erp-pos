@@ -374,6 +374,29 @@ export const checkOutboxCompleteness: ReconciliationCheck = async (tx, companyId
   return findings;
 };
 
+// PENDING_REFUNDS — gateway refunds still 'pending' after an hour. A refund
+// row is written as pending before the provider is called and settled after;
+// a crash in between leaves it pending, still counted against the refundable
+// balance, with nothing to finish it. They need a person to check the
+// provider and complete or fail them.
+export const checkPendingRefunds: ReconciliationCheck = async (tx, companyId) => {
+  const stale = await tx.payment.findMany({
+    where: { companyId, paymentType: 'sale_refund', direction: 'outgoing', paymentStatus: 'pending',
+      createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } },
+    select: { referenceNo: true, amount: true }, take: 50,
+  });
+  if (!stale.length) return [];
+  return [{
+    check_code: 'PENDING_REFUNDS',
+    severity: 'high',
+    expected_value: 0,
+    actual_value: stale.length,
+    variance: stale.length,
+    details: { issue: `${stale.length} refund(s) pending for more than an hour: check each with the payment provider`,
+      refunds: stale.map(p => ({ reference_no: p.referenceNo, amount: p.amount.toString() })) },
+  }];
+};
+
 // IDEMPOTENCY_RESOURCE — check for orphaned idempotency requests (processing but never completed)
 export const checkIdempotencyResource: ReconciliationCheck = async (tx, companyId) => {
   const findings: ReconciliationFinding[] = [];
@@ -472,6 +495,7 @@ export const ALL_CHECKS = [
   { code: 'FISCAL_PERIOD_INTEGRITY', fn: checkFiscalPeriodIntegrity },
   { code: 'ADVANCE_LIABILITY', fn: checkAdvanceLiability },
   { code: 'OUTBOX_COMPLETENESS', fn: checkOutboxCompleteness },
+  { code: 'PENDING_REFUNDS', fn: checkPendingRefunds },
   { code: 'IDEMPOTENCY_RESOURCE', fn: checkIdempotencyResource },
   { code: 'FIXED_ASSET_NBV', fn: checkFixedAssetNetBookValue },
   { code: 'BANK_RECONCILIATION_VARIANCE', fn: checkBankReconciliationVariance },

@@ -49,6 +49,8 @@ const DEFAULT_COA: CoaSpec[] = [
   // Salaries owed to staff between posting a payroll run and paying it. Every
   // employee needs a payable account, and the default chart had none.
   { code: '2400', name: 'Salaries Payable', accountClass: 'liability', accountSubtype: 'payroll_payable', normalBalance: 'C' },
+  // Points customers have earned and not yet spent or lost (src/domain/loyalty/points.ts).
+  { code: '2500', name: 'Reward Points Liability', accountClass: 'liability', accountSubtype: 'reward_points_liability', normalBalance: 'C' },
   // Equity
   { code: '3000', name: 'Equity', accountClass: 'equity', accountSubtype: 'equity', normalBalance: 'C', isControlAccount: true },
   { code: '3100', name: 'Opening Balance Equity', accountClass: 'equity', accountSubtype: 'opening_balance', normalBalance: 'C', allowManualPosting: true },
@@ -73,6 +75,7 @@ const DEFAULT_COA: CoaSpec[] = [
   { code: '5400', name: 'Gateway Fee Expense', accountClass: 'expense', accountSubtype: 'gateway_fee', normalBalance: 'D' },
   { code: '5500', name: 'Cheque Bounce Fee', accountClass: 'expense', accountSubtype: 'cheque_bounce', normalBalance: 'D' },
   { code: '5600', name: 'Cash Over/Short', accountClass: 'expense', accountSubtype: 'cash_over_short', normalBalance: 'D' },
+  { code: '5700', name: 'Reward Points Expense', accountClass: 'expense', accountSubtype: 'reward_expense', normalBalance: 'D' },
   { code: '6000', name: 'Salaries & Wages', accountClass: 'expense', accountSubtype: 'payroll', normalBalance: 'D' },
   { code: '6100', name: 'Rent Expense', accountClass: 'expense', accountSubtype: 'rent', normalBalance: 'D' },
   { code: '6200', name: 'Utilities', accountClass: 'expense', accountSubtype: 'utilities', normalBalance: 'D' },
@@ -128,6 +131,7 @@ export async function seedDefaultCoa(
       supplierAdvanceAccountId: coaMap.get('1300')!,
       purchaseVarianceAccountId: coaMap.get('4100')!,
       giftCardLiabilityAccountId: coaMap.get('2200')!,
+      rewardExpenseAccountId: coaMap.get('5700')!,
       branchClearingAccountId: coaMap.get('2300')!,
       inventoryDamageAccountId: coaMap.get('5100')!,
       inventoryWriteOffAccountId: coaMap.get('5110')!,

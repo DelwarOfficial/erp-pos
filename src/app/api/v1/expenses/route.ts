@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
 
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostExpenseSchema.parse(await req.json());
+    // Only in a branch the user may act in; any branch id used to be accepted.
+    await requirePermission(auth, 'expense.post', body.branch_id);
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/expenses', body });
 
     const result = await runInTenantContext(auth.ctx, () =>

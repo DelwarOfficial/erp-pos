@@ -1,3 +1,5 @@
+> **Historical.** The app runs on MariaDB; `docker/docker-compose.yml` now starts MariaDB 11.8, not PostgreSQL, and `docker/init-roles.sql` is no longer used. Kept for reference only; do not follow these steps.
+
 # PostgreSQL Quickstart
 
 This guide walks through switching the ERP/POS system from SQLite (sandbox) to PostgreSQL 16 (production).

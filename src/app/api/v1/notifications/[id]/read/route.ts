@@ -5,7 +5,7 @@
 // notifications in their own company as read. Per-user read state lives in
 // the UserNotification table (composite PK notificationId + userId).
 //
-// CSRF protection is enforced globally by src/middleware.ts (Origin/Referer
+// CSRF protection is enforced globally by src/proxy.ts (Origin/Referer
 // match OR X-CSRF-Token double-submit) for all cookie-auth mutations.
 
 import { NextRequest, NextResponse } from 'next/server';

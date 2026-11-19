@@ -26,12 +26,13 @@ describe('schema fingerprint', () => {
     // (20260927000100) are checked as a sample.
     const newest = readdirSync('prisma/mariadb/migrations').filter(n => /^\d{14}_/.test(n)).sort().at(-1);
     // 20261118000100_cashier_customer_read and
-    // 20261118000200_cashier_manager_collection_grants only grant permissions
-    // to existing system roles (rows, no tables or columns), so the
+    // 20261118000200_cashier_manager_collection_grants grant permissions, and
+    // 20261118000300_loyalty_accounts_coupon_permission adds chart rows and a
+    // permission (rows, no tables or columns), so the
     // fingerprint generated after 20261001000200_security_events_append_only
     // still describes the schema. A migration that changes structure must
     // regenerate the fingerprint and move this line.
-    expect(newest).toBe('20261118000200_cashier_manager_collection_grants');
+    expect(newest).toBe('20261118000300_loyalty_accounts_coupon_permission');
     const pins = Object.values(fingerprint.tables.cashier_device_pins.foreignKeys);
     expect(pins.map(fk => `${fk.columns}->${fk.references}`).sort()).toEqual([
       'company_id,device_id->devices(company_id,id)',

@@ -16,6 +16,7 @@ import { reverseStockMovement, validateSerialTransition } from '@/domain/invento
 import { reverseJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
 import { restoreGiftCardTender } from '@/domain/commands/m6/Loyalty';
+import { reversePointsForSale } from '@/domain/loyalty/points';
 
 export interface VoidSaleInput {
   saleId: string;
@@ -214,6 +215,17 @@ export async function voidSale(
       reason: `Sale void: ${input.reason}`,
     }, correlationId);
   }
+
+  // A coupon used on this sale gets its use back.
+  const redemptions = await tx.couponRedemption.findMany({ where: { companyId: input.companyId, saleId: sale.id }, select: { id: true, couponId: true } });
+  for (const r of redemptions) {
+    await tx.coupon.update({ where: { id: r.couponId }, data: { usageCount: { decrement: 1 } } });
+    await tx.couponRedemption.delete({ where: { id: r.id } });
+  }
+
+  // The customer loses the points this sale earned and gets back any spent on it.
+  await reversePointsForSale(tx, { companyId: input.companyId, saleId: sale.id, referenceNo: sale.referenceNo, createdBy: input.voidedBy,
+    branchId: sale.branchId, giveBackSpent: true }, correlationId);
 
   // Nothing is owed on a voided sale: stop its schedule (and its reminders).
   await tx.installment.updateMany({ where: { companyId: input.companyId, saleId: sale.id, status: 'scheduled' }, data: { status: 'cancelled' } });

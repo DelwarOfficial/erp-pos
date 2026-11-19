@@ -9,6 +9,11 @@ import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { assertBranchAccess } from '@/lib/db/branchScope';
+import { getApprovalThresholds } from '@/lib/approval/thresholds';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { getCorrelationId } from '@/lib/http';
 
 const JournalLineSchema = z.object({
@@ -123,6 +128,16 @@ export async function POST(req: NextRequest) {
     await requirePermission(auth, 'journal.post');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = PostJournalSchema.parse(await req.json());
+    // Lines may only name branches the poster can act in.
+    for (const line of body.lines) if (line.branch_id) assertBranchAccess(line.branch_id, auth.ctx);
+    // A large manual adjustment needs someone who can approve it, with a fresh
+    // MFA check. Any amount used to post on journal.post alone.
+    const total = body.lines.reduce((sum, l) => sum.plus(l.debit ?? 0), new Prisma.Decimal(0)).mul(body.exchange_rate ?? 1);
+    const { journal_adjustment_threshold: threshold } = await runInTenantContext(auth.ctx, async () => getApprovalThresholds(auth.companyId));
+    if (total.gt(threshold)) {
+      await requirePermission(auth, 'approval.resolve');
+      await requireMfaForAction(req, 'journal_adjustment_approval');
+    }
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/journal-entries', body });
 
     const result = await runInTenantContext(auth.ctx, () =>
@@ -135,7 +150,10 @@ export async function POST(req: NextRequest) {
               entryDate: new Date(body.entry_date),
               postingKind: 'manual_adjustment',
               sourceType: 'manual',
-              sourceId: 'manual',
+              // Each manual entry is its own source. The fixed 'manual' id gave
+              // every manual entry the same event key, so a company could post
+              // only one manual journal ever.
+              sourceId: randomUUID(),
               description: body.description,
               currencyCode: body.currency_code,
               exchangeRate: body.exchange_rate,

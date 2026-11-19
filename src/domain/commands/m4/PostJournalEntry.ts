@@ -13,6 +13,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { DomainError } from '@/lib/errors/codes';
+import { dateFromIso, localDate } from '@/domain/receivables/calendar';
 import { nextJournalNumber } from '@/lib/numbering';
 
 export interface JournalLineInput {
@@ -124,8 +125,7 @@ export async function postJournalEntry(
   totalCredit = lines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
 
   // 3. Validate fiscal period is open
-  const entryDateOnly = new Date(input.entryDate);
-  entryDateOnly.setUTCHours(0, 0, 0, 0);
+  const entryDateOnly = await businessDay(tx, input.companyId, input.entryDate);
   const period = await tx.fiscalPeriod.findFirst({
     where: {
       companyId: input.companyId,
@@ -275,6 +275,8 @@ export async function reverseJournalEntry(
   },
   correlationId: string,
 ): Promise<PostJournalEntryResult> {
+  // Locked, so two reversals of the same entry cannot both pass the checks below.
+  await tx.$queryRaw`SELECT id FROM journal_entries WHERE id = ${params.journalEntryId} AND company_id = ${params.companyId} FOR UPDATE`;
   const original = await tx.journalEntry.findFirst({
     where: { id: params.journalEntryId, companyId: params.companyId },
     include: { lines: true },
@@ -307,9 +309,20 @@ export async function reverseJournalEntry(
     memo: `Reversal: ${l.memo ?? ''}`,
   }));
 
+  // The reversal is dated with the original while that period is still open.
+  // Once it is locked, the reversal posts today instead, in the current open
+  // period: the locked period stays exactly as it was closed, and the
+  // correction shows where it was made. It used to always use the original
+  // date, so nothing in a locked period (a sale void included) could be
+  // reversed at all.
+  const originalDay = await businessDay(tx, params.companyId, original.entryDate);
+  const originalPeriod = await tx.fiscalPeriod.findFirst({ where: { companyId: params.companyId,
+    periodStart: { lte: originalDay }, periodEnd: { gte: originalDay } }, select: { status: true } });
+  const entryDate = originalPeriod?.status === 'open' ? original.entryDate : new Date();
+
   const result = await postJournalEntry(tx, {
     companyId: params.companyId,
-    entryDate: original.entryDate,
+    entryDate,
     postingKind: `${original.postingKind}_reversal`,
     sourceType: 'journal_reversal',
     sourceId: params.journalEntryId,
@@ -330,6 +343,17 @@ export async function reverseJournalEntry(
   });
 
   return result;
+}
+
+/**
+ * The company's business day an instant falls on, as a UTC-midnight date
+ * (how fiscal periods are stored). A sale at 01:00 in Dhaka on the 1st is in
+ * the new month there, but was the 31st in UTC, so it used to be posted to the
+ * previous (possibly locked) period.
+ */
+async function businessDay(tx: Prisma.TransactionClient, companyId: string, at: Date): Promise<Date> {
+  const company = await tx.company.findFirst({ where: { id: companyId }, select: { timezone: true } });
+  return dateFromIso(localDate(company?.timezone ?? 'Asia/Dhaka', new Date(at)));
 }
 
 const MONEY_SCALE = 2;

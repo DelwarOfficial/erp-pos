@@ -1,8 +1,8 @@
 // Optional modules can be switched on and then used, against the local app:
 //   CRM, HR & Payroll, Delivery & Courier, Repairs & Service and Gift Cards &
 //   Loyalty switch on through the app, and each page then loads its list
-//   instead of the "switched off" notice. Multi-currency and offline POS stay
-//   refused, with the reason.
+//   instead of the "switched off" notice. Offline POS stays refused, with the
+//   reason (multi-currency revaluation now posts its journal).
 //
 // Local only: demo company from .local/demo-setup.mjs; DEMO_OWNER_PASSWORD is
 // read from .env.local and typed, never logged. Leaves these modules switched
@@ -54,12 +54,9 @@ test('optional modules switch on and their pages work', async ({ page }) => {
     await page.screenshot({ path: `${shots}/${m.flag}.png`, fullPage: true });
   }
 
-  // Not ready for live: refused with the reason, and nothing changes.
-  for (const flag of ['multi_currency_enabled', 'offline_pos_enabled']) {
-    const r = await page.request.patch(`/api/v1/feature-flags/${flag}`, { headers: headers(), data: { enabled: true } });
-    expect(r.status()).toBe(409);
-    expect((await r.json()).error.code).toBe('MODULE_NOT_IMPLEMENTED');
-  }
+  // Offline cash sales can be switched on too (the till lives on New Sale).
+  const offline = await page.request.patch('/api/v1/feature-flags/offline_pos_enabled', { headers: headers(), data: { enabled: true } });
+  expect(offline.status()).toBe(200);
 
   expect(pageErrors).toEqual([]);
 });

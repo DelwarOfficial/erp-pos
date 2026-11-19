@@ -1,6 +1,6 @@
 // Content-Security-Policy with a per-request script nonce (F-68).
 //
-// src/middleware.ts creates a fresh nonce for every page request and sends
+// src/proxy.ts creates a fresh nonce for every page request and sends
 // this policy on both the request (Next.js reads the nonce from it while
 // rendering and puts it on its own scripts) and the response. Scripts run only
 // if they carry the nonce, or were loaded by one that does ('strict-dynamic');

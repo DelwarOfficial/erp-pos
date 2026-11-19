@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { postStockMovement, validateSerialTransition } from '@/domain/inventory/stockMovement';
 import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
+import { reversePointsForSale, TAKA_PER_POINT_EARNED } from '@/domain/loyalty/points';
 import { nextDocumentNumber } from '@/lib/numbering';
 
 export interface PostSaleReturnInput {
@@ -449,6 +450,10 @@ export async function postSaleReturn(
   });
 
   // 8. Audit
+  // The points earned on the money now returned are taken back (1 per ৳100).
+  await reversePointsForSale(tx, { companyId: input.companyId, saleId: input.saleId, referenceNo, createdBy: input.postedBy, branchId: input.branchId,
+    earnedToTakeBack: baseTotalCredit.div(TAKA_PER_POINT_EARNED).floor().toNumber(), giveBackSpent: false }, correlationId);
+
   await tx.auditLog.create({
     data: {
       companyId: input.companyId, userId: input.postedBy, correlationId,

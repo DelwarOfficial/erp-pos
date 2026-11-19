@@ -25,6 +25,8 @@ import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/sch
 import { installmentBalances } from '@/domain/receivables/balances';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
 import { tenderGiftCard } from '@/domain/commands/m6/Loyalty';
+import { couponDiscount } from '@/domain/loyalty/coupons';
+import { earnPointsForSale, loyaltyAccounts, spendPointsForSale, TAKA_PER_POINT_SPENT } from '@/domain/loyalty/points';
 import { localDate, isoFromDate } from '@/domain/receivables/calendar';
 import { normalizeBdMobile } from '@/domain/receivables/phone';
 
@@ -65,6 +67,8 @@ export interface PostSaleInput {
    * threshold, in total, is refused.
    */
   discountApproved?: boolean;
+  /** A coupon code to apply to the whole sale. */
+  couponCode?: string;
 }
 
 export interface PostSaleResult {
@@ -79,6 +83,8 @@ export interface PostSaleResult {
   paymentCount: number;
   itemCount: number;
   eventId: string; // business_event.id — used by risk assessment hook
+  /** Reward points the customer earned on this sale. */
+  pointsEarned?: number;
 }
 
 const SALE_READ_BATCH_SIZE = 500;
@@ -106,6 +112,15 @@ export async function postSale(
     const flag = await tx.featureFlag.findFirst({ where: { companyId: input.companyId, flagKey: 'loyalty_enabled' } });
     if (!flag?.enabled) throw new DomainError('FEATURE_NOT_ENABLED', 'Gift cards are switched off for this company', { flag: 'loyalty_enabled' }, 403);
     if (input.currencyCode !== 'BDT') throw new DomainError('VALIDATION_FAILED', 'Gift cards pay for BDT sales only', {}, 400);
+  }
+  // Reward points: spent as a tender (৳1 a point) and earned on what is paid.
+  const loyaltyOn = Boolean((await tx.featureFlag.findFirst({ where: { companyId: input.companyId, flagKey: 'loyalty_enabled' } }))?.enabled);
+  const pointPayments = input.payments.filter(payment => payment.paymentMethod === 'reward_points');
+  if (pointPayments.length) {
+    if (!loyaltyOn) throw new DomainError('FEATURE_NOT_ENABLED', 'Reward points are switched off for this company', { flag: 'loyalty_enabled' }, 403);
+    if (!input.customerId) throw new DomainError('VALIDATION_FAILED', 'Choose the customer whose points pay for this', {}, 400);
+    if (input.currencyCode !== 'BDT') throw new DomainError('VALIDATION_FAILED', 'Points pay for BDT sales only', {}, 400);
+    if (pointPayments.some(p => !Number.isInteger(p.amount / TAKA_PER_POINT_SPENT))) throw new DomainError('VALIDATION_FAILED', 'Points are spent in whole points', {}, 400);
   }
   if (!Number.isFinite(input.exchangeRate) || input.exchangeRate <= 0) {
     throw new DomainError('VALIDATION_FAILED', 'Exchange rate must be positive and finite', {}, 400);
@@ -168,6 +183,14 @@ export async function postSale(
     }>;
   }> = [];
 
+  // A coupon is a discount on the sale, spread over the lines before tax
+  // (src/domain/loyalty/coupons.ts). It is authorised marketing, so it does
+  // not count towards the price-reduction limit below.
+  const coupon = input.couponCode ? await couponDiscount(tx, input.companyId, input.couponCode, input.items, input.businessDate) : null;
+  const lines = input.items.map((item, i) => ({ ...item,
+    discountAmount: coupon ? new Prisma.Decimal(item.discountAmount ?? 0).plus(coupon.perLine[i]).toNumber() : item.discountAmount }));
+  const couponPart = (i: number) => coupon?.perLine[i] ?? new Prisma.Decimal(0);
+
   const productIds = [...new Set(input.items.map(item => item.productId))];
   const products: SaleProduct[] = [];
   const stocks: Prisma.WarehouseStockGetPayload<object>[] = [];
@@ -199,7 +222,7 @@ export async function postSale(
   const claimedSerialIds = new Set<string>();
 
   let lineNo = 1;
-  for (const item of input.items) {
+  for (const [lineIndex, item] of lines.entries()) {
     if (!Number.isFinite(item.qty) || item.qty <= 0) {
       throw new DomainError('VALIDATION_FAILED', `Line ${lineNo}: quantity must be > 0`, {}, 400);
     }
@@ -280,7 +303,7 @@ export async function postSale(
     // the line actually charges (before tax). A price above default is fine.
     if (product.defaultPrice != null) {
       const listAmount = new Prisma.Decimal(product.defaultPrice).mul(item.qty);
-      const reduction = listAmount.minus(grossAmount.minus(discountAmount));
+      const reduction = listAmount.minus(grossAmount.minus(discountAmount.minus(couponPart(lineIndex))));
       if (reduction.gt(0)) priceReduction = priceReduction.plus(reduction);
     }
 
@@ -450,6 +473,14 @@ export async function postSale(
     },
   });
 
+  if (coupon) {
+    // Counted against the coupon's limit now, under a lock, so two sales cannot both take its last use.
+    const [row] = await tx.$queryRaw<Array<{ usage_count: number; usage_limit: number | null }>>`SELECT usage_count, usage_limit FROM coupons WHERE id = ${coupon.couponId} FOR UPDATE`;
+    if (row && row.usage_limit !== null && Number(row.usage_count) >= Number(row.usage_limit)) throw new DomainError('VALIDATION_FAILED', 'That coupon has just been used up', {}, 409);
+    await tx.coupon.update({ where: { id: coupon.couponId }, data: { usageCount: { increment: 1 } } });
+    await tx.couponRedemption.create({ data: { companyId: input.companyId, couponId: coupon.couponId, saleId: sale.id, discountAmount: coupon.discount } });
+  }
+
   for (const installment of schedule) {
     await tx.installment.create({
       data: { companyId: input.companyId, saleId: sale.id, installmentNo: installment.installmentNo,
@@ -555,6 +586,9 @@ export async function postSale(
         receivedOrPaidAt: new Date(), postedAt: new Date(), createdBy: input.cashierId,
       },
     });
+    if (payment.paymentMethod === 'reward_points') {
+      await spendPointsForSale(tx, { companyId: input.companyId, saleId: sale.id, customerId: input.customerId!, points: payment.amount / TAKA_PER_POINT_SPENT });
+    }
     if (payment.paymentMethod === 'gift_card') {
       await tenderGiftCard(tx, { companyId: input.companyId, code: payment.methodReference!, amount: payment.amount,
         redeemedBy: input.cashierId, saleReferenceNo: referenceNo }, correlationId);
@@ -615,10 +649,12 @@ export async function postSale(
       if (fa) {
         // A gift card pays by using up the liability its sale created, not cash.
         const giftCard = payment.paymentMethod === 'gift_card';
+        const points = payment.paymentMethod === 'reward_points';
         revenueJournalLines.push({
-          chartOfAccountId: giftCard ? policies.giftCardLiabilityAccountId : fa.chartOfAccountId,
+          // Points spent use up the points liability, like a gift card.
+          chartOfAccountId: points ? (await loyaltyAccounts(tx, input.companyId)).liability : giftCard ? policies.giftCardLiabilityAccountId : fa.chartOfAccountId,
           debit: payment.amount, credit: 0,
-          memo: giftCard ? `Gift card ${payment.methodReference} for ${referenceNo}` : `Cash received for ${referenceNo}`,
+          memo: points ? `Reward points for ${referenceNo}` : giftCard ? `Gift card ${payment.methodReference} for ${referenceNo}` : `Cash received for ${referenceNo}`,
           branchId: input.branchId,
         });
       }
@@ -724,6 +760,14 @@ export async function postSale(
     }
   }
 
+  // Points earned on what was actually paid (not what is owed, not points spent).
+  let pointsEarned = 0;
+  if (loyaltyOn && input.customerId) {
+    const paidWithMoney = input.payments.filter(p => p.paymentMethod !== 'reward_points').reduce((t, p) => t.plus(p.amount), new Prisma.Decimal(0)).mul(input.exchangeRate);
+    pointsEarned = await earnPointsForSale(tx, { companyId: input.companyId, saleId: sale.id, referenceNo, customerId: input.customerId,
+      paidAmount: paidWithMoney, createdBy: input.cashierId, branchId: input.branchId }, correlationId);
+  }
+
   // 10. Audit
   await tx.auditLog.create({
     data: {
@@ -741,6 +785,6 @@ export async function postSale(
     subtotal: subtotal.toString(), discountTotal: discountTotal.toString(),
     taxTotal: taxTotal.toString(), grandTotal: grandTotal.toString(),
     baseGrandTotal: baseGrandTotal.toString(), paymentCount, itemCount: saleItemsData.length,
-    eventId,
+    eventId, pointsEarned,
   };
 }

@@ -7,10 +7,11 @@ import { runInTenantContext } from '@/lib/db/transaction';
 import { requireIdempotencyKey } from '@/lib/idempotency';
 import { PostSaleSchema } from '@/lib/sales/saleRequest';
 import { priceSaleItem } from '@/domain/tax/priceSaleItem';
+import { couponDiscount } from '@/domain/loyalty/coupons';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 
-const PricingSchema = PostSaleSchema.pick({ items: true });
+const PricingSchema = PostSaleSchema.pick({ items: true, coupon_code: true });
 /** Read-only pricing preview. Checkout still revalidates prices, stock, permissions and payments. */
 export async function POST(req: NextRequest) {
   try {
@@ -25,16 +26,21 @@ export async function POST(req: NextRequest) {
     // Per line, as posting would compute it (gross, discount, tax, total), so
     // the till shows the server's figures rather than its own arithmetic.
     const lines: Array<Record<string, string>> = [];
-    for (const item of body.items) {
+    // A coupon is spread over the lines exactly as posting spreads it.
+    const coupon = body.coupon_code ? await runInTenantContext(auth.ctx, async () => couponDiscount(db, auth.companyId, body.coupon_code!,
+      body.items.map(i => ({ qty: i.qty, unitPrice: i.unit_price, discountAmount: i.discount_amount })))) : null;
+    for (const [index, item] of body.items.entries()) {
       const product = products.find(product => product.id === item.product_id);
       if (!product) throw new DomainError('RESOURCE_NOT_FOUND', 'Product not found or inactive', {}, 404);
-      const line = priceSaleItem(product, { qty: item.qty, unitPrice: item.unit_price, discountAmount: item.discount_amount }, new Date());
+      const line = priceSaleItem(product, { qty: item.qty, unitPrice: item.unit_price,
+        discountAmount: new Prisma.Decimal(item.discount_amount ?? 0).plus(coupon?.perLine[index] ?? 0).toNumber() }, new Date());
       subtotal = subtotal.plus(line.grossAmount); discount = discount.plus(line.discountAmount); tax = tax.plus(line.taxAmount);
       lines.push({ product_id: item.product_id, qty: String(item.qty), unit_price: String(item.unit_price), list_price: product.defaultPrice.toString(),
         gross_amount: line.grossAmount.toFixed(2), discount_amount: line.discountAmount.toFixed(2), taxable_amount: new Prisma.Decimal(line.taxableAmount).toFixed(2),
         tax_amount: new Prisma.Decimal(line.taxAmount).toFixed(2), line_total: new Prisma.Decimal(line.lineTotal).toFixed(2) });
     }
-    return NextResponse.json({ subtotal: subtotal.toString(), discount_total: discount.toString(), tax_total: tax.toString(), grand_total: subtotal.minus(discount).plus(tax).toString(), lines });
+    return NextResponse.json({ subtotal: subtotal.toString(), discount_total: discount.toString(), tax_total: tax.toString(), grand_total: subtotal.minus(discount).plus(tax).toString(), lines,
+      coupon: coupon ? { code: coupon.code, name: coupon.name, discount: coupon.discount.toFixed(2) } : null });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse(new DomainError('VALIDATION_FAILED', 'Invalid cart', { issues: error.issues }, 400), getCorrelationId(req));
     return errorResponse(error, getCorrelationId(req));

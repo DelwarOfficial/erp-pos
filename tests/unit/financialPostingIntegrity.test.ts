@@ -7,6 +7,7 @@ import { postSale } from '@/domain/commands/m3/PostSale';
 function fixture(period: unknown = { status: 'open' }) {
   const createLine = vi.fn(async () => ({}));
   const tx = {
+    company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
     fiscalPeriod: { findFirst: vi.fn(async () => period) },
     chartOfAccount: { findMany: vi.fn(async () => [{ id: 'a', code: 'A', allowManualPosting: true }, { id: 'b', code: 'B', allowManualPosting: true }]) },
     businessEvent: { create: vi.fn(async () => ({})) },

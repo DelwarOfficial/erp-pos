@@ -27,6 +27,7 @@ import { apiFetch } from '@/lib/api/client';
 import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 import { QuickCreateCustomer, type CreatedCustomer } from '@/components/customers/QuickCreateCustomer';
 import { useDashboardSession } from '@/components/dashboard/session';
+import { OfflineSaleScreen, OfflineTillPanel, useOnline } from '@/components/pos/OfflineTill';
 
 interface Product {
   id: string;
@@ -108,7 +109,8 @@ interface CashierShiftOption {
 
 const PAYMENT_METHODS = ['cash', 'card', 'bkash', 'nagad', 'rocket', 'bank_transfer'] as const;
 // A split payment can also be a gift card, identified by its code.
-const SPLIT_METHODS = [...PAYMENT_METHODS, 'gift_card'] as const;
+// and, for a registered customer, reward points (1 point = ৳1, whole points).
+const SPLIT_METHODS = [...PAYMENT_METHODS, 'gift_card', 'reward_points'] as const;
 
 export default function POSPage() {
   const session = useDashboardSession();
@@ -117,6 +119,9 @@ export default function POSPage() {
   const [addCustomer, setAddCustomer] = useState<{ prefill: string } | null>(null);
   const t = useTranslations('pos');
   const f = useFormat();
+  // With the connection down, a registered till takes cash sales into its queue.
+  const online = useOnline();
+  const canRegisterTill = Boolean(session?.is_global || session?.permissions.includes('device.register'));
   // Display helpers only: neither value is sent with the sale.
   const [cashReceived, setCashReceived] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
@@ -124,7 +129,7 @@ export default function POSPage() {
   const [primaryAmount, setPrimaryAmount] = useState('');
   const [tenders, setTenders] = useState<{ id: string; method: string; account: BusinessEntity | null; amount: string; code?: string }[]>([]);
   const [postedSale, setPostedSale] = useState<{ saleId: string; referenceNo: string; grandTotal: string } | null>(null);
-  const [pricing, setPricing] = useState<{ signature: string; subtotal: string; discount_total: string; tax_total: string; grand_total: string; lines: PricedLine[] } | null>(null);
+  const [pricing, setPricing] = useState<{ signature: string; subtotal: string; discount_total: string; tax_total: string; grand_total: string; lines: PricedLine[]; coupon?: { code: string; name: string; discount: string } | null } | null>(null);
   // When the customer pays: all now, part now, or all later. Separate from how they pay.
   const [timing, setTiming] = useState<Timing>('full');
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('due');
@@ -168,10 +173,14 @@ export default function POSPage() {
 
   // A discount that is not a valid amount is left out of pricing and blocks checkout.
   const discountOf = (item: CartItem) => item.discount.trim() === '' ? BigInt(0) : toPaisa(item.discount);
+  // A coupon is priced by the server with the cart; posting applies the same code.
+  const [couponInput, setCouponInput] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [points, setPoints] = useState<{ customerId: string; points: number; next_expiry: string | null } | null>(null);
   const cartPayload = JSON.stringify({ items: cart.map(item => {
     const d = discountOf(item);
     return { product_id: item.productId, qty: item.qty, unit_price: item.unitPrice, ...(d && d > BigInt(0) ? { discount_amount: Number(fromPaisa(d)) } : {}) };
-  }) });
+  }), ...(couponCode ? { coupon_code: couponCode } : {}) });
   const pricingReady = pricing?.signature === cartPayload;
   const subtotal = pricingReady ? Number(pricing.subtotal) : cart.reduce((sum, item) => sum + item.lineTotal, 0);
   const discountTotal = pricingReady ? Number(pricing.discount_total) : 0;
@@ -326,6 +335,9 @@ export default function POSPage() {
       ...tenders.map(tender => tender.method === 'gift_card'
         // The card is the tender; the drawer account only files the payment record.
         ? { payment_method: 'gift_card', amount: Number(tender.amount), financial_account_id: financialAccountId, method_reference: tender.code?.trim() ?? '' }
+        // Points are the tender too; the drawer account only files the record.
+        : tender.method === 'reward_points'
+        ? { payment_method: 'reward_points', amount: Number(tender.amount), financial_account_id: financialAccountId }
         : { payment_method: tender.method, amount: Number(tender.amount), financial_account_id: tender.account?.id ?? '' })];
   }, [timing, primaryAmount, pricingReady, pricing, paymentMethod, financialAccountId, tenders]);
 
@@ -356,9 +368,24 @@ export default function POSPage() {
         serials: c.isSerialized ? c.serials : undefined };
     }),
     payments: paymentsFor(),
+    ...(couponCode ? { coupon_code: couponCode } : {}),
     ...(timing === 'full' ? {} : { payment_arrangement: arrangement(), due_reminders_enabled: reminders }),
-   
-  }), [branchId, warehouseId, cashierShiftId, customer, cart, paymentsFor, timing, arrangement, reminders]);
+
+  }), [branchId, warehouseId, cashierShiftId, customer, cart, paymentsFor, couponCode, timing, arrangement, reminders]);
+
+  // The customer's spendable points, shown when paying with them. A 404/403
+  // (loyalty off, no permission) just hides the balance.
+  const usesPoints = tenders.some(tender => tender.method === 'reward_points');
+  useEffect(() => {
+    if (!usesPoints || !customer?.id || points?.customerId === customer.id) return;
+    let active = true;
+    void apiFetch(`/api/v1/customers/${customer.id}/points`).then(async response => {
+      if (!response.ok || !active) return;
+      const data = await response.json();
+      setPoints({ customerId: customer.id, points: Number(data.points), next_expiry: data.next_expiry ?? null });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [usesPoints, customer?.id, points?.customerId]);
 
   /** What is wrong with the sale before it can be sent, or null. */
   const saleProblem = useCallback((): string | null => {
@@ -376,6 +403,8 @@ export default function POSPage() {
     if (payments.length && !financialAccountId) return t('err.account');
     if (payments.some(payment => !payment.financial_account_id || toPaisa(payment.amount) === null || payment.amount <= 0
         || (payment.payment_method === 'gift_card' && !('method_reference' in payment && payment.method_reference)))) return t('err.tenders');
+    if (payments.some(payment => payment.payment_method === 'reward_points') && (!customer
+        || payments.some(payment => payment.payment_method === 'reward_points' && !Number.isInteger(payment.amount)))) return t('err.points');
     if (remainingPaisa === null) return t('err.tenders');
     if (timing === 'full' && remainingPaisa !== BigInt(0)) return t('err.tenders');
     if (timing === 'part' && (remainingPaisa <= BigInt(0) || remainingPaisa >= grandPaisa)) return t('err.part_amount');
@@ -486,6 +515,8 @@ export default function POSPage() {
   const cashDue = paymentMethod === 'cash' ? (primaryAmount === '' ? grandTotal : Number(primaryAmount)) : 0;
   const changeDue = cashReceived !== '' && Number.isFinite(cashReceivedNumber) ? cashReceivedNumber - cashDue : null;
 
+  if (!online) return <OfflineSaleScreen />;
+
   return (
     <fieldset disabled={posting} className="min-w-0 space-y-4 pb-28 md:pb-4">
       {postedSale ? (
@@ -515,6 +546,9 @@ export default function POSPage() {
           </span>
         </p>
       </div>
+
+      <OfflineTillPanel branchId={branchId} warehouseId={warehouseId} canRegister={canRegisterTill}
+        cashAccountId={financialAccounts.find(account => account.id === financialAccountId)?.account_type === 'cash' ? financialAccountId : ''} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left: product search + cart */}
@@ -705,10 +739,23 @@ export default function POSPage() {
                   <dt className="text-muted-foreground">{t('subtotal')}</dt>
                   <dd className="tabular-nums">{f.money(subtotal)}</dd>
                 </div>
-                {discountTotal > 0 ? (
+                {(() => {
+                  // The server's discount total includes the coupon; the coupon has its own row below.
+                  const couponPaisa = pricingReady && pricing!.coupon ? toPaisa(Number(pricing!.coupon.discount).toFixed(2)) ?? BigInt(0) : BigInt(0);
+                  const linePaisa = (pricingReady ? toPaisa(Number(pricing!.discount_total).toFixed(2)) ?? BigInt(0) : BigInt(0)) - couponPaisa;
+                  if (discountTotal <= 0 || linePaisa <= BigInt(0)) return null;
+                  const p = percentText(linePaisa, toPaisa(Number(pricing!.subtotal).toFixed(2)) ?? BigInt(0));
+                  return (
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">{t('discount_total')}</dt>
+                      <dd className="tabular-nums">− {f.money(fromPaisa(linePaisa))}{p ? ` (${p})` : ''}</dd>
+                    </div>
+                  );
+                })()}
+                {pricingReady && pricing!.coupon ? (
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">{t('discount_total')}</dt>
-                    <dd className="tabular-nums">− {f.money(discountTotal)}{(() => { const p = pricingReady ? percentText(toPaisa(Number(pricing!.discount_total).toFixed(2)) ?? BigInt(0), toPaisa(Number(pricing!.subtotal).toFixed(2)) ?? BigInt(0)) : null; return p ? ` (${p})` : ''; })()}</dd>
+                    <dt className="text-muted-foreground">{t('coupon_line', { code: pricing!.coupon.code })}</dt>
+                    <dd className="tabular-nums">− {f.money(pricing!.coupon.discount)}</dd>
                   </div>
                 ) : null}
                 <div className="flex justify-between">
@@ -723,7 +770,20 @@ export default function POSPage() {
 
               <div className="space-y-3 pt-2 border-t">
                 {cart.length > 0 && !pricingReady && !pricingError ? <p role="status" className="text-sm text-muted-foreground">{t('pricing_wait')}</p> : null}
-                {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button></div> : null}
+                {pricingError ? <div role="alert" className="space-y-2 rounded-md border border-destructive/30 bg-destructive/10 p-2.5 text-sm"><p>{t('pricing_failed', { reason: pricingError })}</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPricingAttempt(value => value + 1)}>{t('pricing_retry')}</Button>{couponCode ? <Button type="button" variant="outline" onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button> : null}</div></div> : null}
+                <form className="space-y-1.5" onSubmit={e => { e.preventDefault(); setCouponCode(couponInput.trim().toUpperCase()); }}>
+                  <Label htmlFor="coupon-code">{t('coupon_label')}</Label>
+                  <div className="flex gap-2">
+                    <Input id="coupon-code" autoComplete="off" className="h-11 flex-1 text-base uppercase" value={couponInput} disabled={posting} aria-describedby="coupon-status"
+                      onChange={e => setCouponInput(e.target.value)} />
+                    {couponCode
+                      ? <Button type="button" variant="outline" className="min-h-11" disabled={posting} onClick={() => { setCouponCode(''); setCouponInput(''); }}>{t('coupon_remove')}</Button>
+                      : <Button type="submit" variant="outline" className="min-h-11" disabled={posting || !couponInput.trim()}>{t('coupon_apply')}</Button>}
+                  </div>
+                  <p id="coupon-status" role="status" className="text-sm text-muted-foreground">
+                    {couponCode && pricingReady && pricing!.coupon ? t('coupon_applied', { name: pricing!.coupon.name, amount: f.money(pricing!.coupon.discount) }) : couponCode && !pricingError ? t('coupon_checking') : ''}
+                  </p>
+                </form>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1">
                     <EntityPicker label={t(timing === 'full' ? 'customer_label' : 'customer_label_required')} endpoint="/api/v1/customers" value={customer} onChange={setCustomer} disabled={posting}
@@ -891,10 +951,16 @@ export default function POSPage() {
                         <Label htmlFor={`tender-code-${tender.id}`}>{t('split_gift_code')}</Label>
                         <Input id={`tender-code-${tender.id}`} autoComplete="off" className="h-11 text-base" value={tender.code ?? ''} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, code: e.target.value } : row))} />
                       </>
+                    ) : tender.method === 'reward_points' ? (
+                      <p role="status" className="text-sm text-muted-foreground">
+                        {!customer ? t('points_need_customer')
+                          : points?.customerId === customer.id ? t('points_balance', { points: points.points, value: f.money(points.points) })
+                          : t('points_loading')}
+                      </p>
                     ) : (
                       <EntityPicker label={t('split_account', { n: index + 1 })} endpoint={`/api/v1/financial-accounts?is_active=true${branchId ? `&branch_id=${branchId}` : ''}`} serverSearch={false} value={tender.account} onChange={account => setTenders(current => current.map(row => row.id === tender.id ? { ...row, account } : row))} />
                     )}
-                    <Label htmlFor={`tender-amount-${tender.id}`}>{t('split_amount')}</Label>
+                    <Label htmlFor={`tender-amount-${tender.id}`}>{t(tender.method === 'reward_points' ? 'split_points' : 'split_amount')}</Label>
                     <Input id={`tender-amount-${tender.id}`} type="number" inputMode="decimal" min="0" step="any" className="h-11 text-base tabular-nums" value={tender.amount} onChange={e => setTenders(current => current.map(row => row.id === tender.id ? { ...row, amount: e.target.value } : row))} />
                     <Button variant="outline" type="button" onClick={() => setTenders(current => current.filter(row => row.id !== tender.id))}>{t('split_remove', { n: index + 1 })}</Button>
                   </div>

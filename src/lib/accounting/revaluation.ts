@@ -1,141 +1,122 @@
 // src/lib/accounting/revaluation.ts
 // Multi-currency period-end revaluation per §20.D12.
-// Revalues open foreign-currency AR/AP/advance balances at the period-end rate.
-// Posts unrealized gain/loss to exchange_gain_loss_account_id.
-// The revaluation journal is reversed at the start of the next period.
+//
+// For one foreign currency, every account that holds money in it -- the
+// company's foreign cash/bank accounts and the receivable, payable and advance
+// control accounts -- is brought to the period-end rate:
+//
+//   foreign balance  Σ (debit − credit) ÷ rate, over the account's lines in
+//                    entries made in that currency (lines keep base amounts and
+//                    the entry keeps its rate);
+//   book value       Σ (debit − credit) in base currency over the same lines,
+//                    plus every earlier revaluation of the account;
+//   adjustment       foreign balance × period-end rate − book value,
+//
+// posted Dr/Cr the account against the exchange gain/loss account. Because
+// earlier revaluations are part of the book value, each run trues the account
+// up to the new rate: nothing needs reversing at the start of the next period,
+// and a run repeated at the same rate posts nothing. This used to create only
+// a record, with no journal entry at all.
 
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { postJournalEntry, type JournalLineInput } from '@/domain/commands/m4/PostJournalEntry';
+import { DomainError } from '@/lib/errors/codes';
 
 export interface RevaluationResult {
   revaluationId: string;
   journalEntryId: string | null;
-  totalUnrealizedGain: number;
-  totalUnrealizedLoss: number;
+  totalUnrealizedGain: string;
+  totalUnrealizedLoss: string;
   accountsRevalued: number;
   periodEndRate: number;
   currencyCode: string;
 }
 
-/**
- * Runs period-end revaluation for a specific currency.
- * For each open AR/AP account in the foreign currency:
- *   1. Calculate book value in base currency at the original rate
- *   2. Calculate revalued amount at the period-end rate
- *   3. Post the difference as unrealized gain/loss
- *
- * The revaluation journal is reversed at the start of the next period
- * (call reverseRevaluation() to create the reversal).
- */
 export async function runRevaluation(params: {
   companyId: string;
   currencyCode: string;
   periodEndDate: Date;
-  periodEndRate: number; // 1 unit of foreign currency = X BDT
+  periodEndRate: number; // 1 unit of foreign currency = X base currency
   createdBy: string;
-}): Promise<RevaluationResult> {
-  const { companyId, currencyCode, periodEndDate, periodEndRate, createdBy } = params;
+}, tx: Prisma.TransactionClient = db as unknown as Prisma.TransactionClient, correlationId = 'revaluation'): Promise<RevaluationResult> {
+  const { companyId, currencyCode, periodEndDate, createdBy } = params;
+  const rate = new Prisma.Decimal(params.periodEndRate);
+  if (rate.lte(0)) throw new DomainError('VALIDATION_FAILED', 'The period-end rate must be positive', {}, 400);
 
-  // Get the base currency
-  const company = await db.company.findUnique({
-    where: { id: companyId },
-    select: { baseCurrencyCode: true },
-  });
-  if (!company) throw new Error('Company not found');
-  if (company.baseCurrencyCode === currencyCode) {
-    throw new Error('Cannot revalue base currency');
+  const company = await tx.company.findUnique({ where: { id: companyId }, select: { baseCurrencyCode: true } });
+  if (!company) throw new DomainError('RESOURCE_NOT_FOUND', 'Company not found', {}, 404);
+  if (company.baseCurrencyCode === currencyCode) throw new DomainError('VALIDATION_FAILED', 'The base currency is not revalued', {}, 400);
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId } });
+  if (!policy?.exchangeGainLossAccountId) {
+    throw new DomainError('VALIDATION_FAILED', 'Set the exchange gain/loss account in accounting policies first', {}, 409);
   }
 
-  // Get financial accounts in this currency
-  const accounts = await db.financialAccount.findMany({
-    where: { companyId, currencyCode, isActive: true },
-    select: { id: true, name: true, chartOfAccountId: true, accountType: true },
-  });
+  const foreignCash = await tx.financialAccount.findMany({ where: { companyId, currencyCode }, select: { chartOfAccountId: true } });
+  const accountIds = [...new Set([
+    ...foreignCash.map(a => a.chartOfAccountId),
+    policy.arAccountId, policy.apAccountId, policy.customerAdvanceAccountId, policy.supplierAdvanceAccountId,
+  ])];
 
-  let totalGain = 0;
-  let totalLoss = 0;
-
-  // For each account, calculate the unrealized gain/loss
-  // (In production: query journal_lines for the account's open balance in the foreign currency,
-  //  multiply by periodEndRate, compare to the book value at original rates)
-  // For now: simplified — actual implementation would iterate journal lines
-
-  for (const account of accounts) {
-    // Placeholder: in production, calculate actual balance difference
-    // const bookValueBase = await calculateBookValueBase(account.id, periodEndDate);
-    // const revaluedBase = bookValueBase * (periodEndRate / originalRate);
-    // const diff = revaluedBase - bookValueBase;
-    // if (diff > 0) totalGain += diff; else totalLoss += Math.abs(diff);
-  }
-
-  // Create revaluation record
-  const revaluation = await db.currencyRevaluation.create({
-    data: {
-      companyId,
-      revaluationDate: periodEndDate,
-      totalUnrealizedGain: totalGain,
-      totalUnrealizedLoss: totalLoss,
-      periodEndRate,
-      currencyCode,
-      createdBy,
+  // Lines in this currency up to the period end, and every earlier revaluation of it.
+  const earlier = await tx.currencyRevaluation.findMany({ where: { companyId, currencyCode, journalEntryId: { not: null } }, select: { journalEntryId: true } });
+  const earlierEntryIds = earlier.map(r => r.journalEntryId!);
+  const lines = await tx.journalLine.findMany({
+    where: {
+      companyId, chartOfAccountId: { in: accountIds },
+      journalEntry: { status: { in: ['posted', 'reversed'] }, entryDate: { lte: periodEndDate },
+        OR: [{ currencyCode }, { id: { in: earlierEntryIds.length ? earlierEntryIds : ['-'] } }] },
     },
+    select: { chartOfAccountId: true, debitBase: true, creditBase: true, journalEntryId: true, journalEntry: { select: { currencyCode: true, exchangeRate: true } } },
   });
 
-  // In production: post journal entry with unrealized gain/loss lines
-  // For each account with a gain: Dr Account (foreign), Cr Exchange Gain/Loss
-  // For each account with a loss: Dr Exchange Gain/Loss, Cr Account (foreign)
+  const foreign = new Map<string, Prisma.Decimal>();
+  const book = new Map<string, Prisma.Decimal>();
+  const add = (m: Map<string, Prisma.Decimal>, k: string, v: Prisma.Decimal) => m.set(k, (m.get(k) ?? new Prisma.Decimal(0)).plus(v));
+  for (const line of lines) {
+    const base = new Prisma.Decimal(line.debitBase).minus(line.creditBase);
+    add(book, line.chartOfAccountId, base);
+    if (line.journalEntry.currencyCode === currencyCode && !earlierEntryIds.includes(line.journalEntryId)) {
+      add(foreign, line.chartOfAccountId, base.div(line.journalEntry.exchangeRate));
+    }
+  }
+
+  let gain = new Prisma.Decimal(0);
+  let loss = new Prisma.Decimal(0);
+  const journal: JournalLineInput[] = [];
+  for (const accountId of accountIds) {
+    const target = (foreign.get(accountId) ?? new Prisma.Decimal(0)).mul(rate).toDecimalPlaces(2);
+    const diff = target.minus((book.get(accountId) ?? new Prisma.Decimal(0)).toDecimalPlaces(2));
+    if (diff.isZero()) continue;
+    const memo = `${currencyCode} revaluation at ${rate.toString()}`;
+    if (diff.gt(0)) {
+      journal.push({ chartOfAccountId: accountId, debit: diff, credit: 0, memo }, { chartOfAccountId: policy.exchangeGainLossAccountId, debit: 0, credit: diff, memo });
+      gain = gain.plus(diff);
+    } else {
+      journal.push({ chartOfAccountId: accountId, debit: 0, credit: diff.abs(), memo }, { chartOfAccountId: policy.exchangeGainLossAccountId, debit: diff.abs(), credit: 0, memo });
+      loss = loss.plus(diff.abs());
+    }
+  }
+
+  const revaluation = await tx.currencyRevaluation.create({
+    data: { companyId, revaluationDate: periodEndDate, totalUnrealizedGain: gain, totalUnrealizedLoss: loss, periodEndRate: rate, currencyCode, createdBy },
+  });
+  let journalEntryId: string | null = null;
+  if (journal.length) {
+    const je = await postJournalEntry(tx, {
+      companyId, entryDate: periodEndDate, postingKind: 'fx_revaluation', sourceType: 'currency_revaluation', sourceId: revaluation.id,
+      description: `${currencyCode} revaluation at ${rate.toString()} on ${periodEndDate.toISOString().slice(0, 10)}`,
+      currencyCode: company.baseCurrencyCode, exchangeRate: 1, createdBy, lines: journal,
+    }, correlationId);
+    journalEntryId = je.journalEntryId;
+    await tx.currencyRevaluation.update({ where: { id: revaluation.id }, data: { journalEntryId } });
+  }
 
   return {
-    revaluationId: revaluation.id,
-    journalEntryId: revaluation.journalEntryId,
-    totalUnrealizedGain: totalGain,
-    totalUnrealizedLoss: totalLoss,
-    accountsRevalued: accounts.length,
-    periodEndRate,
-    currencyCode,
+    revaluationId: revaluation.id, journalEntryId,
+    totalUnrealizedGain: gain.toFixed(2), totalUnrealizedLoss: loss.toFixed(2),
+    accountsRevalued: accountIds.length, periodEndRate: params.periodEndRate, currencyCode,
   };
-}
-
-/**
- * Reverses a period-end revaluation at the start of the next period.
- * Creates a reversal journal entry that exactly negates the original.
- * This prevents double-counting when a new revaluation is posted at the next period end.
- */
-export async function reverseRevaluation(
-  revaluationId: string,
-  reversedBy: string,
-): Promise<{ reversalRevaluationId: string }> {
-  const original = await db.currencyRevaluation.findUnique({
-    where: { id: revaluationId },
-  });
-  if (!original) throw new Error('Revaluation not found');
-  if (original.reversedAt) throw new Error('Revaluation already reversed');
-
-  // Create reversal record
-  const reversal = await db.currencyRevaluation.create({
-    data: {
-      companyId: original.companyId,
-      revaluationDate: new Date(), // reversal date = start of next period
-      reversalOfId: original.id,
-      totalUnrealizedGain: -parseFloat(String(original.totalUnrealizedGain)), // negate
-      totalUnrealizedLoss: -parseFloat(String(original.totalUnrealizedLoss)),
-      periodEndRate: parseFloat(String(original.periodEndRate)),
-      currencyCode: original.currencyCode,
-      createdBy: reversedBy,
-    },
-  });
-
-  // Mark original as reversed
-  await db.currencyRevaluation.update({
-    where: { id: revaluationId },
-    data: {
-      reversedAt: new Date(),
-      reversalJournalEntryId: reversal.journalEntryId,
-    },
-  });
-
-  // In production: post reversal journal entry (swap Dr/Cr from original)
-
-  return { reversalRevaluationId: reversal.id };
 }
 
 /**

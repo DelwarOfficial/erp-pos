@@ -2,7 +2,7 @@
 // Per §20.0 Control #7 + #10 — maker ≠ checker enforcement.
 // Per §21.14 — high-risk financial action requires MFA re-verification.
 //
-// CSRF protection is enforced globally by src/middleware.ts (Origin/Referer
+// CSRF protection is enforced globally by src/proxy.ts (Origin/Referer
 // match OR X-CSRF-Token double-submit) for all cookie-auth mutations, so this
 // handler does not re-implement the check.
 

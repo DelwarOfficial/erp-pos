@@ -77,7 +77,7 @@ describe('Security: Immutable Posted Records', () => {
 
 describe('Security: CSRF Protection', () => {
   it('CSRF middleware exists and blocks cross-origin mutations', () => {
-    const middleware = readFileSync('src/middleware.ts', 'utf8');
+    const middleware = readFileSync('src/proxy.ts', 'utf8');
     expect(middleware).toContain('CSRF_TOKEN_INVALID');
     expect(middleware).toContain('Origin');
     expect(middleware).toContain('EXEMPT_PATHS');
@@ -110,7 +110,7 @@ describe('Security: CSP Headers', () => {
     const nonces = new Set(Array.from({ length: 100 }, () => newNonce()));
     expect(nonces.size).toBe(100);
     for (const nonce of nonces) expect(Buffer.from(nonce, 'base64')).toHaveLength(16);
-    const middleware = readFileSync('src/middleware.ts', 'utf8');
+    const middleware = readFileSync('src/proxy.ts', 'utf8');
     expect(middleware).toContain('withNonce(req)');
     expect(readFileSync('src/app/layout.tsx', 'utf8')).toContain('x-nonce');
     // No second, static policy that would still allow inline script.

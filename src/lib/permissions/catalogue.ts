@@ -99,6 +99,7 @@ export const PERMISSIONS: PermissionSpec[] = [
   { code: 'cheque.clear', module: 'payment', description: 'Clear a cheque' },
   { code: 'cheque.bounce', module: 'payment', description: 'Bounce a cheque' },
   { code: 'gift_card.issue', module: 'gift_card', description: 'Issue a gift card' },
+  { code: 'coupon.manage', module: 'loyalty', description: 'Create and switch off coupons' },
   { code: 'gift_card.redeem', module: 'gift_card', description: 'Redeem a gift card' },
 
   // Accounting (M4)

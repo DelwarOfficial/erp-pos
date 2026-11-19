@@ -1,10 +1,15 @@
 // public/sw.js — Service Worker for PWA offline POS capabilities.
 // Per §10 PWA requirements:
 //   - Caches app shell for offline navigation
-//   - Queues non-GET mutations when offline and replays on reconnect
+//   - Never fakes a reply to a write made offline: it fails with 503 OFFLINE,
+//     so the page knows nothing was saved. Offline cash sales are queued by
+//     the New Sale page itself (src/lib/offline/posQueue.ts) and sent in order.
+//     (This used to answer 202 "queued" and replay any write later, so a sale
+//     looked saved to the till while it was not, and was replayed blind.)
+//   - Offline reload of New Sale opens the cached New Sale page
 //   - Network-first for navigation, cache-first for static assets
 
-const CACHE_VERSION = 'erp-pos-v2';
+const CACHE_VERSION = 'erp-pos-v3';
 const APP_SHELL = [
   '/',
   '/login',
@@ -52,20 +57,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Non-GET, same-origin: queue when offline (Background Sync API)
+  // Non-GET, same-origin: straight to the network; offline is a plain failure.
   if (request.method !== 'GET' && url.origin === self.location.origin) {
     event.respondWith(
-      fetch(request).catch(async () => {
-        // Offline — queue in IndexedDB and register for background sync
-        await queueMutation(request);
-        if (self.registration && 'sync' in self.registration) {
-          try { await self.registration.sync.register('erp-pos-outbox'); }
-          catch { /* Background Sync not supported — will retry on next navigation */ }
-        }
-        return new Response(JSON.stringify({
-          error: { code: 'OFFLINE_QUEUED', message: 'Mutation queued — will sync when online' },
-        }), { status: 202, headers: { 'Content-Type': 'application/json' } });
-      })
+      fetch(request).catch(() => new Response(JSON.stringify({
+        error: { code: 'OFFLINE', message: 'You are offline. Nothing was saved.' },
+      }), { status: 503, headers: { 'Content-Type': 'application/json' } }))
     );
     return;
   }
@@ -83,7 +80,16 @@ self.addEventListener('fetch', (event) => {
   // Navigation: network-first, fall back to cached /dashboard for offline POS
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/dashboard').then((r) => r || caches.match('/')))
+      fetch(request).then((response) => {
+        // Keep the latest New Sale page for an offline reload.
+        if (response.ok && url.pathname === '/dashboard/pos') {
+          const c = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put('/dashboard/pos', c));
+        }
+        return response;
+      }).catch(() => caches.match(url.pathname === '/dashboard/pos' ? '/dashboard/pos' : request)
+        .then((r) => r || caches.match('/dashboard'))
+        .then((r) => r || caches.match('/')))
     );
     return;
   }

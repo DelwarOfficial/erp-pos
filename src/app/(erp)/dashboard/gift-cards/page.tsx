@@ -13,6 +13,7 @@ import { Loader2, Gift, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
 import { FeatureOffError, FeatureOffNotice, throwIfFeatureOff } from '@/components/shared/FeatureOff';
+import { CouponsPanel } from '@/components/loyalty/CouponsPanel';
 
 interface GiftCard {
   id: string;
@@ -180,6 +181,8 @@ export default function GiftCardsPage() {
           )}
         </CardContent>
       </Card>
+
+      {!featureOff ? <CouponsPanel /> : null}
     </div>
   );
 }

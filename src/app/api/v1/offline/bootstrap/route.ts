@@ -1,9 +1,16 @@
 // POST /api/v1/offline/bootstrap
 // Device bootstrap — returns signed catalogue/prices/tax snapshot + leases.
 // Per §20.D07: signed snapshot for offline POS pilot.
+//
+// Each product carries the server's own line totals for 1..OFFLINE_MAX_QTY
+// units at its selling price, tax included, worked out by priceSaleItem exactly
+// as posting does. The till adds these up for an offline cash sale; it never
+// works out tax itself. Needs product.read (a cashier has it): the snapshot is
+// the catalogue the till could already read online.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext } from '@/lib/db/transaction';
@@ -12,6 +19,8 @@ import { barcodeSigningKey } from '@/domain/invariants/barcode';
 import { requireFeatureFlag } from '@/lib/featureFlags';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { priceSaleItem } from '@/domain/tax/priceSaleItem';
+import { OFFLINE_MAX_QTY } from '@/lib/offline/syncLimits';
 
 const BootstrapSchema = z.object({
   device_id: z.string().uuid(),
@@ -22,7 +31,7 @@ export async function POST(req: NextRequest) {
   const correlationId = getCorrelationId(req);
   try {
     const auth = await authenticateRequest();
-  await requirePermission(auth, 'device.read');
+    await requirePermission(auth, 'product.read');
     // Offline POS is a pilot: a tenant without the flag must not reach it.
     await runInTenantContext(auth.ctx, () => requireFeatureFlag('offline_pos_enabled'));
     const body = BootstrapSchema.parse(await req.json());
@@ -40,17 +49,18 @@ export async function POST(req: NextRequest) {
       // Build snapshot: active products with prices + tax codes
       const products = await db.product.findMany({
         where: { companyId: auth.companyId, isActive: true, deletedAt: null, productType: { in: ['standard', 'combo'] } },
-        select: {
-          id: true, name: true, code: true,
-          defaultPrice: true, isSerialized: true,
+        include: {
           unit: { select: { code: true } },
           barcodes: { where: { isPrimary: true }, select: { code: true, symbology: true } },
+          defaultTaxCode: { include: { components: { include: { taxComponent: true } } } },
         },
+        orderBy: { name: 'asc' },
         take: 200, // offline.stock_budget_max_products default
       });
       return { device, products };
     });
 
+    const now = new Date();
     const snapshot = {
       schema_version: '1.0',
       company_id: auth.companyId,
@@ -64,6 +74,12 @@ export async function POST(req: NextRequest) {
         is_serialized: p.isSerialized,
         unit_code: p.unit.code,
         primary_barcode: p.barcodes[0]?.code ?? null,
+        // line_totals[n - 1] = what n units cost, tax included, as posting computes it.
+        line_totals: p.isSerialized ? [] : Array.from({ length: OFFLINE_MAX_QTY }, (_, i) => {
+          const line = priceSaleItem(p, { qty: i + 1, unitPrice: Number(p.defaultPrice) }, now);
+          // Exact, not rounded: posting sums unrounded line totals, and so must the till.
+          return new Prisma.Decimal(line.lineTotal).toString();
+        }),
       })),
     };
 

@@ -773,6 +773,30 @@
     "exception": null
   },
   {
+    "file": "v1/coupons/[id]/route.ts",
+    "method": "PATCH",
+    "permissions": [
+      "coupon.manage"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/coupons/route.ts",
+    "method": "GET",
+    "permissions": [
+      "sale.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/coupons/route.ts",
+    "method": "POST",
+    "permissions": [
+      "coupon.manage"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/courier-settlements/route.ts",
     "method": "GET",
     "permissions": [
@@ -807,6 +831,14 @@
     "method": "POST",
     "permissions": [
       "payment.pay.branch"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/customers/[id]/points/route.ts",
+    "method": "GET",
+    "permissions": [
+      "customer.read"
     ],
     "exception": null
   },
@@ -935,6 +967,22 @@
     "method": "POST",
     "permissions": [
       "delivery.create"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/devices/route.ts",
+    "method": "GET",
+    "permissions": [
+      "device.read"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/devices/route.ts",
+    "method": "POST",
+    "permissions": [
+      "device.register"
     ],
     "exception": null
   },
@@ -1291,6 +1339,14 @@
     "exception": null
   },
   {
+    "file": "v1/journal-entries/[id]/reverse/route.ts",
+    "method": "POST",
+    "permissions": [
+      "journal.reverse"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/journal-entries/[id]/route.ts",
     "method": "GET",
     "permissions": [
@@ -1310,7 +1366,8 @@
     "file": "v1/journal-entries/route.ts",
     "method": "POST",
     "permissions": [
-      "journal.post"
+      "journal.post",
+      "approval.resolve"
     ],
     "exception": null
   },
@@ -1409,7 +1466,7 @@
     "file": "v1/offline/bootstrap/route.ts",
     "method": "POST",
     "permissions": [
-      "device.read"
+      "product.read"
     ],
     "exception": null
   },
@@ -1488,6 +1545,15 @@
     "exception": null
   },
   {
+    "file": "v1/payroll-runs/[id]/pay/route.ts",
+    "method": "POST",
+    "permissions": [
+      "payroll.approve",
+      "payment.pay.branch"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/payroll-runs/route.ts",
     "method": "GET",
     "permissions": [
@@ -1500,15 +1566,6 @@
     "method": "POST",
     "permissions": [
       "payroll.post"
-    ],
-    "exception": null
-  },
-  {
-    "file": "v1/payroll-runs/[id]/pay/route.ts",
-    "method": "POST",
-    "permissions": [
-      "payroll.approve",
-      "payment.pay.branch"
     ],
     "exception": null
   },
@@ -1602,6 +1659,14 @@
     "exception": null
   },
   {
+    "file": "v1/purchases/[id]/invoice/route.ts",
+    "method": "POST",
+    "permissions": [
+      "purchase.create"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/purchases/[id]/receivings/route.ts",
     "method": "GET",
     "permissions": [
@@ -1614,14 +1679,6 @@
     "method": "POST",
     "permissions": [
       "purchase.receive"
-    ],
-    "exception": null
-  },
-  {
-    "file": "v1/purchases/[id]/invoice/route.ts",
-    "method": "POST",
-    "permissions": [
-      "purchase.create"
     ],
     "exception": null
   },
@@ -2113,19 +2170,19 @@
     "exception": null
   },
   {
-    "file": "v1/warranty-claims/route.ts",
-    "method": "POST",
-    "permissions": [
-      "warranty.fulfill"
-    ],
-    "exception": null
-  },
-  {
     "file": "v1/warranty-claims/[id]/route.ts",
     "method": "POST",
     "permissions": [
       "warranty.fulfill",
       "approval.resolve"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/warranty-claims/route.ts",
+    "method": "POST",
+    "permissions": [
+      "warranty.fulfill"
     ],
     "exception": null
   },

@@ -1,25 +1,36 @@
 # docker/docker-compose.yml
-# Local development: PostgreSQL 16, Redis, MinIO (S3-compatible)
-
-version: '3.8'
+# Local development: MariaDB 11.8 (the production database), Redis, MinIO (S3-compatible).
+#
+# This used to start PostgreSQL 16, which the app no longer runs on: the Prisma
+# schema is prisma/mariadb/schema.prisma (package.json "prisma.schema") and the
+# migrations in prisma/mariadb/migrations are MariaDB SQL.
+#
+# First start, then apply migrations from the host:
+#   docker compose -f docker/docker-compose.yml up -d mariadb redis minio
+#   DATABASE_URL="mysql://app:app_password_dev@127.0.0.1:3306/erp_pos" npx prisma migrate deploy
+#
+# The passwords below are development defaults only. Production refuses to
+# start with published or placeholder secrets (src/lib/config/productionGuards.ts).
 
 services:
-  postgres:
-    image: postgres:16-alpine
+  mariadb:
+    image: mariadb:11.8
     environment:
-      POSTGRES_DB: erp_pos
-      POSTGRES_USER: app_role
-      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-app_password_dev}
+      MARIADB_DATABASE: erp_pos
+      MARIADB_USER: app
+      MARIADB_PASSWORD: ${APP_DB_PASSWORD:-app_password_dev}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root_password_dev}
+    # The app sets each transaction's isolation level itself (src/lib/db/transaction.ts).
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init-roles.sql:/docker-entrypoint-initdb.d/init-roles.sql
+      - mariadbdata:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app_role -d erp_pos"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -52,12 +63,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://app_role:${APP_DB_PASSWORD:-app_password_dev}@postgres:5432/erp_pos?schema=public
+      DATABASE_URL: mysql://app:${APP_DB_PASSWORD:-app_password_dev}@mariadb:3306/erp_pos
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-dev-encryption-key}
     depends_on:
-      postgres:
+      mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -67,15 +78,15 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.worker
     environment:
-      DATABASE_URL: postgresql://app_role:${APP_DB_PASSWORD:-app_password_dev}@postgres:5432/erp_pos?schema=public
+      DATABASE_URL: mysql://app:${APP_DB_PASSWORD:-app_password_dev}@mariadb:3306/erp_pos
       REDIS_URL: redis://redis:6379
     depends_on:
-      postgres:
+      mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
 
 volumes:
-  pgdata:
+  mariadbdata:
   redisdata:
   miniodata:

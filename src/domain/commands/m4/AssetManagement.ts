@@ -231,50 +231,46 @@ export async function postDepreciation(
   const currencyCode = input.currencyCode ?? 'BDT';
   const exchangeRate = input.exchangeRate ?? 1.0;
 
-  // Compute depreciation amount for this period
-  const purchaseCost = parseFloat(asset.purchaseCost.toString());
-  const salvageValue = parseFloat(asset.salvageValue.toString());
-  const currentAccum = parseFloat(asset.accumulatedDepreciation.toString());
-  const currentNbv = parseFloat(asset.netBookValue.toString());
-  const depreciableBase = Math.max(0, purchaseCost - salvageValue);
-
-  let depreciationAmount: number;
-  const method = asset.depreciationMethod;
-
-  if (method === 'straight_line') {
-    // Monthly depreciation = (cost - salvage) / useful_life_months
-    const monthlyDep = depreciableBase / asset.usefulLifeMonths;
-    // Period length in months (approximate by days / 30)
-    const msInPeriod = input.periodEnd.getTime() - input.periodStart.getTime();
-    const months = Math.max(1, Math.round(msInPeriod / (1000 * 60 * 60 * 24 * 30)));
-    depreciationAmount = monthlyDep * months;
-  } else if (method === 'declining_balance') {
-    // depreciation_rate is % per year
-    const ratePerYear = parseFloat((asset.depreciationRate ?? 0).toString()) / 100;
-    const msInPeriod = input.periodEnd.getTime() - input.periodStart.getTime();
-    const years = msInPeriod / (1000 * 60 * 60 * 24 * 365);
-    depreciationAmount = currentNbv * ratePerYear * years;
-  } else {
-    // units_of_production — fall back to straight-line pro-rata (no usage tracking)
-    const monthlyDep = depreciableBase / asset.usefulLifeMonths;
-    const msInPeriod = input.periodEnd.getTime() - input.periodStart.getTime();
-    const months = Math.max(1, Math.round(msInPeriod / (1000 * 60 * 60 * 24 * 30)));
-    depreciationAmount = monthlyDep * months;
+  // One run per stretch of time: a period that overlaps one already
+  // depreciated is refused. Repeating a month used to post it twice, stopped
+  // only by the salvage cap.
+  if (input.periodEnd < input.periodStart) throw new DomainError('VALIDATION_FAILED', 'The period ends before it starts', {}, 400);
+  await tx.$queryRaw`SELECT id FROM fixed_assets WHERE id = ${asset.id} AND company_id = ${input.companyId} FOR UPDATE`;
+  const overlap = await tx.fixedAssetDepreciation.findFirst({ where: { companyId: input.companyId, fixedAssetId: asset.id,
+    periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart } }, select: { periodStart: true, periodEnd: true } });
+  if (overlap) {
+    throw new DomainError('VALIDATION_FAILED', `This asset is already depreciated for ${overlap.periodStart.toISOString().slice(0, 10)} to ${overlap.periodEnd.toISOString().slice(0, 10)}`, {}, 409);
   }
 
-  // Cap so we never depreciate below salvage value
-  const remainingDepreciable = Math.max(0, depreciableBase - currentAccum);
-  depreciationAmount = Math.min(depreciationAmount, remainingDepreciable);
+  // Exact money (Decimal) and calendar months: the amount used to be floating
+  // point over "days / 30" months, and the asset kept the unrounded figure
+  // while the journal posted the rounded one, so the two drifted apart.
+  const D = Prisma.Decimal;
+  const purchaseCost = new D(asset.purchaseCost);
+  const salvageValue = new D(asset.salvageValue);
+  const currentAccum = new D(asset.accumulatedDepreciation);
+  const currentNbv = new D(asset.netBookValue);
+  const depreciableBase = D.max(0, purchaseCost.minus(salvageValue));
+  // Calendar months the period covers, counting both ends' months.
+  const months = (input.periodEnd.getUTCFullYear() - input.periodStart.getUTCFullYear()) * 12
+    + (input.periodEnd.getUTCMonth() - input.periodStart.getUTCMonth()) + 1;
 
-  if (depreciationAmount <= 0) {
-    // Mark fully depreciated if at salvage
-    if (currentNbv <= salvageValue + 0.01) {
-      await tx.fixedAsset.update({
-        where: { id: asset.id },
-        data: { status: 'fully_depreciated', updatedAt: new Date() },
-      });
-    }
-    throw new DomainError('VALIDATION_FAILED', 'Depreciation amount is zero — asset is fully depreciated', { current_nbv: currentNbv, salvage: salvageValue }, 409);
+  let amount: Prisma.Decimal;
+  if (asset.depreciationMethod === 'declining_balance') {
+    // depreciation_rate is % per year, applied to the book value
+    const ratePerYear = new D(asset.depreciationRate ?? 0).div(100);
+    amount = currentNbv.mul(ratePerYear).mul(months).div(12);
+  } else {
+    // straight line (units_of_production falls back to it: no usage tracking)
+    amount = depreciableBase.div(asset.usefulLifeMonths).mul(months);
+  }
+  // Never below salvage value; rounded once, and the rounded figure is what
+  // both the journal and the asset record.
+  const remainingDepreciable = D.max(0, depreciableBase.minus(currentAccum));
+  const depreciationAmount = D.min(amount, remainingDepreciable).toDecimalPlaces(2, D.ROUND_HALF_UP);
+
+  if (depreciationAmount.lte(0)) {
+    throw new DomainError('VALIDATION_FAILED', 'Depreciation amount is zero — asset is fully depreciated', { current_nbv: currentNbv.toFixed(2), salvage: salvageValue.toFixed(2) }, 409);
   }
 
   // Post journal: Dr Depreciation Expense, Cr Accumulated Depreciation
@@ -302,6 +298,9 @@ export async function postDepreciation(
     postingKind: 'asset_depreciation',
     sourceType: 'fixed_asset',
     sourceId: asset.id,
+    // One event per run: the asset id alone made every run after the first
+    // fail on the event key.
+    eventSourceId: `${asset.id}:depreciation:${input.periodStart.toISOString().slice(0, 10)}`,
     description: `Depreciation: ${asset.assetCode} — ${asset.name} (${input.periodStart.toISOString().slice(0, 10)} → ${input.periodEnd.toISOString().slice(0, 10)})`,
     currencyCode,
     exchangeRate,
@@ -309,8 +308,8 @@ export async function postDepreciation(
     lines,
   }, correlationId);
 
-  const newAccum = currentAccum + depreciationAmount;
-  const newNbv = purchaseCost - newAccum;
+  const newAccum = currentAccum.plus(depreciationAmount);
+  const newNbv = purchaseCost.minus(newAccum);
 
   // Record the depreciation run
   const depRun = await tx.fixedAssetDepreciation.create({
@@ -329,7 +328,7 @@ export async function postDepreciation(
   });
 
   // Update the asset's accum + NBV. Mark fully_depreciated if NBV hits salvage.
-  const newStatus = newNbv <= salvageValue + 0.01 ? 'fully_depreciated' : asset.status;
+  const newStatus = newNbv.lte(salvageValue) ? 'fully_depreciated' : asset.status;
   await tx.fixedAsset.update({
     where: { id: asset.id },
     data: {
@@ -509,6 +508,9 @@ export async function postAssetDisposal(
     postingKind: 'asset_disposal',
     sourceType: 'fixed_asset',
     sourceId: asset.id,
+    // Its own event key: the acquisition already used the asset id, so every
+    // disposal failed on it.
+    eventSourceId: `${asset.id}:disposal`,
     description: `Asset disposal: ${asset.assetCode} — ${asset.name} (${input.disposalMethod})`,
     currencyCode,
     exchangeRate,

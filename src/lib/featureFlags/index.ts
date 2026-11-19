@@ -52,7 +52,7 @@ export const FEATURE_FLAG_CATALOGUE: FeatureFlagSpec[] = [
   { key: 'loyalty_enabled', module: 'loyalty', description: 'Gift cards + reward points', defaultValue: false },
   { key: 'multi_currency_enabled', module: 'accounting', description: 'Multi-currency (non-BDT) — BDT-only by default', defaultValue: false },
   { key: 'import_csv_enabled', module: 'integration', description: 'CSV/Excel import jobs', defaultValue: false },
-  { key: 'offline_pos_enabled', module: 'offline', description: 'Offline-capable POS PWA (pilot only)', defaultValue: false },
+  { key: 'offline_pos_enabled', module: 'offline', description: 'Offline cash sales on registered tills', defaultValue: false },
   { key: 'quotation_enabled', module: 'sale', description: 'Quotation creation/management — B2B core', defaultValue: true },
   { key: 'multilingual_ui_enabled', module: 'i18n', description: 'bn-BD + en-BD locales both available', defaultValue: true },
   // Sales that leave money owing (pay part now / pay later). PostSale reads this
@@ -69,22 +69,16 @@ export const FEATURE_FLAG_CATALOGUE: FeatureFlagSpec[] = [
 // integration suite (gift-card issue, POS tender and void restore; delivery
 // create and transitions). Listing a module only allows a company to switch
 // it on; each stays off until someone does.
-//
-// Still NOT listed, so they cannot be switched on:
-//   accounting multi-currency (module 'accounting' is listed for the core
-//     ledger, but multi_currency_enabled is blocked separately below):
-//     revaluation posts no journal entry.
-//   offline: there is no offline POS client in the app.
 export const IMPLEMENTED_MODULES = new Set<string>([
   'core', 'identity', 'organization', 'catalogue', 'inventory', 'purchasing',
   'pos_online', 'payments', 'accounting', 'expenses', 'reports',
   'administration', 'integration', 'i18n', 'sale', // sale = quotation + credit sales
   'crm', 'hr', 'delivery', 'service', 'loyalty',
+  'offline', // New Sale keeps working through a dropped connection: cash sales queue on a registered till
 ]);
 
 /** Flags that stay blocked even though their module is listed, and why. */
 export const BLOCKED_FLAGS: Partial<Record<FeatureFlagKey, string>> = {
-  multi_currency_enabled: 'Foreign-currency revaluation does not post to the ledger yet',
 };
 
 /**

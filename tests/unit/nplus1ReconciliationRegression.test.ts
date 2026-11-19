@@ -79,6 +79,7 @@ describe('reconciliation and journal N+1 regression', () => {
         allowManualPosting: true,
       })));
       const tx = {
+        company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
         fiscalPeriod: { findFirst: vi.fn(async () => ({ status: 'open' })) },
         chartOfAccount: { findMany: accountRead },
         businessEvent: { create: vi.fn(async () => ({})) },
@@ -114,6 +115,7 @@ describe('reconciliation and journal N+1 regression', () => {
   it('rejects a cross-tenant chart-of-account ID without weakening database scope', async () => {
     const accountRead = vi.fn(async ({ where }: any) => [{ id: where.id.in[0], code: 'A', allowManualPosting: true }]);
     const tx = {
+      company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
       fiscalPeriod: { findFirst: vi.fn(async () => ({ status: 'open' })) },
       chartOfAccount: { findMany: accountRead },
     } as any;

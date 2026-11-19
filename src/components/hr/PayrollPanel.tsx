@@ -68,7 +68,7 @@ export function PayrollPanel({ can }: { can: (permission: string) => boolean }) 
     if (!start || !end || end < start) { mutation.setError('Choose a period whose end is on or after its start.'); return; }
     if (!await confirm({ title: `Post payroll for ${chosen.length} employees?`, description: 'Salary cost and the amounts owed to staff are recorded now. You pay it in a separate step.', action: 'Post payroll' })) return;
     const result = await mutation.mutate<{ referenceNo: string; netTotal: string; beftnFile?: string }>('/api/v1/payroll-runs', {
-      period_start: new Date(`${start}T00:00:00Z`).toISOString(), period_end: new Date(`${end}T23:59:59Z`).toISOString(),
+      period_start: new Date(`${start}T00:00:00Z`).toISOString(), period_end: new Date(`${end}T00:00:00Z`).toISOString(),
       items: chosen.map(e => ({ employee_id: e.id, base_salary: Number(lines[e.id].base), allowance_total: Number(lines[e.id].allowance || 0),
         overtime_total: Number(lines[e.id].overtime || 0), deduction_total: Number(lines[e.id].deduction || 0), withholding_total: Number(lines[e.id].withholding || 0) })),
     });

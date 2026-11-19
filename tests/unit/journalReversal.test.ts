@@ -13,6 +13,7 @@ describe('journal reversal immutability', () => {
     const journalEntryCreate = vi.fn().mockResolvedValue({ id: 'reversal-id' });
     const journalEntryUpdate = vi.fn().mockResolvedValue({});
     const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       journalEntry: {
         findFirst: vi.fn()
           .mockResolvedValueOnce({
@@ -33,6 +34,7 @@ describe('journal reversal immutability', () => {
         create: journalEntryCreate,
         update: journalEntryUpdate,
       },
+      company: { findFirst: vi.fn(async () => ({ timezone: 'Asia/Dhaka' })) },
       fiscalPeriod: { findFirst: vi.fn().mockResolvedValue({ status: 'open' }) },
       chartOfAccount: {
         findMany: vi.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>

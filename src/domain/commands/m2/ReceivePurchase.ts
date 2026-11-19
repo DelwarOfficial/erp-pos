@@ -57,7 +57,11 @@ export async function receivePurchase(
   input: ReceivePurchaseInput,
   correlationId: string,
 ): Promise<ReceivePurchaseResult> {
-  // 1. Load the purchase
+  // 1. Load the purchase, locked: two receivings at once used to both read
+  // the same qty_received, both pass the "not more than ordered" check, and
+  // together receive more than was ordered. The lock makes the second one
+  // wait and check against the first one's result.
+  await tx.$queryRaw`SELECT id FROM purchases WHERE id = ${input.purchaseId} AND company_id = ${input.companyId} FOR UPDATE`;
   const purchase = await tx.purchase.findFirst({
     where: { id: input.purchaseId, companyId: input.companyId },
     include: { items: { include: { product: { select: { isSerialized: true } } } }, supplier: true },

@@ -5,6 +5,8 @@
 
 import { systemDb as db } from '@/lib/db';
 import { runReconciliation } from '@/lib/reconciliation/checks';
+import { buildTenantContext, withTenant } from '@/lib/db/transaction';
+import { expirePoints } from '@/domain/loyalty/points';
 import { enqueue, QUEUE_NAMES } from '@/lib/queue';
 import { evaluateRiskAlerts } from '@/lib/risk/alerting';
 import { errorMeta, logger } from '@/lib/logging';
@@ -26,6 +28,15 @@ export async function runScheduledReconciliation(): Promise<{ companies: number;
   let totalFindings = 0;
 
   for (const company of companies) {
+    // Reward points past their 12 months lapse before the checks run, so the
+    // points liability the checks see is current.
+    try {
+      const ctx = buildTenantContext({ companyId: company.id, userId: 'system:points-expiry', branchIds: [], allBranches: true, isGlobal: false });
+      const lapsed = await withTenant(ctx, tx => expirePoints(tx, company.id));
+      if (lapsed > 0) logger.info('[reconciliation-scheduler] reward points lapsed', { company_id: company.id, points: lapsed });
+    } catch (e) {
+      logger.error('[reconciliation-scheduler] points expiry failed for a company', { company_id: company.id, ...errorMeta(e) });
+    }
     try {
       const result = await runReconciliation(company.id, 'nightly', 'system:scheduler');
       totalFindings += result.findings.length;

@@ -1,4 +1,4 @@
-// src/middleware.ts
+// src/proxy.ts (Next.js 16 renamed the middleware file convention to proxy)
 // Next.js middleware — CSRF protection for cookie-auth mutations per §6 rule 5.
 //
 // Strategy: Double-submit cookie pattern.
@@ -33,12 +33,14 @@ const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 const EXEMPT_PATHS = [
   '/api/v1/webhooks/',      // webhooks use HMAC signatures, not CSRF
   '/api/v1/auth/login',     // login doesn't have a cookie yet
-  '/api/v1/auth/refresh',   // refresh endpoint
+  // /api/v1/auth/refresh is NOT exempt: the app calls it same-origin, so the
+  // Origin check passes, and a cross-site post is refused here even before
+  // the SameSite=Strict cookie would have kept the session out of it.
   '/api/v1/health',         // health check
   '/api/v1/cron/',          // cron endpoints use Bearer token auth
 ];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { method, headers } = req;
   const path = req.nextUrl.pathname;
 

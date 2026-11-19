@@ -54,7 +54,7 @@ Open `http://localhost:3000/login`. On Windows PowerShell, `npx.cmd --no-install
 
 - Generic `db:*` package scripts use Prisma's default schema. They are not the MariaDB migration workflow above.
 - `migrate:postgres`, `switch:postgres` and existing `staging:*` helpers retain PostgreSQL assumptions. Do not use them for MariaDB deployment.
-- `docker/docker-compose.yml` starts PostgreSQL and configures web/worker services for it. It is not a MariaDB deployment recipe. Its Redis/MinIO services can be considered separately.
+- `docker/docker-compose.yml` starts MariaDB 11.8, Redis and MinIO for local development, with web and worker services pointed at MariaDB. Apply migrations from the host with `npx prisma migrate deploy` (see the file header). It is a development setup, not a production deployment.
 
 ## Build and run
 
