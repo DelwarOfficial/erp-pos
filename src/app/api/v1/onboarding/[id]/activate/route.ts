@@ -95,9 +95,13 @@ export async function POST(
               data: { status: 'active' },
             });
 
+            // Audit rows are scoped to the actor's company (the
+            // (company_id, user_id) FK requires the user to belong to it),
+            // so a platform admin's row uses their own company. The target
+            // company is recorded as entityId below.
             await tx.auditLog.create({
               data: {
-                companyId: company.id,
+                companyId: auth.companyId,
                 userId: auth.userId,
                 correlationId,
                 action: 'company.activate',

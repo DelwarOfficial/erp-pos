@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +12,17 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Building2, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api/client';
+
+type PendingCompany = {
+  id: string;
+  display_name: string;
+  code: string;
+  created_at: string;
+  admin_name: string | null;
+  admin_email: string | null;
+  owner_mfa_enabled: boolean;
+  owner_count: number;
+};
 
 export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
@@ -40,6 +51,53 @@ export default function OnboardingPage() {
     admin_password: '',
   });
   const [vatRegistered, setVatRegistered] = useState(false);
+  const [pending, setPending] = useState<PendingCompany[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+
+  async function loadPending() {
+    setPendingLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/onboarding/pending');
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error?.message ?? 'Could not load pending companies');
+        return;
+      }
+      setPending(data?.data ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Network error');
+    } finally {
+      setPendingLoading(false);
+    }
+  }
+
+  useEffect(() => { loadPending(); }, []);
+
+  async function handleActivate(company: PendingCompany) {
+    setActivatingId(company.id);
+    try {
+      const res = await apiFetch(`/api/v1/onboarding/${company.id}/activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `activate-${company.id}-${Date.now()}`,
+        },
+        body: JSON.stringify({ id: company.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error?.message ?? 'Activation failed');
+        return;
+      }
+      toast.success(`Company ${company.code} activated`);
+      await loadPending();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Network error');
+    } finally {
+      setActivatingId(null);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +147,7 @@ export default function OnboardingPage() {
         return;
       }
       setResult(data);
+      loadPending();
       toast.success(`Company ${data.company_code} onboarded (suspended)`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Network error');
@@ -128,6 +187,40 @@ export default function OnboardingPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pending Activation</CardTitle>
+          <CardDescription>
+            Companies onboarded in suspended status. Activate once the owner admin has MFA enabled.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pendingLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {!pendingLoading && pending.length === 0 && (
+            <p className="text-sm text-muted-foreground">No companies waiting for activation.</p>
+          )}
+          {pending.map((company) => (
+            <div key={company.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+              <div className="space-y-1">
+                <p className="font-medium">{company.display_name} <span className="font-mono text-sm text-muted-foreground">({company.code})</span></p>
+                <p className="text-sm text-muted-foreground">
+                  {company.admin_name ?? '—'} · {company.admin_email ?? '—'} · onboarded {new Date(company.created_at).toLocaleString()}
+                </p>
+                {!company.owner_mfa_enabled && (
+                  <p className="text-sm text-amber-600">Waiting for the owner admin to enable MFA.</p>
+                )}
+              </div>
+              <Button
+                disabled={!company.owner_mfa_enabled || activatingId === company.id}
+                onClick={() => handleActivate(company)}
+              >
+                {activatingId === company.id ? 'Activating…' : 'Activate'}
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
