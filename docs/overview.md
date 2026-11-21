@@ -20,6 +20,57 @@ MariaDB is authoritative: use `prisma/mariadb/schema.prisma` and its ordered mig
 
 Business defaults include BDT and Asia/Dhaka. Modules cover POS/sales, stock, purchasing, payments, journals, assets, bank reconciliation, service, deliveries, CRM, HR and administration. Availability and permissions vary; the catalogue UI currently supports list/create, not edit/delete.
 
+### System overview
+
+```mermaid
+flowchart LR
+    User[Staff / platform operator] --> UI[Next.js dashboard and POS]
+    UI --> API[API routes]
+    API --> Auth[Authentication, permissions and tenant context]
+    Auth --> Domain[Domain commands and services]
+    Domain --> DB[(MariaDB via Prisma)]
+    Domain --> Redis[(Redis / BullMQ)]
+    Worker[Background worker] --> Redis
+    Worker --> DB
+    Domain --> Providers[External providers and storage]
+```
+
+The application and worker are separate processes. API routes authenticate and
+scope requests before business commands access tenant data. Provider and storage
+integrations depend on the configuration of each deployment.
+
+## Operational workflows
+
+The following diagrams summarize common paths; permissions and validation apply
+at each step. See the [blueprint](master-plan/ERP_Pos_Blueprint_v4.2.md) and
+[UAT scenarios](testing/uat-scenarios.md) for detailed rules and exceptions.
+
+### Tenant onboarding
+
+```mermaid
+flowchart LR
+    Admin[Platform operator] --> Create[Create company and owner]
+    Create --> Suspended[Company suspended]
+    Suspended --> MFA[Owner enables MFA]
+    MFA --> Activate[Platform operator activates company]
+    Activate --> Active[Company active]
+```
+
+### Retail transaction
+
+```mermaid
+flowchart LR
+    Stock[Receive and manage stock] --> Sale[Create and post sale]
+    Sale --> Payment[Record payment]
+    Sale --> Inventory[Update inventory]
+    Sale --> Ledger[Post accounting entries]
+    Payment --> Followup[Returns, refunds and reconciliation as needed]
+```
+
+These are conceptual paths, not a promise that every payment or integration
+follows the same sequence. Refer to the relevant API and domain command when
+investigating a specific transaction.
+
 ## Local development
 
 Prerequisites: Node.js compatible with the lockfiles (installed Next.js requires >=20.9.0), Bun for seed/worker scripts, a dedicated development MariaDB 11.8 database, and Redis. Configure storage/providers for the features being exercised.
@@ -65,7 +116,7 @@ bun run build
 bun run start
 ```
 
-`build` compiles Next.js, removes public source maps and copies static/public assets into standalone output. Workers run separately. Follow the [production migration runbook](runbooks/production-migration.md) for release migration and target verification.
+`build` compiles Next.js, removes public source maps and copies static/public assets into standalone output. The current command also references `scripts/build/standalone-instrumentation.mjs`, which is absent from this checkout; the packaged build cannot complete until that dependency is restored or the build command is corrected. Workers run separately. Follow the [production migration runbook](runbooks/production-migration.md) for release migration and target verification.
 
 For a local Windows compilation check and server using regular `.next` output:
 
