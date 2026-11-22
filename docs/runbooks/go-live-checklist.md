@@ -86,7 +86,7 @@ Per Appendix E — production go-live checklist.
 
 ## Deployment
 
-- [ ] Deploy to production with manual migration approval
+- [ ] Deploy to production with manual migration approval (one VPS: [vps-deploy.md](vps-deploy.md))
 - [ ] Post-deploy health check (GET /api/v1/health)
 - [ ] RLS isolation verification (cross-tenant access fails)
 - [ ] Post-deploy reconciliation run

@@ -6,8 +6,8 @@
 #   - copied offsite with rclone when BACKUP_RCLONE_REMOTE is set
 #
 # Cron (02:30 Asia/Dhaka = 20:30 UTC):
-#   30 20 * * * /opt/erp-pos/scripts/deploy/backup.sh >> /var/log/erp-pos/backup.log 2>&1
-# Restore procedure: docs/runbooks/backup-restore.md. Prints no credentials.
+#   30 20 * * * bash /opt/erp-pos/scripts/deploy/backup.sh >> /var/log/erp-pos/backup.log 2>&1
+# Restore rehearsal: docs/runbooks/vps-deploy.md, step 9. Prints no credentials.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 ENV_FILE=docker/.env.prod

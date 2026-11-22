@@ -24,9 +24,9 @@
     "semantic_hash": ""
   },
   "instrumentation.ts": {
-    "mtime": 1795070776.5561275,
-    "seen": 1795079460.1591244,
-    "ast_hash": "a8788636df04e26367885910ff4dfbbe",
+    "mtime": 1795101614.0386317,
+    "seen": 1795334005.8313544,
+    "ast_hash": "06248d441bd8ddfdf89c4cde3194f685",
     "semantic_hash": ""
   },
   "next.config.ts": {
@@ -36,9 +36,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1791030165.7713425,
-    "seen": 1791098939.9053488,
-    "ast_hash": "8c2d2dd1190115772823d81ded5e6495",
+    "mtime": 1795333751.092944,
+    "seen": 1795334005.8314948,
+    "ast_hash": "c7497a9c5b802865f4eac39627ecd91e",
     "semantic_hash": ""
   },
   "playwright.access.config.ts": {
@@ -708,9 +708,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/onboarding/page.tsx": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.905462,
-    "ast_hash": "b6e46582338432c4f348718d5a692f2a",
+    "mtime": 1795333009.0000088,
+    "seen": 1795334005.847299,
+    "ast_hash": "207fad488a941b74ccaebda10712279c",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/page.tsx": {
@@ -1608,9 +1608,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/onboarding/[id]/activate/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.9056022,
-    "ast_hash": "095f3108cebb7ddeb96d91f8c6274a80",
+    "mtime": 1795333009.0000088,
+    "seen": 1795334005.869367,
+    "ast_hash": "21d7e8ae1c3a54d2b35d9599abc08be8",
     "semantic_hash": ""
   },
   "src/app/api/v1/onboarding/route.ts": {
@@ -3228,9 +3228,9 @@
     "semantic_hash": ""
   },
   "src/lib/permissions/routePolicy.json": {
-    "mtime": 1795099025.7169955,
-    "seen": 1795100948.874149,
-    "ast_hash": "90d5d5bcc82854c3387ac9e521236ca8",
+    "mtime": 1795333751.0939448,
+    "seen": 1795334005.9094996,
+    "ast_hash": "51c23bd941100d65eb20fda5c114bfe3",
     "semantic_hash": ""
   },
   "src/lib/queue/index.ts": {
@@ -4182,9 +4182,9 @@
     "semantic_hash": ""
   },
   "tsconfig.json": {
-    "mtime": 1791030165.8801818,
-    "seen": 1791098939.9060106,
-    "ast_hash": "5039d421abc13d994f8b6c2c28f506e8",
+    "mtime": 1795101384.118183,
+    "seen": 1795334005.936592,
+    "ast_hash": "1e3c9cb6c46e6b7d93f9a4aa0f7c1e75",
     "semantic_hash": ""
   },
   "vitest.config.ts": {
@@ -4356,9 +4356,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1795000710.4610248,
-    "seen": 1795000764.6130376,
-    "ast_hash": "b6ac71416495263574ccc6aff1484445",
+    "mtime": 1795333008.9980094,
+    "seen": 1795334005.9406219,
+    "ast_hash": "e84130aabac38e509fa07a359b69bea4",
     "semantic_hash": ""
   },
   "docker/docker-compose.yml": {
@@ -4542,9 +4542,9 @@
     "semantic_hash": ""
   },
   "docs/runbooks/go-live-checklist.md": {
-    "mtime": 1795098880.911242,
-    "seen": 1795100948.8859854,
-    "ast_hash": "ce332edf2d86f2df752fa4ef06e78e23",
+    "mtime": 1795333599.796429,
+    "seen": 1795334005.9451673,
+    "ast_hash": "8a5966d63d2d63a42f7d1d5f3ec96a3c",
     "semantic_hash": ""
   },
   "docs/runbooks/production-migration.md": {
@@ -5046,9 +5046,9 @@
     "semantic_hash": ""
   },
   "docs/overview.md": {
-    "mtime": 1795070776.528409,
-    "seen": 1795079460.309881,
-    "ast_hash": "129a57658325477456a71ff81de80bd2",
+    "mtime": 1795333008.9990096,
+    "seen": 1795334005.9443827,
+    "ast_hash": "fa48058fc4078bc7c7542285bcbec852",
     "semantic_hash": ""
   },
   "docs/testing/uat-scenarios.md": {
@@ -5253,6 +5253,54 @@
     "mtime": 1795097948.1530907,
     "seen": 1795100948.8859375,
     "ast_hash": "25ed4036edea308b5758f1f5d0ee384f",
+    "semantic_hash": ""
+  },
+  "scripts/deploy/backup.sh": {
+    "mtime": 1795333599.7780793,
+    "seen": 1795334005.83594,
+    "ast_hash": "e288e7789ca562af5ab5c0bf129f75c2",
+    "semantic_hash": ""
+  },
+  "scripts/deploy/deploy.sh": {
+    "mtime": 1795333361.236612,
+    "seen": 1795334005.835942,
+    "ast_hash": "306a32578a5459bf029d76f9690ae74a",
+    "semantic_hash": ""
+  },
+  "scripts/deploy/gen-secrets.sh": {
+    "mtime": 1795333361.236612,
+    "seen": 1795334005.8359437,
+    "ast_hash": "56bbe8a374fdc0f7a50ea9f6593220b5",
+    "semantic_hash": ""
+  },
+  "scripts/standalone-instrumentation.mjs": {
+    "mtime": 1795333361.2346115,
+    "seen": 1795334005.8391683,
+    "ast_hash": "d0ae8b8c51394a4dc8c9b9372dea76ce",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/onboarding/pending/route.ts": {
+    "mtime": 1795333009.0010097,
+    "seen": 1795334005.8693688,
+    "ast_hash": "1beadae9286a0454c1e5026f46a725e6",
+    "semantic_hash": ""
+  },
+  "tests/unit/buildScriptFiles.test.ts": {
+    "mtime": 1795333562.239502,
+    "seen": 1795334005.9248796,
+    "ast_hash": "7850c38e48827c9ab23f7db41112d827",
+    "semantic_hash": ""
+  },
+  "docker/docker-compose.prod.yml": {
+    "mtime": 1795101364.4577298,
+    "seen": 1795334005.9406238,
+    "ast_hash": "0e028bac761c55c6e43ef91ecf493c65",
+    "semantic_hash": ""
+  },
+  "docs/runbooks/vps-deploy.md": {
+    "mtime": 1795333599.607597,
+    "seen": 1795334005.9453025,
+    "ast_hash": "de48dfafd88b56e0ef9b13afaf851320",
     "semantic_hash": ""
   }
 }

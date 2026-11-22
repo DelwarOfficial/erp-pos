@@ -20,7 +20,7 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 worker
+RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs --create-home worker
 # Installed at build time: npx would otherwise download tsx on every start.
 RUN npm install -g tsx@4
 
@@ -28,6 +28,8 @@ COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/src ./src
 COPY --from=builder --chown=worker:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=worker:nodejs /app/package.json ./
+# First-install seed: docker compose run --rm -e PLATFORM_ADMIN_PASSWORD worker tsx scripts/seed.ts
+COPY --from=builder --chown=worker:nodejs /app/scripts/seed.ts ./scripts/seed.ts
 # tsx resolves the @/ path alias from tsconfig.json.
 COPY --from=builder --chown=worker:nodejs /app/tsconfig.json ./
 

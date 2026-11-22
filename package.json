@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build && node scripts/build/standalone-instrumentation.mjs && node scripts/remove-public-sourcemaps.mjs .next/static && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "build": "next build && node scripts/remove-public-sourcemaps.mjs .next/static && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node scripts/standalone-instrumentation.mjs",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",

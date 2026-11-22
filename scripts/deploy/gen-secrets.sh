@@ -23,4 +23,4 @@ umask 177
   sed -n '/^# ── Optional ──/,$p' docker/.env.prod.example
 } > "$OUT"
 chmod 600 "$OUT"
-echo "Wrote $OUT (mode 600). Now set APP_DOMAIN, ACME_EMAIL and APP_VERSION in it."
+echo "Wrote $OUT (mode 600). Now set APP_DOMAIN and ACME_EMAIL in it, and DB_BUFFER_POOL for this server."
