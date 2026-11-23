@@ -3138,9 +3138,9 @@
     "semantic_hash": ""
   },
   "src/lib/http/index.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9058352,
-    "ast_hash": "2679515a74c10328b7771a3f99b27d08",
+    "mtime": 1795449014.919891,
+    "seen": 1795449237.8802865,
+    "ast_hash": "ace4293a77a748366a5d8b0d4d3a5378",
     "semantic_hash": ""
   },
   "src/lib/i18n/index.ts": {
@@ -5301,6 +5301,12 @@
     "mtime": 1795333599.607597,
     "seen": 1795334005.9453025,
     "ast_hash": "de48dfafd88b56e0ef9b13afaf851320",
+    "semantic_hash": ""
+  },
+  "tests/unit/clientIp.test.ts": {
+    "mtime": 1795449014.998477,
+    "seen": 1795449237.8866475,
+    "ast_hash": "35f575892dec023380496c0eccd1cc4d",
     "semantic_hash": ""
   }
 }
