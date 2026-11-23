@@ -10,6 +10,8 @@ import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/li
 import { postSaleReturn } from '@/domain/commands/m3/PostSaleReturn';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { enforceLargeRefundGate } from '@/lib/approval/refundGate';
+import { Prisma } from '@prisma/client';
 
 const ReturnItemSchema = z.object({
   sale_item_id: z.string().uuid(),
@@ -25,6 +27,9 @@ const PostSaleReturnSchema = z.object({
   disposition: z.enum(['restock', 'damaged', 'repair', 'scrap', 'mixed']),
   reason: z.string().min(1).max(2000),
   items: z.array(ReturnItemSchema).min(1),
+  // Required once the sale's return credit reaches the refund approval
+  // threshold (src/lib/approval/refundGate.ts).
+  approval_request_id: z.string().uuid().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -84,6 +89,26 @@ export async function POST(req: NextRequest) {
                 serials: i.serials,
               })),
             }, correlationId);
+            // Return credit funds the cash refund, so large returns pass the
+            // same gate as the refund itself. Checked after posting, inside
+            // the transaction: a refusal rolls the whole return back.
+            const credited = await tx.saleReturn.aggregate({
+              where: { companyId: auth.companyId, saleId: body.sale_id, status: { in: ['posted', 'approved'] } },
+              _sum: { baseTotalCredit: true },
+            });
+            const gate = await enforceLargeRefundGate(tx, req, {
+              companyId: auth.companyId, userId: auth.userId!, saleId: body.sale_id,
+              totalBase: new Prisma.Decimal(credited._sum.baseTotalCredit ?? 0),
+              approvalRequestId: body.approval_request_id,
+            });
+            if (gate.approvalRequestId) {
+              await tx.auditLog.create({
+                data: { companyId: auth.companyId, userId: auth.userId, correlationId,
+                  action: 'sale_return.large_refund_approved', entityType: 'sale_return', entityId: result.saleReturnId,
+                  afterValue: JSON.stringify({ sale_id: body.sale_id, return_credit_total_base: gate.totalBase, threshold: gate.threshold,
+                    approval_request_id: gate.approvalRequestId, approved_by: gate.approvedBy }) },
+              });
+            }
             return { status: 201, body: result, resourceType: 'sale_return', resourceId: result.saleReturnId };
           },
           tx,

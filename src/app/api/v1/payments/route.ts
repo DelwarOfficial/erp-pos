@@ -11,6 +11,7 @@ import { nextDocumentNumber } from '@/lib/numbering';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
+import { enforceLargeRefundGate, type RefundGateResult } from '@/lib/approval/refundGate';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
@@ -32,6 +33,9 @@ const CreatePaymentSchema = z.object({
   method_reference: z.string().max(120).optional(),
   business_date: z.string().datetime().optional(),
   notes: z.string().max(500).optional(),
+  // Required for sale_refund once the sale's refunds reach the approval
+  // threshold (src/lib/approval/refundGate.ts).
+  approval_request_id: z.string().uuid().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
           async () => {
             let refundReturn: { id: string; totalCredit: Prisma.Decimal } | null = null;
             let refundedBefore = new Prisma.Decimal(0);
+            let refundGate: RefundGateResult | null = null;
             if (body.payment_type === 'sale_refund') {
               if (!body.sale_return_id || body.direction !== 'outgoing') throw new DomainError('VALIDATION_FAILED', 'A refund requires a posted sale return and outgoing payment', {}, 400);
               const returned = await tx.saleReturn.findFirst({ where: { id: body.sale_return_id, companyId: auth.companyId, branchId: body.branch_id, status: 'posted' },
@@ -112,6 +117,11 @@ export async function POST(req: NextRequest) {
               const allRefunded = returned.sale.returns.flatMap(row => row.refundPayments).filter(payment => payment.paymentStatus === 'posted').reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
               if (new Prisma.Decimal(body.amount).gt(returned.totalCredit.minus(refundedBefore)) || new Prisma.Decimal(body.amount).gt(paid.minus(allRefunded))) throw new DomainError('VALIDATION_FAILED', 'Refund exceeds remaining return credit or collected payment', {}, 409);
               refundReturn = returned;
+              refundGate = await enforceLargeRefundGate(tx, req, {
+                companyId: auth.companyId, userId: auth.userId!, saleId: returned.sale.id,
+                totalBase: allRefunded.plus(body.amount).mul(returned.sale.exchangeRate),
+                approvalRequestId: body.approval_request_id,
+              });
             }
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
             const baseAmount = new Prisma.Decimal(body.amount).mul(body.exchange_rate);
@@ -179,7 +189,11 @@ export async function POST(req: NextRequest) {
             await tx.auditLog.create({
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
                 action: 'payment.create', entityType: 'payment', entityId: payment.id,
-                afterValue: JSON.stringify({ reference_no: referenceNo, amount: body.amount, type: body.payment_type }) },
+                afterValue: JSON.stringify({ reference_no: referenceNo, amount: body.amount, type: body.payment_type,
+                  ...(refundGate && {
+                    sale_return_id: body.sale_return_id, refund_total_base: refundGate.totalBase, threshold: refundGate.threshold,
+                    approval_request_id: refundGate.approvalRequestId ?? null, approved_by: refundGate.approvedBy ?? null,
+                  }) }) },
             });
 
             return {
