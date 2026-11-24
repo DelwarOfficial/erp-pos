@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
-import { buildReceiptBytes, sendToNetworkPrinter } from '@/lib/escpos';
+import { buildReceiptBytes } from '@/lib/escpos';
 import { DomainError } from '@/lib/errors/codes';
 
-// GET /api/v1/print/escpos/[saleId]?printer=192.168.1.50:9100
-// Returns raw ESC/POS bytes for the sale receipt, OR forwards them to a network
-// thermal printer if `printer` query param is provided.
+// GET /api/v1/print/escpos/[saleId]
+// Returns raw ESC/POS bytes for the sale receipt; the till's print bridge
+// sends them to its printer.
+//
+// The server never connects to a printer. A `printer=host:port` parameter
+// used to open a raw TCP socket to any host, loopback and cloud metadata
+// included (red-team workstream 3: SSRF, receipt data sent anywhere, port
+// probing). It is refused before anything else happens.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ saleId: string }> }) {
   let auth;
   try {
@@ -18,6 +23,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Authentication failed' } }, { status: 500 });
   }
   
+
+  if (new URL(req.url).searchParams.has('printer')) {
+    return NextResponse.json({ error: { code: 'VALIDATION_FAILED',
+      message: "The server does not send receipts to network printers. Download the receipt and print it through the till's print bridge." } }, { status: 400 });
+  }
 
   const { saleId } = await params;
   // NOTE: auth.companyId (not company_id) — the latter is undefined and would
@@ -60,14 +70,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sale
     customerPhone: sale.customer?.phone ?? undefined,
     isReturn: (sale as any).saleType === 'return',
   });
-
-  const printerParam = new URL(req.url).searchParams.get('printer');
-  if (printerParam) {
-    const [host, portStr] = printerParam.split(':');
-    const port = portStr ? parseInt(portStr, 10) : 9100;
-    const result = await sendToNetworkPrinter(bytes, host, port);
-    return NextResponse.json(result);
-  }
 
   return new NextResponse(new Uint8Array(bytes) as BodyInit, {
     headers: {

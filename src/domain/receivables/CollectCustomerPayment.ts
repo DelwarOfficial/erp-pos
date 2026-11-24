@@ -30,6 +30,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError } from '@/lib/errors/codes';
+import { requireOwnOpenShift } from '@/lib/shifts/requireOwnOpenShift';
 import { nextDocumentNumber } from '@/lib/numbering';
 import { installmentBalances } from './balances';
 
@@ -94,12 +95,7 @@ export async function collectCustomerPayment(
   // the collector's own.
   let cashierShiftId: string | null = null;
   if (input.cashierShiftId) {
-    const shift = await tx.cashierShift.findFirst({
-      where: { id: input.cashierShiftId, companyId: input.companyId, branchId: input.branchId, cashierId: input.collectedBy, status: 'open' },
-      select: { id: true },
-    });
-    if (!shift) throw new DomainError('NO_OPEN_SHIFT', 'That shift is not your open shift in this branch', {}, 409);
-    cashierShiftId = shift.id;
+    cashierShiftId = await requireOwnOpenShift(tx, { companyId: input.companyId, branchId: input.branchId, userId: input.collectedBy, shiftId: input.cashierShiftId });
   } else if (input.paymentMethod === 'cash') {
     const shift = await tx.cashierShift.findFirst({
       where: { companyId: input.companyId, branchId: input.branchId, cashierId: input.collectedBy, status: 'open' },

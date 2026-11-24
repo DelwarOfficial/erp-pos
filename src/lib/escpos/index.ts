@@ -142,38 +142,6 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 1) + '…';
 }
 
-// ── Network printer delivery ──
-/**
- * Send ESC/POS bytes to a network printer via raw TCP (port 9100 by default).
- * Browser-side this requires WebSockets or a local print server bridge.
- * Server-side this uses Node.js net.Socket directly.
- */
-export async function sendToNetworkPrinter(
-  bytes: Uint8Array,
-  host: string,
-  port = 9100,
-  timeoutMs = 5000,
-): Promise<{ sent: boolean; error?: string }> {
-  if (typeof window !== 'undefined') {
-    // Browser — must use a local bridge (e.g., https://localhost:9100 via fetch)
-    // Defer to the print route which renders the bytes for the browser to send.
-    return { sent: false, error: 'Browser cannot open raw TCP sockets — use /api/v1/print/escpos/[saleId] route or local print bridge' };
-  }
-
-  try {
-    const { Socket } = await import('node:net');
-    return await new Promise((resolve) => {
-      const socket = new Socket();
-      socket.setTimeout(timeoutMs);
-      socket.on('error', (err) => { socket.destroy(); resolve({ sent: false, error: err.message }); });
-      socket.on('timeout', () => { socket.destroy(); resolve({ sent: false, error: 'Printer connection timed out' }); });
-      socket.on('connect', () => {
-        socket.write(Buffer.from(bytes), () => socket.end());
-      });
-      socket.on('close', () => resolve({ sent: true }));
-      socket.connect(port, host);
-    });
-  } catch (e) {
-    return { sent: false, error: e instanceof Error ? e.message : 'Unknown error' };
-  }
-}
+// Network printer delivery was removed (red-team workstream 3): the server
+// must never open a socket to a request-chosen host. The till's print bridge
+// sends the bytes from buildReceiptBytes to its own printer.

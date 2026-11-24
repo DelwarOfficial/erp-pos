@@ -12,6 +12,8 @@ import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { enforceLargeRefundGate, type RefundGateResult } from '@/lib/approval/refundGate';
+import { enforceManualPaymentApproval } from '@/lib/approval/manualPaymentGate';
+import { requireOwnOpenShift } from '@/lib/shifts/requireOwnOpenShift';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
@@ -34,7 +36,8 @@ const CreatePaymentSchema = z.object({
   business_date: z.string().datetime().optional(),
   notes: z.string().max(500).optional(),
   // Required for sale_refund once the sale's refunds reach the approval
-  // threshold (src/lib/approval/refundGate.ts).
+  // threshold (src/lib/approval/refundGate.ts), and for an outgoing payment
+  // with no customer or supplier (src/lib/approval/manualPaymentGate.ts).
   approval_request_id: z.string().uuid().optional(),
 });
 
@@ -123,6 +126,28 @@ export async function POST(req: NextRequest) {
                 approvalRequestId: body.approval_request_id,
               });
             }
+            // A named shift must be the caller's own open shift in this branch,
+            // so a cash-out cannot hide in someone else's drawer count.
+            const cashierShiftId = body.cashier_shift_id
+              ? await requireOwnOpenShift(tx, { companyId: auth.companyId, branchId: body.branch_id, userId: auth.userId!, shiftId: body.cashier_shift_id }, 403)
+              : null;
+            // Money going out must name who received it, or carry a
+            // second person's approval. Refunds are anchored by their return.
+            let manualApproval: Awaited<ReturnType<typeof enforceManualPaymentApproval>> | null = null;
+            if (body.direction === 'outgoing' && body.payment_type !== 'sale_refund') {
+              const [customer, supplier] = await Promise.all([
+                body.customer_id ? tx.customer.findFirst({ where: { id: body.customer_id, companyId: auth.companyId }, select: { id: true } }) : null,
+                body.supplier_id ? tx.supplier.findFirst({ where: { id: body.supplier_id, companyId: auth.companyId }, select: { id: true } }) : null,
+              ]);
+              if ((body.customer_id && !customer) || (body.supplier_id && !supplier)) throw new DomainError('RESOURCE_NOT_FOUND', 'Customer or supplier not found', {}, 404);
+              if (!customer && !supplier) {
+                manualApproval = await enforceManualPaymentApproval(tx, {
+                  companyId: auth.companyId, branchId: body.branch_id, userId: auth.userId!, paymentType: body.payment_type,
+                  amountBase: new Prisma.Decimal(body.amount).mul(body.exchange_rate).toDecimalPlaces(2),
+                  approvalRequestId: body.approval_request_id,
+                });
+              }
+            }
             const businessDate = body.business_date ? new Date(body.business_date) : new Date();
             const baseAmount = new Prisma.Decimal(body.amount).mul(body.exchange_rate);
             const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
@@ -141,13 +166,15 @@ export async function POST(req: NextRequest) {
             const payment = await tx.payment.create({
               data: {
                 companyId: auth.companyId, branchId: body.branch_id,
-                referenceNo, clientTxnId: randomUUID(),
+                // An approved payment takes the approval's reference as its
+                // unique client_txn_id: one approval, one payment.
+                referenceNo, clientTxnId: manualApproval?.clientTxnId ?? randomUUID(),
                 paymentType: body.payment_type, direction: body.direction,
                 customerId: body.customer_id ?? null,
                 supplierId: body.supplier_id ?? null,
                 saleReturnId: body.sale_return_id ?? null,
                 financialAccountId: body.financial_account_id,
-                cashierShiftId: body.cashier_shift_id ?? null,
+                cashierShiftId,
                 currencyCode: body.currency_code, exchangeRate: body.exchange_rate,
                 amount: body.amount, baseAmount,
                 paymentMethod: body.payment_method, methodReference: body.method_reference ?? null,
@@ -190,6 +217,9 @@ export async function POST(req: NextRequest) {
               data: { companyId: auth.companyId, userId: auth.userId, correlationId,
                 action: 'payment.create', entityType: 'payment', entityId: payment.id,
                 afterValue: JSON.stringify({ reference_no: referenceNo, amount: body.amount, type: body.payment_type,
+                  cashier_shift_id: cashierShiftId,
+                  ...(manualApproval && { approval_request_id: manualApproval.approvalRequestId, approved_by: manualApproval.approvedBy }),
+                  ...(body.direction === 'outgoing' && !manualApproval && { customer_id: body.customer_id ?? null, supplier_id: body.supplier_id ?? null }),
                   ...(refundGate && {
                     sale_return_id: body.sale_return_id, refund_total_base: refundGate.totalBase, threshold: refundGate.threshold,
                     approval_request_id: refundGate.approvalRequestId ?? null, approved_by: refundGate.approvedBy ?? null,

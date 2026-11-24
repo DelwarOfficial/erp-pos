@@ -25,6 +25,8 @@ import { Loader2, CreditCard, Plus, RefreshCw, ArrowUpRight, ArrowDownToLine } f
 import { toast } from 'sonner';
 import { ErrorState, EmptyState } from '@/components/shared/StateList';
 import { apiFetch } from '@/lib/api/client';
+import { useDashboardSession } from '@/components/dashboard/session';
+import { EntityPicker, type BusinessEntity } from '@/components/shared/EntityPicker';
 
 interface Payment {
   id: string;
@@ -139,6 +141,26 @@ export default function PaymentsPage() {
   const [creating, setCreating] = useState(false);
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const session = useDashboardSession();
+  const can = (code: string) => !!(session?.is_global || session?.permissions.includes(code));
+  // Money paid out must name who received it, or carry a manager's approval
+  // (src/lib/approval/manualPaymentGate.ts).
+  const [supplier, setSupplier] = useState<BusinessEntity | null>(null);
+  const [manualApproval, setManualApproval] = useState<{ amount: string; type: string; id?: string; waiting: boolean } | null>(null);
+  const [asking, setAsking] = useState(false);
+  async function askApproval() {
+    if (!manualApproval) return;
+    setAsking(true);
+    try {
+      const res = await apiFetch('/api/v1/approvals', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `approval-${crypto.randomUUID()}` },
+        body: JSON.stringify({ request_type: 'manual_payment', reference_type: 'payment', reference_id: crypto.randomUUID(), branch_id: createForm.branch_id || undefined,
+          payload: { amount: manualApproval.amount, payment_type: manualApproval.type, notes: createForm.notes || undefined } }) });
+      const data = await res.json();
+      if (!res.ok) { toast.error(t('err_save', { reason: data?.error?.message ?? t('err_generic') })); return; }
+      setManualApproval({ ...manualApproval, id: data.item.id, waiting: false });
+    } catch { toast.error(t('err_network')); } finally { setAsking(false); }
+  }
 
   const loadPayments = useCallback(async () => {
     setLoading(true);
@@ -223,17 +245,27 @@ export default function PaymentsPage() {
           amount,
           method_reference: createForm.method_reference || undefined,
           notes: createForm.notes || undefined,
+          ...(createForm.direction === 'outgoing' && supplier && { supplier_id: supplier.id }),
+          ...(manualApproval?.id && { approval_request_id: manualApproval.id }),
           currency_code: 'BDT',
           exchange_rate: 1,
         }),
       });
       const data = await res.json();
+      const details = data?.error?.details as { request_type?: string; amount_base?: string; payment_type?: string } | undefined;
+      if (!res.ok && data?.error?.code === 'APPROVAL_REQUIRED' && details?.request_type === 'manual_payment') {
+        const amount = String(details.amount_base), type = String(details.payment_type);
+        setManualApproval(prev => prev?.id && prev.amount === amount && prev.type === type ? { ...prev, waiting: true } : { amount, type, waiting: false });
+        return;
+      }
       if (!res.ok) {
         toast.error(t('err_save', { reason: data?.error?.message ?? t('err_generic') }));
         return;
       }
       toast.success(t('saved', { ref: data.reference_no ?? '', amount: f.money(data.amount) }));
       setCreateForm(EMPTY_FORM);
+      setSupplier(null);
+      setManualApproval(null);
       setCreateOpen(false);
       await loadPayments();
     } catch {
@@ -362,7 +394,17 @@ export default function PaymentsPage() {
                   className="min-h-[40px]"
                 />
               </div>
+              {createForm.direction === 'outgoing' && createForm.payment_type !== 'sale_refund' ? <div className="space-y-1.5 sm:col-span-2">
+                <EntityPicker label={t('supplier_label')} endpoint="/api/v1/suppliers" value={supplier} onChange={value => { setSupplier(value); setManualApproval(null); }} disabled={creating} />
+                <p className="text-xs text-muted-foreground">{t('supplier_help')}</p>
+              </div> : null}
             </div>
+            {manualApproval ? <div role="status" aria-live="polite" className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <p className="font-medium">{t('approval_needed', { amount: f.money(manualApproval.amount) })}</p>
+              {manualApproval.id ? <p>{t(manualApproval.waiting ? 'approval_waiting' : 'approval_requested')}</p>
+                : can('approval.request') && can('approval.read') ? <Button type="button" variant="outline" className="min-h-11" disabled={asking || creating} onClick={() => void askApproval()}>{t('approval_ask')}</Button>
+                : <p>{t('approval_ask_manager')}</p>}
+            </div> : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
                 {t('cancel')}
