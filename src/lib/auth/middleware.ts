@@ -53,6 +53,11 @@ export async function authenticateRequest(): Promise<AuthResult> {
   if (!user) {
     throw new DomainError('UNAUTHORIZED', 'User not found or inactive', {}, 401);
   }
+  // Locking revokes the sessions; this also covers a lock set some other way.
+  // 401, so the client treats it as a session that has ended.
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    throw new DomainError('ACCOUNT_LOCKED', 'Account is temporarily locked', {}, 401);
+  }
 
   const company = await systemDb.company.findUnique({ where: { id: claims.company_id } });
   if (!company || company.status !== 'active') {

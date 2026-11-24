@@ -16,6 +16,7 @@ import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId, getClientIp, getUserAgent } from '@/lib/http';
 import { checkDistributedRateLimit, unavailableError } from '@/lib/auth/distributedRateLimiter';
 import { DEFAULT_LOGIN_LIMIT } from '@/lib/auth/rateLimiter';
+import { revokeUserSessions } from '@/lib/auth/refreshToken';
 
 const LoginSchema = z.object({
   email: z.string().email().max(150),
@@ -106,6 +107,10 @@ export async function POST(req: NextRequest) {
           lockedUntil: lockUntil ?? null,
         },
       });
+      // A lock ends every session the account already has, not only new
+      // sign-ins (red-team workstream 4): sessions used to stay usable for up
+      // to 30 days. Access tokens die with their refresh family.
+      if (lockUntil) await revokeUserSessions({ companyId: user.companyId, userId: user.id, reason: 'account_locked' });
       await recordSecurityEvent({
         eventType: 'login_failed_bad_password',
         severity: newCount >= 5 ? 'high' : 'info',

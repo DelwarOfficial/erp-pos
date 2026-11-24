@@ -36,6 +36,9 @@ export async function POST(req: NextRequest) {
     if (!user.isActive || user.deletedAt) {
       throw new DomainError('UNAUTHORIZED', 'User inactive', {}, 401);
     }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new DomainError('ACCOUNT_LOCKED', 'Account is temporarily locked', {}, 401);
+    }
     if (user.company.status !== 'active') {
       throw new DomainError('COMPANY_SUSPENDED', 'Company is not active', {}, 403);
     }
