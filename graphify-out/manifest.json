@@ -702,9 +702,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/layout.tsx": {
-    "mtime": 1794930747.1813445,
-    "seen": 1794931103.5240223,
-    "ast_hash": "d720de3dab155967bf273a4e51079f4b",
+    "mtime": 1795503224.1028056,
+    "seen": 1795503708.3769736,
+    "ast_hash": "08493f38568213d71ca7d45ff2a506e0",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/onboarding/page.tsx": {
@@ -2130,9 +2130,9 @@
     "semantic_hash": ""
   },
   "src/components/sales/SaleDetail.tsx": {
-    "mtime": 1794930846.5502176,
-    "seen": 1794931103.537373,
-    "ast_hash": "77790f1e1dad0de1f4d633c0f9ed3c60",
+    "mtime": 1795503200.340989,
+    "seen": 1795503708.4008906,
+    "ast_hash": "9b2da2f8c7ef0d30870d8e0da2ab3aa9",
     "semantic_hash": ""
   },
   "src/components/service/ServiceDetail.tsx": {
@@ -2844,9 +2844,9 @@
     "semantic_hash": ""
   },
   "src/hooks/useWorkflowMutation.ts": {
-    "mtime": 1794932783.705505,
-    "seen": 1794933525.2363079,
-    "ast_hash": "ae1bf1aa9f012cea1614336bb15024e5",
+    "mtime": 1795499136.33696,
+    "seen": 1795503708.4180381,
+    "ast_hash": "40cf31978258b0beb2979884d883787f",
     "semantic_hash": ""
   },
   "src/lib/access/http.ts": {
@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "src/lib/api/client.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9058013,
-    "ast_hash": "959ee8766e8235d562ea8da0de9c17b4",
+    "mtime": 1795503555.8837461,
+    "seen": 1795503708.4193492,
+    "ast_hash": "1a3aeebe09285d354660c0d519a72bec",
     "semantic_hash": ""
   },
   "src/lib/api/employeeInput.ts": {
@@ -3222,9 +3222,9 @@
     "semantic_hash": ""
   },
   "src/lib/permissions/catalogue.ts": {
-    "mtime": 1795100847.9074938,
-    "seen": 1795100948.8741481,
-    "ast_hash": "8cc182e356c60a8f3d7e86b5deb2c935",
+    "mtime": 1795503148.7034712,
+    "seen": 1795503708.4271598,
+    "ast_hash": "e417e71e5f75663ce528d0602e875c43",
     "semantic_hash": ""
   },
   "src/lib/permissions/routePolicy.json": {
@@ -4110,9 +4110,9 @@
     "semantic_hash": ""
   },
   "tests/unit/schemaFingerprint.test.ts": {
-    "mtime": 1795099142.602152,
-    "seen": 1795100948.8822753,
-    "ast_hash": "a9b2aeba78f154ba6f3b81ab8e352af9",
+    "mtime": 1795503139.5002728,
+    "seen": 1795503708.4522882,
+    "ast_hash": "936a689ed5cfef95c1e0f92d9e29c9dd",
     "semantic_hash": ""
   },
   "tests/unit/securityIsolation.test.ts": {
@@ -5304,15 +5304,27 @@
     "semantic_hash": ""
   },
   "src/lib/approval/refundGate.ts": {
-    "mtime": 1795449584.5750613,
-    "seen": 1795449922.230649,
-    "ast_hash": "8554aab5fffca04e748babd8d174c210",
+    "mtime": 1795503393.6805544,
+    "seen": 1795503708.419736,
+    "ast_hash": "5dbd1364a8f1aa2ed7385a9f730c071a",
     "semantic_hash": ""
   },
   "tests/integration/cashRefundGate.test.ts": {
     "mtime": 1795449738.0261154,
     "seen": 1795449922.2458034,
     "ast_hash": "bc2d3d0eaea76c6af1d5f143b07a7675",
+    "semantic_hash": ""
+  },
+  "src/app/(erp)/dashboard/approvals/page.tsx": {
+    "mtime": 1795503223.8345532,
+    "seen": 1795503708.3756135,
+    "ast_hash": "859d5fef6c501f1a7c493c65df585332",
+    "semantic_hash": ""
+  },
+  "tests/e2e/large-refund-approval.spec.ts": {
+    "mtime": 1795503569.2044532,
+    "seen": 1795503708.4315164,
+    "ast_hash": "b5296977e7dee699e87a7c36aa47894f",
     "semantic_hash": ""
   }
 }

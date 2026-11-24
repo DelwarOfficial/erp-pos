@@ -4,12 +4,12 @@
 //
 // Once a sale's cumulative return credit or cumulative cash refund reaches
 // refund_approval_threshold (base currency), the caller must:
-//   1. hold a fresh MFA session (step-up, 'large_refund_approval'), and
-//   2. present an approved ApprovalRequest with
+//   1. present an approved ApprovalRequest with
 //        request_type   'large_refund'
 //        reference_type 'sale', reference_id = the sale
 //        payload        { "refund_total": <largest cumulative base amount> }
-//      resolved by a user other than the caller.
+//      resolved by a user other than the caller, and
+//   2. hold a fresh MFA session (step-up, 'large_refund_approval').
 //
 // The approval caps the sale's cumulative total, so reusing it cannot
 // release more than was approved, and splitting one refund into several
@@ -53,8 +53,6 @@ export async function enforceLargeRefundGate(
     threshold, amount_base: result.totalBase,
     request_type: LARGE_REFUND_REQUEST_TYPE, reference_type: 'sale', reference_id: params.saleId,
   };
-  await requireMfaForAction(req, 'large_refund_approval');
-
   if (!params.approvalRequestId) {
     throw new DomainError('APPROVAL_REQUIRED',
       `Refunds of ${threshold} or more on one sale need a manager's approval. Ask a manager to approve, then try again with the approval.`,
@@ -82,5 +80,7 @@ export async function enforceLargeRefundGate(
       `The approval covers ${approvedTotal ? approvedTotal.toFixed(2) : 'no amount'}; this sale's refunds would total ${result.totalBase}`,
       { ...details, approved_total: approvedTotal?.toFixed(2) ?? null, approval_request_id: approval.id }, 403);
   }
+  // Last, so the user first learns an approval is needed, then re-verifies.
+  await requireMfaForAction(req, 'large_refund_approval');
   return { ...result, approvalRequestId: approval.id, approvedBy: approval.approvedBy };
 }

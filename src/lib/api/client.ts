@@ -80,6 +80,9 @@ function friendlyBody(original: unknown, status: number): unknown {
   if (status === 403) {
     // MFA challenge carries machine-readable details the UI needs — keep it.
     if (data?.error?.details && 'mfa_required' in data.error.details) return original;
+    // Maker-checker refusals are not missing permissions: the UI offers the
+    // next step (ask a manager), so keep the code, message and details.
+    if (data?.error?.code === 'APPROVAL_REQUIRED' || data?.error?.code === 'SELF_APPROVAL_PROHIBITED') return original;
     return {
       error: { code: data?.error?.code ?? 'FORBIDDEN_SCOPE', message: FORBIDDEN_MESSAGE },
     };

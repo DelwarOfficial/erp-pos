@@ -31,6 +31,7 @@ const NAV_ITEMS: Array<{ href: string; icon: React.ComponentType<{ className?: s
   { href: '/dashboard/sales', icon: Receipt, label: 'Sales' },
   { href: '/dashboard/cashier', icon: Clock, label: 'Cashier Shifts' },
   { href: '/dashboard/payments', icon: Banknote, label: 'Payments' },
+  { href: '/dashboard/approvals', icon: ShieldCheck, label: 'Approvals', requiresPermission: 'approval.read' },
   { href: '/dashboard/collections', icon: HandCoins, label: 'Collect Payments' },
   { href: '/dashboard/collections/calendar', icon: CalendarDays, label: 'Payment Due Dates' },
   { href: '/dashboard/collections/reports', icon: FileBarChart, label: 'Payment Collection Reports' },

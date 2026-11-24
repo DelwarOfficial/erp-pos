@@ -10,9 +10,11 @@ export function useWorkflowMutation() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  // The server's error code and details, for flows that react to a specific refusal.
+  const [errorInfo, setErrorInfo] = useState<{ code?: string; details?: Record<string, unknown> } | null>(null);
   async function mutate<T>(url: string, body: unknown, method = 'POST'): Promise<T | null> {
     if (busy.current) return null;
-    busy.current = true; setPending(true); setError(''); setErrorStatus(null);
+    busy.current = true; setPending(true); setError(''); setErrorStatus(null); setErrorInfo(null);
     const payload = JSON.stringify(body);
     const identity = `${method}:${url}:${payload}`;
     const key = keys.current.get(identity) ?? crypto.randomUUID();
@@ -22,6 +24,7 @@ export function useWorkflowMutation() {
       const data = await response.json();
       if (!response.ok) {
         setErrorStatus(response.status);
+        setErrorInfo({ code: data.error?.code, details: data.error?.details });
         throw new Error(data.error?.message ?? 'Action failed. Review the form and retry.');
       }
       keys.current.delete(identity);
@@ -29,5 +32,5 @@ export function useWorkflowMutation() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Network error. Retry the same action.'); return null; }
     finally { busy.current = false; setPending(false); }
   }
-  return { mutate, pending, error, setError, errorStatus };
+  return { mutate, pending, error, setError, errorStatus, errorInfo };
 }

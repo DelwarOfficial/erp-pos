@@ -253,7 +253,7 @@ export const SYSTEM_ROLES = [
   {
     name: 'branch_manager',
     description: 'Branch manager. Branch-scoped operations + approvals.',
-    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'collection.manage.branch', 'collection.reschedule.branch', 'communication.transactional.send.branch', 'payment.read', 'payment.allocate', 'customer.credit.view.branch'],
+    permissions: ['company.read', 'branch.read', 'warehouse.read', 'user.read', 'product.*', 'inventory.*', 'purchase.*', 'transfer.*', 'sale.*', 'shift.*', 'expense.approve', 'approval.resolve', 'approval.read', 'reconciliation.read', 'report.execute', 'asset.view.branch', 'asset.manage.branch', 'bank.reconciliation.view.company', 'collection.view.branch', 'collection.manage.branch', 'collection.reschedule.branch', 'communication.transactional.send.branch', 'payment.read', 'payment.allocate', 'customer.credit.view.branch'],
   },
   {
     name: 'cashier',
@@ -261,12 +261,14 @@ export const SYSTEM_ROLES = [
     permissions: ['product.read', 'sale.post', 'sale.void', 'sale_return.post', 'shift.open', 'shift.close', 'gift_card.redeem', 'payment.allocate',
       'payment.read', 'inventory.read', 'customer.credit.view.branch', 'collection.view.branch',
       // Find the customer at the till. Not customer.create: adding customers stays a manager's call.
-      'customer.read'],
+      'customer.read',
+      // Ask a manager to approve a large return or refund (src/lib/approval/refundGate.ts).
+      'approval.request', 'approval.read'],
   },
   {
     name: 'accountant',
     description: 'Accountant. Posts journals, expenses, reconciliations, period close. MFA mandatory.',
-    permissions: ['journal.*', 'expense.*', 'report.*', 'reconciliation.*', 'fiscal_period.lock', 'tax.manage', 'approval.resolve', 'asset.view.branch', 'asset.depreciate.company', 'bank.reconciliation.view.company', 'bank.reconciliation.manage.company'],
+    permissions: ['journal.*', 'expense.*', 'report.*', 'reconciliation.*', 'fiscal_period.lock', 'tax.manage', 'approval.resolve', 'approval.read', 'asset.view.branch', 'asset.depreciate.company', 'bank.reconciliation.view.company', 'bank.reconciliation.manage.company'],
   },
   {
     name: 'inventory_clerk',
