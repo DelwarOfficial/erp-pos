@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, "tax.manage");
+    await requireMfaForAction(req, 'tax_rule_change');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = TaxCodeCreateSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/tax-codes', body });

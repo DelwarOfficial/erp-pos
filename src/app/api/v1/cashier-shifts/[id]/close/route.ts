@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authenticateRequest, hasPermission, requirePermission } from '@/lib/auth/middleware';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { closeCashierShift } from '@/domain/commands/m3/CashierShift';
@@ -42,6 +43,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               varianceReason: body.variance_reason,
               closerCanApprove,
             }, correlationId);
+            // A manager approving a large drawer variance re-verifies MFA.
+            // Inside the transaction: a refusal undoes the close.
+            const closed = await tx.cashierShift.findFirst({ where: { id, companyId: auth.companyId }, select: { approvedBy: true } });
+            if (closed?.approvedBy) await requireMfaForAction(req, 'supervisor_cashier_variance_approval');
             return {
               status: 200,
               body: result,

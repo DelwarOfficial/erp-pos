@@ -19081,6 +19081,13 @@
      "default": "0",
      "extra": null,
      "collation": null
+    },
+    "mfa_verified_at": {
+     "type": "datetime(3)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": null
     }
    },
    "indexes": {

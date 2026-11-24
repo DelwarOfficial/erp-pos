@@ -2,6 +2,7 @@
 // DELETE /api/v1/tax-components/{id} — delete it while nothing references it.
 import { NextRequest } from 'next/server';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { requireIdempotencyKey } from '@/lib/idempotency';
 import { errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -13,6 +14,7 @@ export async function PATCH(req: NextRequest, { params }: Context) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, 'tax.manage');
+    await requireMfaForAction(req, 'tax_rule_change');
     const idempotencyKey = requireIdempotencyKey(req);
     return catalogueMutation(req, (await params).id, 'tax-components', auth, idempotencyKey);
   } catch (e) { return errorResponse(e, getCorrelationId(req)); }
@@ -22,6 +24,7 @@ export async function DELETE(req: NextRequest, { params }: Context) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, 'tax.manage');
+    await requireMfaForAction(req, 'tax_rule_change');
     const idempotencyKey = requireIdempotencyKey(req);
     return catalogueMutation(req, (await params).id, 'tax-components', auth, idempotencyKey);
   } catch (e) { return errorResponse(e, getCorrelationId(req)); }

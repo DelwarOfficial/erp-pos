@@ -148,7 +148,10 @@ export async function POST(req: NextRequest) {
     const hasPrivilegedRole = isPlatformUser || isGlobalAccess ||
       userRoles.some(ur => {
         const name = ur.role.name.toLowerCase();
+        // accountant, branch_manager and hr_manager approve money and people
+        // changes (red-team workstream 5), so they enrol MFA like owners.
         return name.includes('owner') || name.includes('admin') || name.includes('super')
+          || ['accountant', 'branch_manager', 'hr_manager'].includes(name)
           || ur.role.permissions.some(item => ['user.create', 'user.update', 'user.deactivate', 'user.reset_password',
             'role.create', 'role.update', 'role.assign'].includes(item.permission.code));
       });

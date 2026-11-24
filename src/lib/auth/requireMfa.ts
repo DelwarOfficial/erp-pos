@@ -2,14 +2,14 @@
 // Action-time MFA re-verification per §6 rule 2.
 // MFA is mandatory for: backup download, journal/adjustment approval,
 // sensitive export, fiscal-period actions, supervisor/cashier-variance approval.
-// This function checks that the user has a verified MFA session (mfa_verified=true in JWT)
-// for the current request. If not, throws INVALID_MFA.
+// Freshness comes from the session row in the database, not the JWT claim.
 
 import type { NextRequest } from 'next/server';
 import { verifyAccessToken } from '@/lib/auth/jwt';
 import { DomainError } from '@/lib/errors/codes';
 import { cookies } from 'next/headers';
 import { getAccessCookieName } from './cookieNames';
+import { systemDb } from '@/lib/db';
 
 /**
  * Actions that require MFA re-verification per §6 rule 2.
@@ -29,11 +29,19 @@ export const MFA_REQUIRED_ACTIONS = [
 export type MfaRequiredAction = (typeof MFA_REQUIRED_ACTIONS)[number];
 
 /**
- * Verifies that the current user has an MFA-verified session.
- * Throws INVALID_MFA (403) if MFA is enabled but not verified for this session.
+ * How long a real MFA check (TOTP or passkey) counts for sensitive actions.
+ * Decided by the product owner on 2026-11-24 (red-team workstream 5).
+ */
+export const MFA_STEP_UP_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Requires a real MFA check within MFA_STEP_UP_WINDOW_MS for this session.
  *
- * Usage in high-risk API routes:
- *   await requireMfaForAction(req, 'fiscal_period_lock');
+ * Reads the session's refresh_tokens.mfa_verified_at, not the access token's
+ * mfa_verified claim: refresh rotation copied that claim forward for the
+ * whole 30-day session, so step-up never asked again. Throws INVALID_MFA
+ * (403) with { mfa_required, step_up } so the app can ask for a code
+ * (POST /api/v1/auth/mfa/step-up) and retry.
  */
 export async function requireMfaForAction(
   req: NextRequest,
@@ -50,12 +58,17 @@ export async function requireMfaForAction(
     throw new DomainError('UNAUTHORIZED', 'Invalid or expired token', {}, 401);
   }
 
-  // If user has MFA enabled but hasn't verified MFA in this session
-  if (claims.mfa_verified !== true) {
+  const session = await systemDb.refreshToken.findFirst({
+    where: { familyId: claims.family_id, userId: claims.sub, companyId: claims.company_id, revokedAt: null, expiresAt: { gt: new Date() } },
+    select: { mfaVerifiedAt: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  const verifiedAt = session?.mfaVerifiedAt;
+  if (!verifiedAt || Date.now() - verifiedAt.getTime() > MFA_STEP_UP_WINDOW_MS) {
     throw new DomainError(
       'INVALID_MFA',
-      `MFA re-verification required for action: ${action}. Please complete MFA verification before proceeding.`,
-      { action, mfa_required: true },
+      'Enter your authenticator code to continue. Sensitive actions need a code from the last hour.',
+      { action, mfa_required: true, step_up: true },
       403,
     );
   }

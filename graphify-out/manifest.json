@@ -84,9 +84,9 @@
     "semantic_hash": ""
   },
   "prisma/mariadb/schema-fingerprint.json": {
-    "mtime": 1795099142.5370655,
-    "seen": 1795100948.84731,
-    "ast_hash": "d19364854a0f286e60fec5c58c3dfa11",
+    "mtime": 1795508875.7801137,
+    "seen": 1795509188.5227656,
+    "ast_hash": "7af5be4341ecff5367ab660b300b30b3",
     "semantic_hash": ""
   },
   "public/locales/bn-BD/common.json": {
@@ -702,9 +702,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/layout.tsx": {
-    "mtime": 1795503224.1028056,
-    "seen": 1795503708.3769736,
-    "ast_hash": "08493f38568213d71ca7d45ff2a506e0",
+    "mtime": 1795508843.8688004,
+    "seen": 1795509188.5471544,
+    "ast_hash": "578ff3d11af528c623959198c4122c8e",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/onboarding/page.tsx": {
@@ -828,9 +828,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/account-transfers/route.ts": {
-    "mtime": 1791030165.793358,
-    "seen": 1791098939.9054801,
-    "ast_hash": "306859d5e6a3b385f45db05de7c7e487",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.5499494,
+    "ast_hash": "b0df19392dbf9ec5ac5113bf6cab71f7",
     "semantic_hash": ""
   },
   "src/app/api/v1/accounting-policies/route.ts": {
@@ -990,9 +990,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/auth/login/route.ts": {
-    "mtime": 1795507924.6140733,
-    "seen": 1795508061.0578134,
-    "ast_hash": "63971c371a7cc1443b7b9176c58c034a",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.5540032,
+    "ast_hash": "216fcebf231fdcd4f84898552b3deb82",
     "semantic_hash": ""
   },
   "src/app/api/v1/auth/logout/route.ts": {
@@ -1086,9 +1086,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/cashier-shifts/[id]/close/route.ts": {
-    "mtime": 1794920897.1350048,
-    "seen": 1794921279.8003569,
-    "ast_hash": "5e57a1f25d30e9b17f3f3c04291afa60",
+    "mtime": 1795508786.086718,
+    "seen": 1795509188.5564423,
+    "ast_hash": "cb8f357db5ef28b765f5586f72d8667b",
     "semantic_hash": ""
   },
   "src/app/api/v1/cashier-shifts/open/route.ts": {
@@ -1398,9 +1398,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/export-jobs/[id]/download/route.ts": {
-    "mtime": 1791030165.8099174,
-    "seen": 1791098939.9055698,
-    "ast_hash": "353e11a56370de44d3003b2fef17c9de",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.56613,
+    "ast_hash": "548a093e1466c2f2532580d3912f1719",
     "semantic_hash": ""
   },
   "src/app/api/v1/export-jobs/route.ts": {
@@ -1866,21 +1866,21 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/tax-codes/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.905642,
-    "ast_hash": "7b63cb9aa441ca49e7333fa70f7b4419",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.5773392,
+    "ast_hash": "99feb6fb169bf3d5a84e42ce1a9e7108",
     "semantic_hash": ""
   },
   "src/app/api/v1/tax-components/[id]/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.905643,
-    "ast_hash": "b201d5fba7abca150ce9317ac2aeafbd",
+    "mtime": 1795508786.088718,
+    "seen": 1795509188.5773416,
+    "ast_hash": "c427293f6d1066776b27f575af5e28bc",
     "semantic_hash": ""
   },
   "src/app/api/v1/tax-components/route.ts": {
-    "mtime": 1791030165.8264885,
-    "seen": 1791098939.9056437,
-    "ast_hash": "5168fbf952fef13cecb09132aa56f361",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.5773432,
+    "ast_hash": "48e82c78b978a5372c0ab7337175ba1c",
     "semantic_hash": ""
   },
   "src/app/api/v1/tax-periods/[id]/route.ts": {
@@ -2910,9 +2910,9 @@
     "semantic_hash": ""
   },
   "src/lib/api/client.ts": {
-    "mtime": 1795503555.8837461,
-    "seen": 1795503708.4193492,
-    "ast_hash": "1a3aeebe09285d354660c0d519a72bec",
+    "mtime": 1795508813.8655388,
+    "seen": 1795509188.603,
+    "ast_hash": "1fc7ee46db8ec688b057c217f3eb221f",
     "semantic_hash": ""
   },
   "src/lib/api/employeeInput.ts": {
@@ -3018,15 +3018,15 @@
     "semantic_hash": ""
   },
   "src/lib/auth/refreshToken.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9058175,
-    "ast_hash": "820287c572da2fca1bda2e89c04e349a",
+    "mtime": 1795508931.9323714,
+    "seen": 1795509188.605463,
+    "ast_hash": "b15ea731144358047aa4d6316be07e2b",
     "semantic_hash": ""
   },
   "src/lib/auth/requireMfa.ts": {
-    "mtime": 1791030165.859814,
-    "seen": 1791098939.9058187,
-    "ast_hash": "6f94fc6c5d2740d2314d78ed79c7230a",
+    "mtime": 1795508931.9416716,
+    "seen": 1795509188.6054652,
+    "ast_hash": "f86fb329c98f3e74470fb5f0f3b149ea",
     "semantic_hash": ""
   },
   "src/lib/auth/sessions.ts": {
@@ -3228,9 +3228,9 @@
     "semantic_hash": ""
   },
   "src/lib/permissions/routePolicy.json": {
-    "mtime": 1795333751.0939448,
-    "seen": 1795334005.9094996,
-    "ast_hash": "51c23bd941100d65eb20fda5c114bfe3",
+    "mtime": 1795508786.0897174,
+    "seen": 1795509188.611765,
+    "ast_hash": "0111637faf0f2fbb71293712e7c416d0",
     "semantic_hash": ""
   },
   "src/lib/queue/index.ts": {
@@ -4110,9 +4110,9 @@
     "semantic_hash": ""
   },
   "tests/unit/schemaFingerprint.test.ts": {
-    "mtime": 1795503139.5002728,
-    "seen": 1795503708.4522882,
-    "ast_hash": "936a689ed5cfef95c1e0f92d9e29c9dd",
+    "mtime": 1795508875.8962743,
+    "seen": 1795509188.6377041,
+    "ast_hash": "18c6b6a736de352d8720c45b0f132640",
     "semantic_hash": ""
   },
   "tests/unit/securityIsolation.test.ts": {
@@ -4608,15 +4608,15 @@
     "semantic_hash": ""
   },
   "public/locales/bn-BD/ui.json": {
-    "mtime": 1795507086.5475447,
-    "seen": 1795507263.562357,
-    "ast_hash": "ac166b360af4df62416dee25855879f9",
+    "mtime": 1795508843.870801,
+    "seen": 1795509188.522904,
+    "ast_hash": "209a3e7b99820b471c3438c498b4a23d",
     "semantic_hash": ""
   },
   "public/locales/en-BD/ui.json": {
-    "mtime": 1795507086.546545,
-    "seen": 1795507263.5624106,
-    "ast_hash": "367594d2d9eeee2de96b57d6edef7fdb",
+    "mtime": 1795508843.8697999,
+    "seen": 1795509188.5230381,
+    "ast_hash": "20054db14114a61750064d1ded1d7ed4",
     "semantic_hash": ""
   },
   "src/components/i18n/I18nProvider.tsx": {
@@ -5361,6 +5361,24 @@
     "mtime": 1795507919.9112072,
     "seen": 1795508061.1246607,
     "ast_hash": "dfbfc773afb303a6d69c13e89263a51a",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/auth/mfa/step-up/route.ts": {
+    "mtime": 1795509044.3925905,
+    "seen": 1795509188.5547724,
+    "ast_hash": "5f5911c223d3e72b277218b4f0c36bf6",
+    "semantic_hash": ""
+  },
+  "src/components/auth/StepUpDialog.tsx": {
+    "mtime": 1795508843.6578948,
+    "seen": 1795509188.581728,
+    "ast_hash": "c7141f80c6bcb199cf41cf1ef7db0704",
+    "semantic_hash": ""
+  },
+  "tests/integration/stepUpMfa.test.ts": {
+    "mtime": 1795509068.826243,
+    "seen": 1795509188.625752,
+    "ast_hash": "59cb2e756bf248dde83626505eaeb014",
     "semantic_hash": ""
   }
 }

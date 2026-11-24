@@ -33,7 +33,9 @@ describe('schema fingerprint', () => {
     // fingerprint generated after 20261001000200_security_events_append_only
     // still describes the schema. A migration that changes structure must
     // regenerate the fingerprint and move this line.
-    expect(newest).toBe('20261124000100_large_refund_approval_grants');
+    // 20261124000200_refresh_token_mfa_verified_at adds a column; the
+    // fingerprint was regenerated after it.
+    expect(newest).toBe('20261124000200_refresh_token_mfa_verified_at');
     const pins = Object.values(fingerprint.tables.cashier_device_pins.foreignKeys);
     expect(pins.map(fk => `${fk.columns}->${fk.references}`).sort()).toEqual([
       'company_id,device_id->devices(company_id,id)',

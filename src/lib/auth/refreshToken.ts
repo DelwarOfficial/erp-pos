@@ -19,6 +19,7 @@ export interface IssuedRefreshToken {
   tokenId: string;
   sessionId: string | null;
   mfaVerified: boolean;
+  mfaVerifiedAt: Date | null;
 }
 
 export function generateRefreshToken(): { token: string; hash: string } {
@@ -34,9 +35,12 @@ export async function issueRefreshToken(params: {
   rotatedFromId?: string;
   sessionId?: string;
   mfaVerified?: boolean;
+  /** When MFA was last really checked. Omitted: now if mfaVerified, else none. Rotation passes the old value on unchanged. */
+  mfaVerifiedAt?: Date | null;
 }, client: Prisma.TransactionClient = db): Promise<IssuedRefreshToken> {
   const { token, hash } = generateRefreshToken();
   const familyId = params.familyId ?? randomBytes(16).toString('hex');
+  const mfaVerifiedAt = params.mfaVerifiedAt !== undefined ? params.mfaVerifiedAt : (params.mfaVerified ? new Date() : null);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
   const created = await client.refreshToken.create({
     data: {
@@ -47,12 +51,13 @@ export async function issueRefreshToken(params: {
       familyId,
       sessionId: params.sessionId ?? null,
       mfaVerified: params.mfaVerified ?? false,
+      mfaVerifiedAt,
       expiresAt,
       rotatedFromId: params.rotatedFromId ?? null,
     },
   });
   return { token, hash, expiresAt, familyId, tokenId: created.id,
-    sessionId: params.sessionId ?? null, mfaVerified: params.mfaVerified ?? false };
+    sessionId: params.sessionId ?? null, mfaVerified: params.mfaVerified ?? false, mfaVerifiedAt };
 }
 
 /**
@@ -88,6 +93,8 @@ export async function rotateRefreshToken(params: {
       deviceId: record.deviceId ?? undefined,
       familyId: record.familyId, rotatedFromId: record.id,
       sessionId: record.sessionId ?? undefined, mfaVerified: record.mfaVerified,
+      // Carried, never refreshed: rotation is not an MFA check.
+      mfaVerifiedAt: record.mfaVerifiedAt,
     }, tx);
     return { reused: null, token };
   }, { isolationLevel: 'Serializable' });

@@ -102,6 +102,8 @@ function isActiveRoute(pathname: string, href: string) {
   return pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
 }
 
+import { StepUpDialog } from '@/components/auth/StepUpDialog';
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -294,7 +296,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {parentPage && <nav aria-label="Page navigation" className="mx-auto mb-4 w-full max-w-[1600px]">
             <Button asChild variant="outline"><Link href={parentPage.href}><ArrowLeft className="h-4 w-4" aria-hidden="true" />{t('back_to', { page: t(`nav.${navKey(parentPage.href)}`) })}</Link></Button>
           </nav>}
-          <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div></DashboardSession.Provider>
+          <DashboardSession.Provider value={user}><div className="mx-auto w-full max-w-[1600px]">{children}</div><StepUpDialog /></DashboardSession.Provider>
         </main>
       </div>
     </div>

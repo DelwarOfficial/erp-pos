@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { postAccountTransfer } from '@/domain/commands/m3/Payments';
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await authenticateRequest();
     await requirePermission(auth, 'account_transfer.post');
+    await requireMfaForAction(req, 'account_transfer_approval');
     const idempotencyKey = requireIdempotencyKey(req);
     const body = CreateTransferSchema.parse(await req.json());
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/account-transfers', body });

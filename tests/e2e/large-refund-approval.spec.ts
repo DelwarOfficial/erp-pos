@@ -92,8 +92,16 @@ test('a large return asks a manager, then posts once approved', async ({ page, c
     await db.approvalRequest.update({ where: { id: request.id }, data: { status: 'approved', approvedBy: manager.id, resolvedAt: new Date(), reason: 'E2E second user' } });
 
     await page.getByRole('button', { name: 'Post return' }).click();
-    const outcome = page.getByText('Return posted. Review refund balance below.').or(page.getByRole('alert').filter({ hasText: /MFA re-verification/ }));
+    // The demo owner's session has no recent MFA check, so the app asks for a code.
+    const stepUp = page.getByRole('dialog', { name: 'Enter your authenticator code' });
+    const outcome = page.getByText('Return posted. Review refund balance below.').or(stepUp);
     await expect(outcome).toBeVisible();
+    if (await stepUp.isVisible()) {
+      await expect(stepUp.getByRole('textbox', { name: '6-digit code' })).toBeFocused();
+      await page.screenshot({ path: `${shots}/04-step-up.png` });
+      await stepUp.getByRole('button', { name: 'Cancel' }).click();
+      await expect(page.getByRole('alert').filter({ hasText: 'Enter your authenticator code to continue' })).toBeVisible();
+    }
     await page.screenshot({ path: `${shots}/03-after-approval.png`, fullPage: true });
     const posted = await db.saleReturn.count({ where: { saleId } });
     test.info().annotations.push({ type: 'result', description: posted ? 'return posted' : 'stopped at step-up MFA (session not MFA-verified)' });

@@ -636,6 +636,7 @@ model RefreshToken {
   familyId      String   @map("family_id")
   sessionId     String?  @map("session_id")
   mfaVerified   Boolean  @default(false) @map("mfa_verified")
+  mfaVerifiedAt DateTime? @map("mfa_verified_at") // last real MFA check; step-up freshness
   deviceId      String?  @map("device_id")
   expiresAt     DateTime @map("expires_at")
   rotatedFromId String?  @map("rotated_from_id")

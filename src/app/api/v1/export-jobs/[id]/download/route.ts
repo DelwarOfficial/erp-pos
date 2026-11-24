@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
+import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { DomainError } from '@/lib/errors/codes';
 import { generateCsv, escapeFormulaCell } from '@/lib/import-export/csv';
 
@@ -12,8 +13,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     auth = await authenticateRequest();
     await requirePermission(auth, 'export.data.branch');
+    await requireMfaForAction(req, 'sensitive_export');
   } catch (e) {
-    if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
+    if (e instanceof DomainError) return NextResponse.json({ error: { code: e.code, message: e.message, details: e.details } }, { status: e.httpStatus });
     return NextResponse.json({ error: { code: 'INTERNAL' } }, { status: 500 });
   }
   

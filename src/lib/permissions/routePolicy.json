@@ -331,6 +331,12 @@
     "exception": "Authentication protocol; dedicated credential/challenge validation."
   },
   {
+    "file": "v1/auth/mfa/step-up/route.ts",
+    "method": "POST",
+    "permissions": [],
+    "exception": "Authentication protocol; re-checks the signed-in user's own MFA code."
+  },
+  {
     "file": "v1/auth/mfa/verify/route.ts",
     "method": "POST",
     "permissions": [],

@@ -107,9 +107,29 @@ async function withFriendlyBody(res: Response): Promise<Response> {
   });
 }
 
+// Step-up MFA: a sensitive action answers 403 INVALID_MFA with
+// { step_up: true } when the session's last code check is too old. The
+// dashboard registers a handler that asks for a code (POST
+// /api/v1/auth/mfa/step-up); after it succeeds the request is sent once more.
+type StepUpHandler = () => Promise<boolean>;
+let stepUpHandler: StepUpHandler | null = null;
+export function setStepUpHandler(handler: StepUpHandler | null): void { stepUpHandler = handler; }
+
+async function needsStepUp(res: Response): Promise<boolean> {
+  if (res.status !== 403 || !stepUpHandler) return false;
+  try {
+    const data = await res.clone().json() as { error?: { details?: { step_up?: unknown } } };
+    return data?.error?.details?.step_up === true;
+  } catch { return false; }
+}
+
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const withCreds: RequestInit = { credentials: 'include', ...init };
   const res = await fetch(input, withCreds);
+  if (!isAuthPath(input) && await needsStepUp(res) && await stepUpHandler!()) {
+    // Same request, same idempotency key: one retry after the code check.
+    return withFriendlyBody(await fetch(input, withCreds));
+  }
   if (res.status !== 401 || isAuthPath(input)) {
     return withFriendlyBody(res);
   }
