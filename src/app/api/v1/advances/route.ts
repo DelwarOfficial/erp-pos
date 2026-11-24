@@ -8,6 +8,7 @@ import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { nextDocumentNumber } from '@/lib/numbering';
+import { receiptDebitAccount } from '@/domain/commands/m3/Payments';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -130,7 +131,8 @@ export async function POST(req: NextRequest) {
               currencyCode: body.currency_code, exchangeRate: body.exchange_rate,
               createdBy: auth.userId,
               lines: [
-                { chartOfAccountId: fa.chartOfAccountId, debit: baseAmount, credit: 0, memo: `Advance received ${referenceNo}` },
+                // A cheque is held on cheque clearing until it clears (workstream 8).
+                { chartOfAccountId: (await receiptDebitAccount(tx, auth.companyId, body.payment_method, fa)).chartOfAccountId, debit: baseAmount, credit: 0, memo: `Advance received ${referenceNo}` },
                 { chartOfAccountId: policies.customerAdvanceAccountId, debit: 0, credit: baseAmount, memo: `Advance liability ${referenceNo}` },
               ],
             }, correlationId);

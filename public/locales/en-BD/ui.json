@@ -712,5 +712,20 @@
   "offline.adopt_confirm": "Post sale {n}",
   "offline.adopt_cancel": "Cancel",
   "offline.posted_by_manager": "Offline sale {n} posted under your name. The audit log keeps who took it.",
-  "offline.no_cashier": "Sign in while online before taking offline sales."
+  "offline.no_cashier": "Sign in while online before taking offline sales.",
+  "payments.filter_cheques": "Cheques waiting",
+  "payments.cheque_pending_clearance": "Cheque waiting to clear",
+  "payments.cheque_cleared": "Cheque cleared",
+  "payments.cheque_bounced": "Cheque bounced",
+  "payments.cheque_clear": "Mark cleared",
+  "payments.cheque_bounce": "Mark bounced",
+  "payments.cheque_clear_named": "Mark cheque {ref} as cleared",
+  "payments.cheque_bounce_named": "Mark cheque {ref} as bounced",
+  "payments.cheque_bounce_title": "Mark cheque {ref} as bounced?",
+  "payments.cheque_bounce_desc": "The {amount} comes off the cheque clearing account and the customer owes it again. This cannot be undone.",
+  "payments.cheque_bounce_reason": "Why did it bounce?",
+  "payments.cheque_bounce_confirm": "Mark bounced",
+  "payments.cheque_cleared_toast": "Cheque {ref} cleared. The money is now in the account.",
+  "payments.cheque_bounced_toast": "Cheque {ref} marked bounced. The customer owes the amount again.",
+  "payments.cheque_err": "We couldn't update the cheque: {reason}"
 }

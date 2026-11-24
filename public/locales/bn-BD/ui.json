@@ -712,5 +712,20 @@
   "offline.adopt_confirm": "বিক্রি {n} পোস্ট করুন",
   "offline.adopt_cancel": "বাতিল",
   "offline.posted_by_manager": "অফলাইন বিক্রি {n} আপনার নামে পোস্ট হয়েছে। কে নিয়েছিলেন তা অডিট লগে থাকবে।",
-  "offline.no_cashier": "অফলাইন বিক্রি নেওয়ার আগে অনলাইনে সাইন ইন করুন।"
+  "offline.no_cashier": "অফলাইন বিক্রি নেওয়ার আগে অনলাইনে সাইন ইন করুন।",
+  "payments.filter_cheques": "অপেক্ষমাণ চেক",
+  "payments.cheque_pending_clearance": "চেক ক্লিয়ারের অপেক্ষায়",
+  "payments.cheque_cleared": "চেক ক্লিয়ার হয়েছে",
+  "payments.cheque_bounced": "চেক বাউন্স হয়েছে",
+  "payments.cheque_clear": "ক্লিয়ার চিহ্নিত করুন",
+  "payments.cheque_bounce": "বাউন্স চিহ্নিত করুন",
+  "payments.cheque_clear_named": "চেক {ref} ক্লিয়ার চিহ্নিত করুন",
+  "payments.cheque_bounce_named": "চেক {ref} বাউন্স চিহ্নিত করুন",
+  "payments.cheque_bounce_title": "চেক {ref} বাউন্স চিহ্নিত করবেন?",
+  "payments.cheque_bounce_desc": "{amount} চেক ক্লিয়ারিং অ্যাকাউন্ট থেকে বাদ যাবে এবং গ্রাহকের কাছে আবার পাওনা হবে। এটি ফেরানো যাবে না।",
+  "payments.cheque_bounce_reason": "কেন বাউন্স হয়েছে?",
+  "payments.cheque_bounce_confirm": "বাউন্স চিহ্নিত করুন",
+  "payments.cheque_cleared_toast": "চেক {ref} ক্লিয়ার হয়েছে। টাকা এখন অ্যাকাউন্টে।",
+  "payments.cheque_bounced_toast": "চেক {ref} বাউন্স চিহ্নিত হয়েছে। গ্রাহকের কাছে টাকা আবার পাওনা।",
+  "payments.cheque_err": "চেক হালনাগাদ করা যায়নি: {reason}"
 }

@@ -24,6 +24,7 @@ import { nextDocumentNumber } from '@/lib/numbering';
 import { buildSchedule, type PaymentArrangement } from '@/domain/receivables/schedule';
 import { installmentBalances } from '@/domain/receivables/balances';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
+import { receiptDebitAccount } from '@/domain/commands/m3/Payments';
 import { tenderGiftCard } from '@/domain/commands/m6/Loyalty';
 import { couponDiscount } from '@/domain/loyalty/coupons';
 import { consumePointsConfirmation } from '@/domain/loyalty/confirmations';
@@ -666,9 +667,11 @@ export async function postSale(
         // A gift card pays by using up the liability its sale created, not cash.
         const giftCard = payment.paymentMethod === 'gift_card';
         const points = payment.paymentMethod === 'reward_points';
+        // A cheque is held on cheque clearing until it clears (workstream 8).
+        const cheque = payment.paymentMethod === 'cheque' ? await receiptDebitAccount(tx, input.companyId, 'cheque', fa) : null;
         revenueJournalLines.push({
           // Points spent use up the points liability, like a gift card.
-          chartOfAccountId: points ? (await loyaltyAccounts(tx, input.companyId)).liability : giftCard ? policies.giftCardLiabilityAccountId : fa.chartOfAccountId,
+          chartOfAccountId: points ? (await loyaltyAccounts(tx, input.companyId)).liability : giftCard ? policies.giftCardLiabilityAccountId : cheque ? cheque.chartOfAccountId : fa.chartOfAccountId,
           debit: payment.amount, credit: 0,
           memo: points ? `Reward points for ${referenceNo}` : giftCard ? `Gift card ${payment.methodReference} for ${referenceNo}` : `Cash received for ${referenceNo}`,
           branchId: input.branchId,

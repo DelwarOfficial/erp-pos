@@ -8,6 +8,7 @@ import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
 import { nextDocumentNumber } from '@/lib/numbering';
+import { receiptDebitAccount } from '@/domain/commands/m3/Payments';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
@@ -51,6 +52,8 @@ export async function GET(req: NextRequest) {
     const status = url.searchParams.get('status') ?? undefined;
     const paymentType = url.searchParams.get('payment_type') ?? undefined;
     const method = url.searchParams.get('payment_method') ?? undefined;
+    // ?cheque_status=pending_clearance lists cheques waiting on the bank (workstream 8).
+    const chequeStatus = url.searchParams.get('cheque_status') ?? undefined;
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200);
     const offset = parseInt(url.searchParams.get('offset') ?? '0', 10);
 
@@ -58,6 +61,7 @@ export async function GET(req: NextRequest) {
     if (status) where.paymentStatus = status;
     if (paymentType) where.paymentType = paymentType;
     if (method) where.paymentMethod = method;
+    if (chequeStatus) where.chequeStatus = chequeStatus;
 
     const [items, total] = await runInTenantContext(auth.ctx, async () => {
       return Promise.all([
@@ -207,6 +211,10 @@ export async function POST(req: NextRequest) {
               else if (body.payment_type === 'sale_refund') counterAccountId = policies.arAccountId;
 
               const cashDebit = body.direction === 'incoming' ? baseAmount : 0;
+              // A cheque received is held on cheque clearing until it clears (workstream 8).
+              const cashSide = body.direction === 'incoming'
+                ? await receiptDebitAccount(tx, auth.companyId, body.payment_method, fa)
+                : { chartOfAccountId: fa.chartOfAccountId };
               const cashCredit = body.direction === 'outgoing' ? baseAmount : 0;
               await postJournalEntry(tx, {
                 companyId: auth.companyId, entryDate: businessDate,
@@ -215,7 +223,7 @@ export async function POST(req: NextRequest) {
                 currencyCode: body.currency_code, exchangeRate: body.exchange_rate,
                 createdBy: auth.userId,
                 lines: [
-                  { chartOfAccountId: fa.chartOfAccountId, debit: cashDebit, credit: cashCredit, memo: `${body.payment_type} ${referenceNo}` },
+                  { chartOfAccountId: cashSide.chartOfAccountId, debit: cashDebit, credit: cashCredit, memo: `${body.payment_type} ${referenceNo}` },
                   { chartOfAccountId: counterAccountId, debit: cashCredit, credit: cashDebit, memo: `Counterparty for ${referenceNo}` },
                 ],
               }, correlationId);

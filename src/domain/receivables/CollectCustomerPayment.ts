@@ -29,6 +29,7 @@
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { postJournalEntry } from '@/domain/commands/m4/PostJournalEntry';
+import { receiptDebitAccount } from '@/domain/commands/m3/Payments';
 import { DomainError } from '@/lib/errors/codes';
 import { requireOwnOpenShift } from '@/lib/shifts/requireOwnOpenShift';
 import { nextDocumentNumber } from '@/lib/numbering';
@@ -174,7 +175,8 @@ export async function collectCustomerPayment(
     postingKind: 'sale_receipt', sourceType: 'payment', sourceId: payment.id,
     description: `Customer collection ${referenceNo}`, currencyCode: CURRENCY, exchangeRate: 1, createdBy: input.collectedBy,
     lines: [
-      { chartOfAccountId: account.chartOfAccountId, financialAccountId: account.id, branchId: input.branchId,
+      // A cheque is held on cheque clearing until it clears (workstream 8).
+      { ...await receiptDebitAccount(tx, input.companyId, input.paymentMethod, account), branchId: input.branchId,
         debit: amount, credit: 0, memo: `Collection ${referenceNo}` },
       ...[...arByBranch].map(([branchId, credit]) => ({
         chartOfAccountId: policies.arAccountId, customerId: input.customerId, branchId,

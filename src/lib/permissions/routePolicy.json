@@ -1543,6 +1543,22 @@
     "exception": null
   },
   {
+    "file": "v1/payments/[id]/cheque/bounce/route.ts",
+    "method": "POST",
+    "permissions": [
+      "cheque.bounce"
+    ],
+    "exception": null
+  },
+  {
+    "file": "v1/payments/[id]/cheque/clear/route.ts",
+    "method": "POST",
+    "permissions": [
+      "cheque.clear"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/payments/[id]/reverse/route.ts",
     "method": "POST",
     "permissions": [

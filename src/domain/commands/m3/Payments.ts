@@ -176,30 +176,111 @@ export async function reversePayment(
   return { reversedPaymentId: reversedPayment.id };
 }
 
-// ── Cheque commands ──
-export async function clearCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; clearedBy: string }, correlationId: string) {
-  return updateChequeStatus(tx, params.companyId, params.paymentId, 'cleared', params.clearedBy, correlationId, 'Cheque cleared');
-}
-export async function bounceCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; bouncedBy: string; reason: string }, correlationId: string) {
-  return updateChequeStatus(tx, params.companyId, params.paymentId, 'bounced', params.bouncedBy, correlationId, params.reason);
-}
-export async function cancelCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; cancelledBy: string; reason: string }, correlationId: string) {
-  return updateChequeStatus(tx, params.companyId, params.paymentId, 'cancelled', params.cancelledBy, correlationId, params.reason);
+/// ── Cheque commands ──
+// Red-team workstream 8. A cheque received is not cash until the bank clears
+// it. It is booked to the cheque-clearing account (accounting policy) and
+// only moves to the cash/bank account when cleared; a bounce reverses it back
+// to whatever it settled (receivable, or the customer-advance liability) and
+// marks the payment reversed, so balances that count posted payments see the
+// money as owed again. Cheques booked before this change went straight to
+// cash; those clear without a journal and bounce out of cash.
+
+/** The ledger account an incoming payment's money lands on: cheque clearing for a cheque, else the payment account. */
+export async function receiptDebitAccount(
+  tx: Prisma.TransactionClient, companyId: string, paymentMethod: string,
+  financialAccount: { id: string; chartOfAccountId: string },
+): Promise<{ chartOfAccountId: string; financialAccountId?: string }> {
+  if (paymentMethod !== 'cheque') return { chartOfAccountId: financialAccount.chartOfAccountId, financialAccountId: financialAccount.id };
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId }, select: { chequeClearingAccountId: true } });
+  if (!policy?.chequeClearingAccountId) {
+    throw new DomainError('VALIDATION_FAILED', 'Set a cheque clearing account in accounting policies before taking cheques', {}, 409);
+  }
+  return { chartOfAccountId: policy.chequeClearingAccountId };
 }
 
-async function updateChequeStatus(tx: Prisma.TransactionClient, companyId: string, paymentId: string, newStatus: string, userId: string, correlationId: string, reason: string) {
-  const payment = await tx.payment.findFirst({ where: { id: paymentId, companyId } });
+async function pendingCheque(tx: Prisma.TransactionClient, companyId: string, paymentId: string, newStatus: string) {
+  const payment = await tx.payment.findFirst({
+    where: { id: paymentId, companyId },
+    include: { financialAccount: { select: { chartOfAccountId: true } }, allocations: { select: { saleId: true } } },
+  });
   if (!payment) throw new DomainError('RESOURCE_NOT_FOUND', 'Payment not found', {}, 404);
   if (payment.paymentMethod !== 'cheque') throw new DomainError('VALIDATION_FAILED', 'Payment is not a cheque', {}, 400);
-  if (!['pending_clearance'].includes(payment.chequeStatus)) {
+  if (payment.chequeStatus !== 'pending_clearance' || payment.paymentStatus !== 'posted') {
     throw new DomainError('CHEQUE_STATUS_INVALID', `Cheque is ${payment.chequeStatus}, cannot change to ${newStatus}`, {}, 409);
   }
-  await tx.payment.update({ where: { id: paymentId }, data: { chequeStatus: newStatus } });
-  await tx.auditLog.create({
-    data: { companyId, userId, correlationId, action: `cheque.${newStatus}`, entityType: 'payment', entityId: paymentId,
-      afterValue: JSON.stringify({ cheque_status: newStatus, reason }) },
+  if (payment.direction !== 'incoming') throw new DomainError('VALIDATION_FAILED', 'Only cheques received can be cleared or bounced here', {}, 400);
+  const policy = await tx.accountingPolicy.findUnique({ where: { companyId } });
+  if (!policy) throw new DomainError('VALIDATION_FAILED', 'Accounting policies are not configured', {}, 409);
+  // Where the receipt was booked: on clearing for cheques taken since
+  // workstream 8, on the cash account before it.
+  // A sale posts its receipts under "<sale>:revenue".
+  const sourceIds = [payment.id, ...payment.allocations.flatMap(a => (a.saleId ? [`${a.saleId}:revenue`] : []))];
+  const onClearing = !!policy.chequeClearingAccountId && !!await tx.journalLine.findFirst({
+    where: { companyId, chartOfAccountId: policy.chequeClearingAccountId, debitBase: { gt: 0 }, journalEntry: { companyId, sourceId: { in: sourceIds } } },
+    select: { id: true },
   });
-  return { paymentId, chequeStatus: newStatus };
+  return { payment, policy, heldAccountId: onClearing ? policy.chequeClearingAccountId! : payment.financialAccount.chartOfAccountId, onClearing };
+}
+
+export async function clearCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; clearedBy: string }, correlationId: string) {
+  const { payment, heldAccountId, onClearing } = await pendingCheque(tx, params.companyId, params.paymentId, 'cleared');
+  if (onClearing) {
+    await postJournalEntry(tx, {
+      companyId: params.companyId, entryDate: new Date(), postingKind: 'cheque_clearance',
+      sourceType: 'payment', sourceId: `${payment.id}:cleared`,
+      description: `Cheque ${payment.referenceNo} cleared`,
+      currencyCode: 'BDT', exchangeRate: 1, createdBy: params.clearedBy,
+      lines: [
+        { chartOfAccountId: payment.financialAccount.chartOfAccountId, financialAccountId: payment.financialAccountId, branchId: payment.branchId,
+          debit: payment.baseAmount, credit: 0, memo: `Cheque ${payment.referenceNo} cleared` },
+        { chartOfAccountId: heldAccountId, branchId: payment.branchId, debit: 0, credit: payment.baseAmount, memo: `Cheque ${payment.referenceNo} cleared` },
+      ],
+    }, correlationId);
+  }
+  await tx.payment.update({ where: { id: payment.id }, data: { chequeStatus: 'cleared' } });
+  await tx.auditLog.create({
+    data: { companyId: params.companyId, userId: params.clearedBy, correlationId, action: 'cheque.cleared', entityType: 'payment', entityId: payment.id,
+      afterValue: JSON.stringify({ cheque_status: 'cleared', amount_base: payment.baseAmount.toFixed(2), moved_from_clearing: onClearing }) },
+  });
+  return { paymentId: payment.id, chequeStatus: 'cleared' };
+}
+
+export async function bounceCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; bouncedBy: string; reason: string }, correlationId: string) {
+  const { payment, policy, heldAccountId, onClearing } = await pendingCheque(tx, params.companyId, params.paymentId, 'bounced');
+  const advance = payment.paymentType === 'customer_advance';
+  await postJournalEntry(tx, {
+    companyId: params.companyId, entryDate: new Date(), postingKind: 'cheque_bounce',
+    sourceType: 'payment', sourceId: `${payment.id}:bounced`,
+    description: `Cheque ${payment.referenceNo} bounced: ${params.reason}`,
+    currencyCode: 'BDT', exchangeRate: 1, createdBy: params.bouncedBy,
+    lines: [
+      // What the cheque settled is owed again.
+      { chartOfAccountId: advance ? policy.customerAdvanceAccountId : policy.arAccountId, customerId: advance ? undefined : payment.customerId ?? undefined,
+        branchId: payment.branchId, debit: payment.baseAmount, credit: 0, memo: `Bounced cheque ${payment.referenceNo}` },
+      { chartOfAccountId: heldAccountId, financialAccountId: onClearing ? undefined : payment.financialAccountId, branchId: payment.branchId,
+        debit: 0, credit: payment.baseAmount, memo: `Bounced cheque ${payment.referenceNo}` },
+    ],
+  }, correlationId);
+  if (advance && payment.customerId) {
+    // The advance it funded can no longer be spent.
+    const eventId = randomUUID();
+    await tx.businessEvent.create({ data: { id: eventId, companyId: params.companyId, eventType: 'customer_advance.reversed',
+      sourceType: 'payment', sourceId: payment.id, correlationId, occurredAt: new Date() } });
+    await tx.customerAdvanceLedger.create({ data: { companyId: params.companyId, customerId: payment.customerId, paymentId: payment.id,
+      entryType: 'reversed', amountDelta: payment.amount.neg(), baseAmountDelta: payment.baseAmount.neg(), eventId, eventLineNo: 1, createdBy: params.bouncedBy } });
+  }
+  // Reversed: balances that count posted payments treat the dues as open again.
+  await tx.payment.update({ where: { id: payment.id }, data: { chequeStatus: 'bounced', paymentStatus: 'reversed' } });
+  await tx.auditLog.create({
+    data: { companyId: params.companyId, userId: params.bouncedBy, correlationId, action: 'cheque.bounced', entityType: 'payment', entityId: payment.id,
+      afterValue: JSON.stringify({ cheque_status: 'bounced', payment_status: 'reversed', reason: params.reason, amount_base: payment.baseAmount.toFixed(2) }) },
+  });
+  return { paymentId: payment.id, chequeStatus: 'bounced' };
+}
+
+export async function cancelCheque(tx: Prisma.TransactionClient, params: { companyId: string; paymentId: string; cancelledBy: string; reason: string }, correlationId: string) {
+  // A cancelled cheque never paid: it is accounted for exactly like a bounce.
+  return bounceCheque(tx, { companyId: params.companyId, paymentId: params.paymentId, bouncedBy: params.cancelledBy, reason: `Cancelled: ${params.reason}` }, correlationId);
 }
 
 // ── PostJournalAdjustment ── (wrapper around postJournalEntry with manual_adjustment kind)

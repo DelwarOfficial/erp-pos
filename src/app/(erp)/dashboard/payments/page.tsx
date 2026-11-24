@@ -73,7 +73,7 @@ interface CreatePaymentForm {
 }
 
 // Labels for these lists live in the catalog under payments.*
-const STATUS_FILTERS = ['all', 'pending', 'posted', 'failed', 'reversed'];
+const STATUS_FILTERS = ['all', 'pending', 'posted', 'failed', 'reversed', 'cheques'];
 const KNOWN_STATUSES = ['pending', 'posted', 'completed', 'failed', 'reversed'];
 
 const PAYMENT_METHODS: Array<{ value: string; label: string }> = [
@@ -148,6 +148,11 @@ export default function PaymentsPage() {
   const [supplier, setSupplier] = useState<BusinessEntity | null>(null);
   const [manualApproval, setManualApproval] = useState<{ amount: string; type: string; id?: string; waiting: boolean } | null>(null);
   const [asking, setAsking] = useState(false);
+  // Cheques received wait on cheque clearing until the bank clears or bounces
+  // them (POST /api/v1/payments/{id}/cheque/clear | bounce).
+  const [bounceTarget, setBounceTarget] = useState<Payment | null>(null);
+  const [bounceReason, setBounceReason] = useState('');
+  const [chequeBusy, setChequeBusy] = useState<string | null>(null);
   async function askApproval() {
     if (!manualApproval) return;
     setAsking(true);
@@ -205,8 +210,24 @@ export default function PaymentsPage() {
     loadFormData();
   }, [loadPayments, loadFormData]);
 
+  async function chequeAction(p: Payment, action: 'clear' | 'bounce', reason?: string) {
+    setChequeBusy(p.id);
+    try {
+      const res = await apiFetch(`/api/v1/payments/${p.id}/cheque/${action}`, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `cheque-${action}-${crypto.randomUUID()}` },
+        body: JSON.stringify(action === 'bounce' ? { reason } : {}) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { toast.error(t('cheque_err', { reason: data?.error?.message ?? t('err_generic') })); return; }
+      toast.success(t(action === 'clear' ? 'cheque_cleared_toast' : 'cheque_bounced_toast', { ref: p.reference_no }));
+      setBounceTarget(null);
+      setBounceReason('');
+      await loadPayments();
+    } catch { toast.error(t('err_network')); } finally { setChequeBusy(null); }
+  }
+
   const filtered = useMemo(() => {
     if (statusFilter === 'all') return payments;
+    if (statusFilter === 'cheques') return payments.filter(p => p.cheque_status === 'pending_clearance');
     if (statusFilter === 'completed') {
       return payments.filter(p => p.payment_status === 'posted');
     }
@@ -442,7 +463,7 @@ export default function PaymentsPage() {
                 onClick={() => setStatusFilter(status)}
                 className="min-h-10"
               >
-                {status === 'all' ? t('filter_all') : t(`status.${status}`)}
+                {status === 'all' ? t('filter_all') : status === 'cheques' ? t('filter_cheques') : t(`status.${status}`)}
               </Button>
             ))}
           </div>
@@ -513,8 +534,27 @@ export default function PaymentsPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={statusBadgeVariant(p.payment_status)}>{KNOWN_STATUSES.includes(p.payment_status) ? t(`status.${p.payment_status}`) : p.payment_status}</Badge>
+                          {p.cheque_status && ['pending_clearance', 'cleared', 'bounced'].includes(p.cheque_status) && (
+                            <Badge variant={p.cheque_status === 'bounced' ? 'destructive' : 'outline'} className="ml-1.5 text-xs">{t(`cheque_${p.cheque_status}`)}</Badge>
+                          )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right whitespace-nowrap space-x-1.5">
+                          {p.cheque_status === 'pending_clearance' && p.direction === 'incoming' && p.payment_status === 'posted' && (
+                            <>
+                              {can('cheque.clear') && (
+                                <Button type="button" size="sm" variant="outline" disabled={chequeBusy === p.id} onClick={() => chequeAction(p, 'clear')}
+                                  aria-label={t('cheque_clear_named', { ref: p.reference_no })}>
+                                  {chequeBusy === p.id && <Loader2 className="animate-spin" aria-hidden="true" />}{t('cheque_clear')}
+                                </Button>
+                              )}
+                              {can('cheque.bounce') && (
+                                <Button type="button" size="sm" variant="outline" disabled={chequeBusy === p.id} onClick={() => { setBounceReason(''); setBounceTarget(p); }}
+                                  aria-label={t('cheque_bounce_named', { ref: p.reference_no })}>
+                                  {t('cheque_bounce')}
+                                </Button>
+                              )}
+                            </>
+                          )}
                           <Button asChild variant="outline" size="sm">
                             <Link href={`/dashboard/payments/${p.id}`} aria-label={t('view_named', { ref: p.reference_no })}>{t('view')}</Link>
                           </Button>
@@ -528,6 +568,27 @@ export default function PaymentsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!bounceTarget} onOpenChange={open => { if (!open) setBounceTarget(null); }}>
+        <DialogContent>
+          <form onSubmit={e => { e.preventDefault(); if (bounceTarget && bounceReason.trim()) chequeAction(bounceTarget, 'bounce', bounceReason.trim()); }}>
+            <DialogHeader>
+              <DialogTitle>{t('cheque_bounce_title', { ref: bounceTarget?.reference_no ?? '' })}</DialogTitle>
+              <DialogDescription>{t('cheque_bounce_desc', { amount: bounceTarget ? f.money(bounceTarget.amount, bounceTarget.currency_code) : '' })}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 py-4">
+              <Label htmlFor="cheque-bounce-reason">{t('cheque_bounce_reason')}</Label>
+              <Input id="cheque-bounce-reason" value={bounceReason} onChange={e => setBounceReason(e.target.value)} required maxLength={500} autoFocus />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setBounceTarget(null)}>{t('cancel')}</Button>
+              <Button type="submit" variant="destructive" disabled={!bounceReason.trim() || chequeBusy === bounceTarget?.id}>
+                {chequeBusy === bounceTarget?.id && <Loader2 className="animate-spin" aria-hidden="true" />}{t('cheque_bounce_confirm')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
