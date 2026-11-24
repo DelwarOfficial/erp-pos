@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { assertBranchAccess } from '@/lib/db/branchScope';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
+import { checkCumulativeThreshold, cumulativeAuditData } from '@/lib/approval/cumulative';
 import { requireMfaForAction } from '@/lib/auth/requireMfa';
 import { getCorrelationId } from '@/lib/http';
 
@@ -134,8 +135,21 @@ export async function POST(req: NextRequest) {
     // MFA check. Any amount used to post on journal.post alone.
     const total = body.lines.reduce((sum, l) => sum.plus(l.debit ?? 0), new Prisma.Decimal(0)).mul(body.exchange_rate ?? 1);
     const { journal_adjustment_threshold: threshold } = await runInTenantContext(auth.ctx, async () => getApprovalThresholds(auth.companyId));
-    if (total.gt(threshold)) {
-      await requirePermission(auth, 'approval.resolve');
+    // The poster's own manual journals of the last 24 hours count too, so a
+    // large adjustment split into sub-threshold pieces still needs approval
+    // once the running total crosses the threshold (workstream 7).
+    const cumulative = await runInTenantContext(auth.ctx, async () =>
+      checkCumulativeThreshold(db, 'journal', { companyId: auth.companyId, userId: auth.userId, amountBase: total, threshold }));
+    if (cumulative.required) {
+      try {
+        await requirePermission(auth, 'approval.resolve');
+      } catch (e) {
+        // One journal over the threshold is refused as before.
+        if (cumulative.single) throw e;
+        throw new DomainError('APPROVAL_REQUIRED',
+          `Your journals in the last 24 hours would total ${cumulative.cumulative}, above ${threshold}. Ask someone who can approve to post this one.`,
+          { threshold, amount_base: total.toFixed(2), cumulative_base: cumulative.cumulative }, 403);
+      }
       await requireMfaForAction(req, 'journal_adjustment_approval');
     }
     const requestHash = computeRequestHash({ method: 'POST', path: '/api/v1/journal-entries', body });
@@ -170,6 +184,10 @@ export async function POST(req: NextRequest) {
                 memo: l.memo,
               })),
             }, correlationId);
+            if (cumulative.required && !cumulative.single) {
+              await tx.auditLog.create({ data: cumulativeAuditData({ companyId: auth.companyId, userId: auth.userId, correlationId, kind: 'journal',
+                entityType: 'journal_entry', entityId: result.journalEntryId, check: cumulative, amountBase: total }) });
+            }
             return { status: 201, body: result, resourceType: 'journal_entry', resourceId: result.journalEntryId };
           },
           tx,

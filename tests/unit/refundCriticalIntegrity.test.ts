@@ -17,7 +17,7 @@ vi.mock('@/adapters', () => ({ providerRegistry: { getPayment: () => ({ refund: 
 vi.mock('@/adapters/providers', () => ({ registerProviders: vi.fn() }));
 vi.mock('@/domain/commands/m4/PostJournalEntry', () => ({ postJournalEntry: m.journal }));
 vi.mock('@/lib/db', () => ({ db: {
-  payment: { findFirst: m.find, create: m.create, aggregate: m.aggregate, updateMany: m.claim },
+  paymentAllocation: { findMany: async () => [] }, payment: { findFirst: m.find, create: m.create, aggregate: m.aggregate, updateMany: m.claim },
   financialAccount: { findFirst: m.account }, accountingPolicy: { findUnique: m.policy },
   auditLog: { create: m.audit }, idempotencyRequest: { updateMany: m.replay },
 } }));
@@ -34,7 +34,7 @@ const payment = {
   businessDate: new Date('2026-09-01'), financialAccountId: 'cash-1', customerId: 'customer-1',
 };
 const tx = {
-  payment: { findFirst: m.find, create: vi.fn(), aggregate: m.aggregate, updateMany: m.claim, count: vi.fn() },
+  paymentAllocation: { findMany: async () => [] }, payment: { findFirst: m.find, create: vi.fn(), aggregate: m.aggregate, updateMany: m.claim, count: vi.fn() },
   financialAccount: { findFirst: m.account }, accountingPolicy: { findUnique: m.policy },
   auditLog: { create: m.audit }, idempotencyRequest: { updateMany: m.replay },
 };

@@ -49,7 +49,7 @@ describe('financial workflow N+1 regression', () => {
         expenseAccountId: `account-${id}`,
       })));
       const tx = {
-        expense: { create: vi.fn(async () => ({ id: 'expense-safe' })), update: vi.fn(async () => ({})) },
+        expense: { aggregate: vi.fn(async () => ({ _sum: { baseGrandTotal: null } })), create: vi.fn(async () => ({ id: 'expense-safe' })), update: vi.fn(async () => ({})) },
         expenseCategory: { findMany: categoryRead },
         expenseItem: { create: vi.fn(async () => ({})) },
         financialAccount: { findFirst: vi.fn(async () => ({ chartOfAccountId: 'cash-account' })) },

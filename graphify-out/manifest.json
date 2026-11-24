@@ -1536,9 +1536,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/journal-entries/route.ts": {
-    "mtime": 1795070776.5616355,
-    "seen": 1795079460.2003002,
-    "ast_hash": "61151767c77a7fde099217b9cf759d8f",
+    "mtime": 1795524148.6697333,
+    "seen": 1795524191.0158474,
+    "ast_hash": "312329087cfa31cccb91c5d80ea58177",
     "semantic_hash": ""
   },
   "src/app/api/v1/landed-costs/route.ts": {
@@ -1620,9 +1620,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/payments/[id]/refund/route.ts": {
-    "mtime": 1794922202.5900078,
-    "seen": 1794922425.923494,
-    "ast_hash": "0389bcbd229c6ad661d8a7d657e80962",
+    "mtime": 1795523855.6429248,
+    "seen": 1795524122.6938949,
+    "ast_hash": "ca355d0c6a0cc3b58ad49519117282ad",
     "semantic_hash": ""
   },
   "src/app/api/v1/payments/[id]/reverse/route.ts": {
@@ -1644,9 +1644,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/payments/route.ts": {
-    "mtime": 1795507015.7644434,
-    "seen": 1795507263.5762682,
-    "ast_hash": "a1206daaa97c26b1850505d92f6ab6ba",
+    "mtime": 1795509707.1985571,
+    "seen": 1795509832.3271425,
+    "ast_hash": "07c7c0269e0376bb729fa7c6acc01485",
     "semantic_hash": ""
   },
   "src/app/api/v1/payroll-runs/route.ts": {
@@ -2598,9 +2598,9 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m4/PostExpense.ts": {
-    "mtime": 1794997928.1735492,
-    "seen": 1794998190.144962,
-    "ast_hash": "e5f5d405348b8d22e1a55b727adab456",
+    "mtime": 1795523983.644063,
+    "seen": 1795524122.7084415,
+    "ast_hash": "a2ac27841f5e0669393b329e7aa759a5",
     "semantic_hash": ""
   },
   "src/domain/commands/m4/PostJournalEntry.ts": {
@@ -3972,9 +3972,9 @@
     "semantic_hash": ""
   },
   "tests/unit/nplus1FinancialRegression.test.ts": {
-    "mtime": 1794994570.9851649,
-    "seen": 1794995009.5765064,
-    "ast_hash": "0607a3b1725a3f31743853302a92fb77",
+    "mtime": 1795523889.8782356,
+    "seen": 1795524122.7227626,
+    "ast_hash": "891261699cbc58d8df3afb90482dafbd",
     "semantic_hash": ""
   },
   "tests/unit/nplus1PostSaleRegression.test.ts": {
@@ -4014,15 +4014,15 @@
     "semantic_hash": ""
   },
   "tests/unit/paymentRefundIdempotency.test.ts": {
-    "mtime": 1794824048.9400938,
-    "seen": 1794824254.8405125,
-    "ast_hash": "40bacd1e1dc6e058d49cf839abb4f263",
+    "mtime": 1795509850.593396,
+    "seen": 1795509994.954305,
+    "ast_hash": "e465ab79a966665284239ea8e69ccb45",
     "semantic_hash": ""
   },
   "tests/unit/paymentReversalAccounting.test.ts": {
-    "mtime": 1794922406.5048592,
-    "seen": 1794922425.9486072,
-    "ast_hash": "43fd73d81638d1844d0ad93b710bac0b",
+    "mtime": 1795509857.617527,
+    "seen": 1795509994.954308,
+    "ast_hash": "601265b54b67901b7cde92355e519b99",
     "semantic_hash": ""
   },
   "tests/unit/periodClose.test.ts": {
@@ -4068,9 +4068,9 @@
     "semantic_hash": ""
   },
   "tests/unit/refundCriticalIntegrity.test.ts": {
-    "mtime": 1794824031.428418,
-    "seen": 1794824254.8408408,
-    "ast_hash": "276fa3b81865d08912229fecbe7bfe3f",
+    "mtime": 1795509850.593396,
+    "seen": 1795509994.955614,
+    "ast_hash": "de5e6a1d077ddbb02dd1ee00306686b3",
     "semantic_hash": ""
   },
   "tests/unit/removePublicSourcemaps.test.ts": {
@@ -4596,9 +4596,9 @@
     "semantic_hash": ""
   },
   "tests/unit/redteamPostingBalance.test.ts": {
-    "mtime": 1794994700.5250392,
-    "seen": 1794995009.5789332,
-    "ast_hash": "c6b2cf284166aa45a20fb7a2e8afeb2c",
+    "mtime": 1795523889.8945162,
+    "seen": 1795524122.723563,
+    "ast_hash": "d29694ba06000db470d8ee3e6f810435",
     "semantic_hash": ""
   },
   ".claude/launch.json": {
@@ -5322,9 +5322,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/large-refund-approval.spec.ts": {
-    "mtime": 1795503569.2044532,
-    "seen": 1795503708.4315164,
-    "ast_hash": "b5296977e7dee699e87a7c36aa47894f",
+    "mtime": 1795509200.467544,
+    "seen": 1795509832.372539,
+    "ast_hash": "46fbc19ec1815ef366b0a3640b2da2a6",
     "semantic_hash": ""
   },
   "src/lib/approval/manualPaymentGate.ts": {
@@ -5379,6 +5379,30 @@
     "mtime": 1795509068.826243,
     "seen": 1795509188.625752,
     "ast_hash": "59cb2e756bf248dde83626505eaeb014",
+    "semantic_hash": ""
+  },
+  "src/domain/refunds/saleRefunds.ts": {
+    "mtime": 1795509591.4131274,
+    "seen": 1795509832.3569362,
+    "ast_hash": "9adcc9a24c25ea0724757f0349f45aac",
+    "semantic_hash": ""
+  },
+  "tests/integration/refundPathsShareCap.test.ts": {
+    "mtime": 1795509697.1026845,
+    "seen": 1795509832.3818998,
+    "ast_hash": "5522080540cc66d4199a6d778a769f8e",
+    "semantic_hash": ""
+  },
+  "src/lib/approval/cumulative.ts": {
+    "mtime": 1795523830.5841267,
+    "seen": 1795524122.7116225,
+    "ast_hash": "ae2142ea29de9771cde2ad665e0f7ead",
+    "semantic_hash": ""
+  },
+  "tests/integration/cumulativeThresholds.test.ts": {
+    "mtime": 1795523971.5568027,
+    "seen": 1795524122.7178302,
+    "ast_hash": "67e13c2b4b4343fe836c32d5646b7e6d",
     "semantic_hash": ""
   }
 }

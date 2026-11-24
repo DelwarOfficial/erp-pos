@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getApprovalThresholds } from '@/lib/approval/thresholds';
+import { checkCumulativeThreshold, cumulativeAuditData } from '@/lib/approval/cumulative';
 import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
@@ -27,6 +28,7 @@ import { registerProviders } from '@/adapters/providers';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { randomUUID } from 'node:crypto';
+import { saleRefundState } from '@/domain/refunds/saleRefunds';
 
 const RefundSchema = z.object({
   // A decimal string, not a float: `10.005` used to be accepted and stored,
@@ -81,20 +83,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             if (refundAmount.gt(refundable)) {
               throw new DomainError('VALIDATION_FAILED',
                 `Refund amount exceeds the refundable balance of ${refundable.toFixed(2)}`,
-                { payment_amount: payment.amount.toString(), already_refunded: alreadyRefunded.toFixed(2) }, 400);
+                { payment_amount: payment.amount.toString(), already_refunded: alreadyRefunded.toFixed(2) }, 409);
+            }
+            // Manual refunds of the same sale count too (workstream 6): one
+            // made through a sale return before the manual side linked
+            // payments is only visible at sale level.
+            const allocations = await tx.paymentAllocation.findMany({ where: { companyId: auth.companyId, paymentId: payment.id, saleId: { not: null } }, select: { saleId: true } });
+            for (const saleId of new Set(allocations.map(a => a.saleId!))) {
+              const state = await saleRefundState(tx, auth.companyId, saleId);
+              const left = state.paid.minus(state.refunded);
+              if (refundAmount.gt(left)) {
+                throw new DomainError('VALIDATION_FAILED',
+                  `Refund amount exceeds what is left to refund on the sale (${left.toFixed(2)})`,
+                  { sale_id: saleId, collected: state.paid.toFixed(2), already_refunded: state.refunded.toFixed(2) }, 409);
+              }
             }
 
             // Refunds above the configured threshold need a second authority.
             // The threshold was loaded from configuration and never consulted.
             const refundBase = refundAmount.mul(payment.exchangeRate).toDecimalPlaces(2);
             const thresholds = await getApprovalThresholds(auth.companyId);
-            if (refundBase.gt(thresholds.refund_approval_threshold)) {
+            // The refunder's own refunds of the last 24 hours count too, so
+            // one large refund split into small ones still needs an approver
+            // once the running total crosses the threshold (workstream 7).
+            const cumulative = await checkCumulativeThreshold(tx, 'refund', { companyId: auth.companyId, userId: auth.userId,
+              amountBase: refundBase, threshold: thresholds.refund_approval_threshold });
+            if (cumulative.required) {
               try {
                 await requirePermission(auth, 'approval.resolve');
               } catch {
                 throw new DomainError('APPROVAL_REQUIRED',
-                  `Refunds above ${thresholds.refund_approval_threshold} require an approver`,
-                  { amount_base: refundBase.toFixed(2), threshold: thresholds.refund_approval_threshold }, 403);
+                  cumulative.single
+                    ? `Refunds above ${thresholds.refund_approval_threshold} require an approver`
+                    : `Your refunds in the last 24 hours would total ${cumulative.cumulative}, above ${thresholds.refund_approval_threshold}. Ask an approver to make this refund.`,
+                  { amount_base: refundBase.toFixed(2), threshold: thresholds.refund_approval_threshold, cumulative_base: cumulative.cumulative }, 403);
+              }
+              if (!cumulative.single) {
+                await tx.auditLog.create({ data: cumulativeAuditData({ companyId: auth.companyId, userId: auth.userId, correlationId, kind: 'refund',
+                  entityType: 'payment', entityId: payment.id, check: cumulative, amountBase: refundBase }) });
               }
             }
 

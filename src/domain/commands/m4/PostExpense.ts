@@ -74,7 +74,13 @@ export async function postExpense(
   // someone else to approve it and posts nothing until then (maker-checker).
   // Every expense used to post at once with the creator as its own approver.
   const { getApprovalThresholds } = await import('@/lib/approval/thresholds');
-  const needsApproval = baseGrandTotal.gt((await getApprovalThresholds(input.companyId)).expense_approval_threshold);
+  // The requester's own expenses of the last 24 hours count too, so one large
+  // expense split into sub-threshold pieces still waits for approval once the
+  // running total crosses the threshold (workstream 7).
+  const { checkCumulativeThreshold } = await import('@/lib/approval/cumulative');
+  const cumulative = await checkCumulativeThreshold(tx, 'expense', { companyId: input.companyId, userId: input.createdBy,
+    amountBase: baseGrandTotal, threshold: (await getApprovalThresholds(input.companyId)).expense_approval_threshold });
+  const needsApproval = cumulative.required;
 
   // The paying account is checked now either way, so an approved expense cannot fail on it later.
   const fa = await tx.financialAccount.findFirst({
@@ -145,14 +151,17 @@ export async function postExpense(
     const request = await tx.approvalRequest.create({ data: {
       companyId: input.companyId, branchId: input.branchId, requestType: 'expense_approval',
       referenceType: 'expense', referenceId: expense.id, requestedBy: input.createdBy,
-      reason: `Expense ${referenceNo} of ${baseGrandTotal.toFixed(2)} is above the approval threshold`,
+      reason: cumulative.single
+        ? `Expense ${referenceNo} of ${baseGrandTotal.toFixed(2)} is above the approval threshold`
+        : `Expense ${referenceNo} of ${baseGrandTotal.toFixed(2)} brings the requester's expenses in the last 24 hours to ${cumulative.cumulative}, above the approval threshold`,
       // What approval needs to post it: the account it is paid from.
       payload: JSON.stringify({ financial_account_id: fa.id }),
     } });
     await tx.expense.update({ where: { id: expense.id }, data: { approvalRequestId: request.id } });
     await tx.auditLog.create({ data: { companyId: input.companyId, userId: input.createdBy, correlationId,
       action: 'expense.submit', entityType: 'expense', entityId: expense.id,
-      afterValue: JSON.stringify({ reference_no: referenceNo, grand_total: grandTotal, status: 'pending_approval' }) } });
+      afterValue: JSON.stringify({ reference_no: referenceNo, grand_total: grandTotal, status: 'pending_approval',
+        cumulative_base: cumulative.cumulative, threshold: cumulative.threshold, cumulative_trigger: !cumulative.single }) } });
     return { expenseId: expense.id, referenceNo, status: 'pending_approval', grandTotal, journalEntryNo: '' };
   }
 

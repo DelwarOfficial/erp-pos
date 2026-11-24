@@ -14,6 +14,7 @@ import { getCorrelationId } from '@/lib/http';
 import { enforceLargeRefundGate, type RefundGateResult } from '@/lib/approval/refundGate';
 import { enforceManualPaymentApproval } from '@/lib/approval/manualPaymentGate';
 import { requireOwnOpenShift } from '@/lib/shifts/requireOwnOpenShift';
+import { saleRefundState, paymentToReverse } from '@/domain/refunds/saleRefunds';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
             let refundReturn: { id: string; totalCredit: Prisma.Decimal } | null = null;
             let refundedBefore = new Prisma.Decimal(0);
             let refundGate: RefundGateResult | null = null;
+            let reversedPaymentId: string | null = null;
             if (body.payment_type === 'sale_refund') {
               if (!body.sale_return_id || body.direction !== 'outgoing') throw new DomainError('VALIDATION_FAILED', 'A refund requires a posted sale return and outgoing payment', {}, 400);
               const returned = await tx.saleReturn.findFirst({ where: { id: body.sale_return_id, companyId: auth.companyId, branchId: body.branch_id, status: 'posted' },
@@ -116,9 +118,13 @@ export async function POST(req: NextRequest) {
               if (returned.sale.currencyCode !== body.currency_code || !returned.sale.exchangeRate.equals(body.exchange_rate)) throw new DomainError('VALIDATION_FAILED', 'Refund currency and exchange rate must match the sale', {}, 400);
               if ((body.customer_id ?? null) !== returned.sale.customerId) throw new DomainError('VALIDATION_FAILED', 'Refund customer must match the sale', {}, 400);
               refundedBefore = returned.refundPayments.filter(payment => payment.paymentStatus === 'posted').reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
-              const paid = returned.sale.payments.filter(row => row.payment.paymentStatus === 'posted').reduce((sum, row) => sum.plus(row.allocatedAmount), new Prisma.Decimal(0));
-              const allRefunded = returned.sale.returns.flatMap(row => row.refundPayments).filter(payment => payment.paymentStatus === 'posted').reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
-              if (new Prisma.Decimal(body.amount).gt(returned.totalCredit.minus(refundedBefore)) || new Prisma.Decimal(body.amount).gt(paid.minus(allRefunded))) throw new DomainError('VALIDATION_FAILED', 'Refund exceeds remaining return credit or collected payment', {}, 409);
+              // Gateway refunds of this sale's payments count too (workstream 6):
+              // the two paths used to be blind to each other.
+              const state = await saleRefundState(tx, auth.companyId, returned.sale.id);
+              const paid = state.paid;
+              const allRefunded = state.refunded;
+              if (new Prisma.Decimal(body.amount).gt(returned.totalCredit.minus(refundedBefore)) || new Prisma.Decimal(body.amount).gt(paid.minus(allRefunded))) throw new DomainError('VALIDATION_FAILED', 'Refund exceeds remaining return credit or collected payment', { collected: paid.toFixed(2), already_refunded: allRefunded.toFixed(2) }, 409);
+              reversedPaymentId = paymentToReverse(state, new Prisma.Decimal(body.amount), body.payment_method);
               refundReturn = returned;
               refundGate = await enforceLargeRefundGate(tx, req, {
                 companyId: auth.companyId, userId: auth.userId!, saleId: returned.sale.id,
@@ -173,6 +179,9 @@ export async function POST(req: NextRequest) {
                 customerId: body.customer_id ?? null,
                 supplierId: body.supplier_id ?? null,
                 saleReturnId: body.sale_return_id ?? null,
+                // Links the refund to the payment it gives back, so a gateway
+                // refund of that payment sees it.
+                reversedPaymentId,
                 financialAccountId: body.financial_account_id,
                 cashierShiftId,
                 currencyCode: body.currency_code, exchangeRate: body.exchange_rate,

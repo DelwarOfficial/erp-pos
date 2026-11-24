@@ -47,7 +47,7 @@ vi.mock('@/adapters/providers', () => ({ registerProviders: mocks.registerProvid
 vi.mock('@/lib/audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent }));
 vi.mock('@/lib/db', () => {
   const client = {
-    payment: {
+    paymentAllocation: { findMany: async () => [] }, payment: {
       findFirst: mocks.paymentFindFirst, findMany: mocks.paymentFindMany,
       create: mocks.paymentCreate, aggregate: mocks.paymentAggregate,
       updateMany: mocks.paymentUpdateMany,
@@ -100,7 +100,7 @@ describe('gateway refund', () => {
       return { ...result, isReplay: false };
     });
     mocks.tenant.mockImplementation(async (_ctx: unknown, work: (tx: unknown) => Promise<unknown>) => work({
-      payment: {
+      paymentAllocation: { findMany: async () => [] }, payment: {
         findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
         updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
         count: vi.fn().mockResolvedValue(0),
@@ -167,7 +167,7 @@ describe('gateway refund', () => {
 
     const response = await refundRoute(refundRequest('600.00'), { params: Promise.resolve({ id: 'pay-1' }) });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(409); // workstream 6: exceeding the refundable balance is a conflict
     expect(await response.json()).toMatchObject({
       error: { message: expect.stringContaining('400.00') },
     });
@@ -191,7 +191,7 @@ describe('provider webhook', () => {
     mocks.recordSecurityEvent.mockResolvedValue(undefined);
     mocks.scope.mockImplementation(async (_ctx: unknown, work: () => Promise<unknown>) => work());
     mocks.transaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work({
-      payment: { updateMany: mocks.paymentUpdateMany },
+      paymentAllocation: { findMany: async () => [] }, payment: { updateMany: mocks.paymentUpdateMany },
       journalEntry: { findFirst: async () => null },
       financialAccount: { findFirst: mocks.financialAccountFindFirst },
       accountingPolicy: { findUnique: mocks.policyFindUnique },

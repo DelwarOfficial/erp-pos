@@ -39,7 +39,7 @@ vi.mock('@/lib/db/transaction', () => ({
 }));
 vi.mock('@/lib/db', () => ({
   db: {
-    payment: {
+    paymentAllocation: { findMany: async () => [] }, payment: {
       findFirst: mocks.paymentFindFirst, create: mocks.paymentCreate,
       aggregate: mocks.paymentAggregate, updateMany: mocks.paymentUpdateMany,
     },
@@ -84,7 +84,7 @@ describe('payment refund idempotency', () => {
     mocks.scope.mockImplementation(async (_ctx: unknown, work: () => Promise<unknown>) => work());
     mocks.tenant.mockImplementation(async (_ctx: unknown, work: (tx: unknown) => Promise<unknown>) =>
       work({
-        payment: {
+        paymentAllocation: { findMany: async () => [] }, payment: {
           findFirst: mocks.paymentFindFirst, aggregate: mocks.paymentAggregate,
           updateMany: mocks.paymentUpdateMany, create: mocks.paymentCreate,
           count: vi.fn().mockResolvedValue(0),

@@ -33,7 +33,7 @@ beforeEach(() => {
 
 describe('postExpense', () => {
   const tx = {
-    expense: { create: vi.fn(async () => ({ id: 'exp-1' })), update: vi.fn() },
+    expense: { aggregate: vi.fn(async () => ({ _sum: { baseGrandTotal: null } })), create: vi.fn(async () => ({ id: 'exp-1' })), update: vi.fn() },
     expenseItem: { create: vi.fn() },
     expenseCategory: { findMany: vi.fn(async () => [{ id: 'cat-1', expenseAccountId: 'coa-exp' }]) },
     financialAccount: { findFirst: vi.fn(async () => ({ chartOfAccountId: 'coa-cash' })) },
