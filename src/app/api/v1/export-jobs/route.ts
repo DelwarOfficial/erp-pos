@@ -116,6 +116,14 @@ export async function POST(req: NextRequest) {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7-day retention
       },
     });
+    // Every export is audited: who, which report, whether sensitive fields were asked for.
+    await db.auditLog.create({
+      data: {
+        companyId: auth.companyId, userId: auth.userId, correlationId: crypto.randomUUID(),
+        action: 'export.report', entityType: 'report_export_job', entityId: job.id,
+        afterValue: JSON.stringify({ report_code: report_code, format, include_sensitive: Boolean(include_sensitive && canExportSensitive) }),
+      },
+    });
 
     try {
       // Generate the export data based on report code

@@ -127,6 +127,22 @@ export async function postOpeningStock(
       metadata: { batch_no: item.batchNo, notes: input.notes },
     });
 
+    // A product that tracks batches keeps its quantity per batch as well
+    // (same rows as PostStockAdjustment). The batch used to be kept only in
+    // the movement's metadata, so batch stock started at zero.
+    const batchNo = item.batchNo?.trim();
+    if (batchNo) {
+      const product = await tx.product.findFirst({ where: { id: item.productId, companyId: input.companyId }, select: { trackBatches: true } });
+      if (product?.trackBatches) {
+        const key = { companyId: input.companyId, productId: item.productId, warehouseId: input.warehouseId, batchNo };
+        const existing = await tx.productBatch.findUnique({ where: { companyId_productId_warehouseId_batchNo: key } });
+        const batch = existing
+          ? await tx.productBatch.update({ where: { id: existing.id }, data: { qtyOnHand: { increment: item.quantity }, ...(item.expiryDate ? { expiryDate: item.expiryDate } : {}) } })
+          : await tx.productBatch.create({ data: { ...key, qtyOnHand: item.quantity, expiryDate: item.expiryDate ?? null } });
+        await tx.stockMovementBatch.create({ data: { companyId: input.companyId, stockMovementId: movement.movementId, productBatchId: batch.id, qty: item.quantity } });
+      }
+    }
+
     resultItems.push({
       product_id: item.productId,
       quantity: item.quantity,

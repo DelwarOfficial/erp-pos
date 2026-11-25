@@ -203,6 +203,7 @@ model Company {
   webhookEndpoints    WebhookEndpoint[]
   webhookDeliveries   WebhookDelivery[]
   importJobs          ImportJob[]
+  importJobEntities   ImportJobEntity[]
   importJobErrors     ImportJobError[]
   offlineCommands     OfflineCommand[]
   offlineSyncBatches  OfflineSyncBatch[]
@@ -4254,6 +4255,7 @@ model ImportJob {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
   errors  ImportJobError[]
+  entities ImportJobEntity[]
 
   @@index([companyId])
   @@index([status])
@@ -4279,6 +4281,31 @@ model ImportJobError {
   @@index([importJobId])
   @@index([rowNumber])
   @@map("import_job_errors")
+}
+
+// One document an import created (a sale, purchase, transfer or opening-stock
+// posting), keyed by the grouping key from the file (its reference_no, or the
+// warehouse code for opening stock). The unique key stops the same file, or a
+// retried commit, from creating the same document twice, and maps the file's
+// reference to the number the system generated.
+model ImportJobEntity {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  importJobId String   @map("import_job_id")
+  jobType     String   @map("job_type")
+  sourceKey   String   @map("source_key")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  referenceNo String?  @map("reference_no")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, jobType, sourceKey])
+  @@index([companyId])
+  @@index([importJobId])
+  @@map("import_job_entities")
 }
 
 model OfflineCommand {

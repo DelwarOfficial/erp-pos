@@ -122,7 +122,16 @@ export function validateRowColumns(row: string[], expectedCount: number, rowNumb
 export function rowToObject(row: string[], headers: string[]): Record<string, string> {
   const obj: Record<string, string> = {};
   for (let i = 0; i < headers.length && i < row.length; i++) {
-    obj[headers[i]] = row[i];
+    obj[headers[i]] = unescapeFormulaCell(row[i]);
   }
   return obj;
+}
+
+/**
+ * Undoes escapeFormulaCell, so a file this app exported imports back with the
+ * values it was exported from: "'=x" becomes "=x". Only a quote in front of a
+ * formula-leading character is removed; any other leading quote is data.
+ */
+export function unescapeFormulaCell(value: string): string {
+  return /^'[=+\-@\t\r]/.test(value) ? value.slice(1) : value;
 }

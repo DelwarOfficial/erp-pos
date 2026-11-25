@@ -59,6 +59,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: { code: 'VALIDATION_FAILED', message: `Unknown job type: ${job.jobType}` } }, { status: 400 });
   }
 
+  // Documents are created through the same commands as their own pages, so
+  // committing them needs the permission those pages need as well.
+  try {
+    if (job.jobType === 'sale_draft') await requirePermission(auth, 'sale.post');
+    if (job.jobType === 'purchase') await requirePermission(auth, 'purchase.create');
+    if (job.jobType === 'transfer_draft') await requirePermission(auth, 'transfer.dispatch');
+    if (job.jobType === 'opening_stock') await requirePermission(auth, 'opening_stock.post');
+  } catch (e) {
+    if (e instanceof DomainError) {
+      return NextResponse.json({ error: { code: e.code, message: e.message } }, { status: e.httpStatus });
+    }
+    throw e;
+  }
+
   // For the commit, we need the CSV content — in production this would be
   // re-downloaded from S3. For sandbox, we accept it in the request body.
   const body = await req.json().catch(() => ({}));
@@ -98,5 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     committedRows: result.committedRows,
     skippedRows: result.skippedRows,
     failedRows: result.failedRows,
+    // Document imports: the file's reference → the document and number created.
+    ...(result.documents ? { documents: result.documents } : {}),
   });
 }

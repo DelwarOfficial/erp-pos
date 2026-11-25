@@ -1145,6 +1145,15 @@
     "exception": null
   },
   {
+    "file": "v1/export-jobs/master/route.ts",
+    "method": "GET",
+    "permissions": [
+      "export.data.branch",
+      "export.sensitive.company"
+    ],
+    "exception": null
+  },
+  {
     "file": "v1/export-jobs/route.ts",
     "method": "GET",
     "permissions": [
@@ -1292,7 +1301,11 @@
     "file": "v1/import-jobs/[id]/commit/route.ts",
     "method": "POST",
     "permissions": [
-      "import.approve.company"
+      "import.approve.company",
+      "sale.post",
+      "purchase.create",
+      "transfer.dispatch",
+      "opening_stock.post"
     ],
     "exception": null
   },

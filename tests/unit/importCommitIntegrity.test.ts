@@ -77,6 +77,14 @@ describe('F-42: commit is bound to the validated file and to one caller', () => 
     expect(mocks.productCreate).not.toHaveBeenCalled();
   });
 
+  it('refuses a dry-run job before claiming it or writing a row', async () => {
+    mocks.jobFindFirst.mockResolvedValue({ fileSha256: sha(VALIDATED), dryRun: true });
+    await expect(commitImport('job-1', 'company-a', 'user-a', VALIDATED, TEMPLATE, 'skip'))
+      .rejects.toMatchObject({ code: 'VALIDATION_FAILED', httpStatus: 409, details: { reason: 'dry_run' } });
+    expect(mocks.jobUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.productCreate).not.toHaveBeenCalled();
+  });
+
   it('scopes the job lookup to the caller company', async () => {
     await commitImport('job-1', 'company-a', 'user-a', VALIDATED, TEMPLATE, 'skip').catch(() => undefined);
     expect(mocks.jobFindFirst.mock.calls[0][0].where).toEqual({ id: 'job-1', companyId: 'company-a' });

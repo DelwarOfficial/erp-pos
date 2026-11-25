@@ -10308,6 +10308,118 @@
    },
    "checks": {}
   },
+  "import_job_entities": {
+   "engine": "InnoDB",
+   "collation": "utf8mb4_unicode_ci",
+   "columns": {
+    "id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "company_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "import_job_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "job_type": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "source_key": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "entity_type": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "entity_id": {
+     "type": "varchar(191)",
+     "nullable": false,
+     "default": null,
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "reference_no": {
+     "type": "varchar(191)",
+     "nullable": true,
+     "default": "null",
+     "extra": null,
+     "collation": "utf8mb4_unicode_ci"
+    },
+    "created_at": {
+     "type": "datetime(3)",
+     "nullable": false,
+     "default": "current_timestamp(3)",
+     "extra": null,
+     "collation": null
+    }
+   },
+   "indexes": {
+    "idx_tenant_fk_import_job_entities_importjob": {
+     "unique": false,
+     "columns": "company_id,import_job_id"
+    },
+    "import_job_entities_company_id_idx": {
+     "unique": false,
+     "columns": "company_id"
+    },
+    "import_job_entities_company_id_job_type_source_key_key": {
+     "unique": true,
+     "columns": "company_id,job_type,source_key"
+    },
+    "import_job_entities_import_job_id_idx": {
+     "unique": false,
+     "columns": "import_job_id"
+    },
+    "PRIMARY": {
+     "unique": true,
+     "columns": "id"
+    }
+   },
+   "foreignKeys": {
+    "fk_tenant_import_job_entities_importjob": {
+     "columns": "company_id,import_job_id",
+     "references": "import_jobs(company_id,id)",
+     "onUpdate": "RESTRICT",
+     "onDelete": "RESTRICT"
+    },
+    "import_job_entities_company_id_fkey": {
+     "columns": "company_id",
+     "references": "companies(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    },
+    "import_job_entities_import_job_id_fkey": {
+     "columns": "import_job_id",
+     "references": "import_jobs(id)",
+     "onUpdate": "CASCADE",
+     "onDelete": "RESTRICT"
+    }
+   },
+   "checks": {}
+  },
   "import_job_errors": {
    "engine": "InnoDB",
    "collation": "utf8mb4_unicode_ci",
