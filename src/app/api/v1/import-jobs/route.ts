@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { DomainError } from '@/lib/errors/codes';
-import { getTemplate } from '@/lib/import-export/templates';
+import { getTemplate, IMPORT_TEMPLATES, MAX_IMPORT_BYTES } from '@/lib/import-export/templates';
 import { validateImport } from '@/lib/import-export/importProcessor';
 import crypto from 'node:crypto';
 import { requireFeatureFlag } from '@/lib/featureFlags';
@@ -120,8 +120,21 @@ export async function POST(req: NextRequest) {
     const template = getTemplate(jobType);
     if (!template) {
       return NextResponse.json({
-        error: { code: 'VALIDATION_FAILED', message: `Unknown job_type: ${jobType}. Valid types: ${Object.keys(getTemplate).join(', ')}` },
+        error: { code: 'VALIDATION_FAILED', message: `Unknown job_type: ${jobType}. Valid types: ${Object.keys(IMPORT_TEMPLATES).join(', ')}` },
       }, { status: 400 });
+    }
+    // 'update' on a document template used to be accepted and quietly behave
+    // like 'skip'; say which strategies the template supports instead.
+    if (!template.allowedDuplicateStrategies.includes(duplicateStrategy)) {
+      return NextResponse.json({
+        error: { code: 'VALIDATION_FAILED', message: `duplicate_strategy for ${jobType} must be one of: ${template.allowedDuplicateStrategies.join(', ')}` },
+      }, { status: 400 });
+    }
+
+    if (file.size > MAX_IMPORT_BYTES) {
+      return NextResponse.json({
+        error: { code: 'VALIDATION_FAILED', message: `The file is larger than ${MAX_IMPORT_BYTES / 1024 / 1024} MB. Split it into smaller files and import each one.` },
+      }, { status: 413 });
     }
 
     // Read file content

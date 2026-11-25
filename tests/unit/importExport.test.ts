@@ -3,8 +3,8 @@
 // template validation, and export scope controls.
 
 import { describe, it, expect } from 'vitest';
-import { escapeFormulaCell, parseCsv, generateCsv, validateRowColumns, rowToObject } from '@/lib/import-export/csv';
-import { IMPORT_TEMPLATES, getTemplate, getTemplateColumns } from '@/lib/import-export/templates';
+import { escapeFormulaCell, parseCsv, generateCsv, validateRowColumns, rowToObject, unescapeFormulaCell } from '@/lib/import-export/csv';
+import { IMPORT_TEMPLATES, MAX_IMPORT_ROWS, getTemplate, getTemplateColumns, getTemplateDemoRow, getTemplateHeader } from '@/lib/import-export/templates';
 
 describe('CSV Formula Escaping (§6 rule 8)', () => {
   it('escapes cells starting with =', () => {
@@ -189,5 +189,37 @@ describe('Import Templates (§9.5)', () => {
   it('returns undefined for unknown template type', () => {
     expect(getTemplate('unknown')).toBeUndefined();
     expect(getTemplateColumns('unknown')).toBeUndefined();
+  });
+});
+
+describe('Template downloads and round trips', () => {
+  it('the downloadable header is exactly the server template: required, then optional', () => {
+    for (const type of Object.keys(IMPORT_TEMPLATES)) {
+      const cols = getTemplateColumns(type)!;
+      expect(getTemplateHeader(type)).toEqual([...cols.required, ...cols.optional]);
+      expect(getTemplateDemoRow(type)).toHaveLength(getTemplateHeader(type)!.length);
+    }
+  });
+
+  it('every demo row fills the required columns', () => {
+    for (const type of Object.keys(IMPORT_TEMPLATES)) {
+      const header = getTemplateHeader(type)!;
+      const demo = getTemplateDemoRow(type)!;
+      for (const column of IMPORT_TEMPLATES[type].requiredColumns) expect(demo[header.indexOf(column)], `${type}.${column}`).not.toBe('');
+    }
+  });
+
+  it('documents group by a key; master data does not', () => {
+    expect(IMPORT_TEMPLATES.sale_draft.groupKey).toBe('reference_no');
+    expect(IMPORT_TEMPLATES.opening_stock.groupKey).toBe('warehouse_code');
+    expect(IMPORT_TEMPLATES.product.groupKey).toBeUndefined();
+    expect(MAX_IMPORT_ROWS).toBe(10_000);
+  });
+
+  it('a formula-escaped export cell imports back as its value; other quotes stay', () => {
+    expect(unescapeFormulaCell(escapeFormulaCell('=SUM(A1)'))).toBe('=SUM(A1)');
+    expect(unescapeFormulaCell(escapeFormulaCell('-5'))).toBe('-5');
+    expect(unescapeFormulaCell("'quoted")).toBe("'quoted");
+    expect(rowToObject(["'=x", 'y'], ['a', 'b'])).toEqual({ a: '=x', b: 'y' });
   });
 });

@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
 import { runInTenantContext, withTenant } from '@/lib/db/transaction';
 import { withIdempotency, computeRequestHash, requireIdempotencyKey } from '@/lib/idempotency';
-import { nextDocumentNumber } from '@/lib/numbering';
+import { createPurchase } from '@/domain/commands/m2/CreatePurchase';
 import { DomainError, errorResponse } from '@/lib/errors/codes';
 import { getCorrelationId } from '@/lib/http';
 import { readListPage, listPageArgs, listPageResult } from '@/lib/api/listPage';
@@ -32,8 +32,6 @@ const PurchaseCreateSchema = z.object({
   notes: z.string().optional(),
   items: z.array(PurchaseItemSchema).min(1),
 });
-
-const PRODUCT_VALIDATION_BATCH_SIZE = 500;
 
 export async function GET(req: NextRequest) {
   const correlationId = getCorrelationId(req);
@@ -132,126 +130,34 @@ export async function POST(req: NextRequest) {
         withIdempotency(
           { idempotencyKey, operation: 'purchase.create', requestHash, companyId: auth.companyId, userId: auth.userId },
           async () => {
-            // Validate supplier + branch + warehouse belong to this company
-            const supplier = await tx.supplier.findFirst({
-              where: { id: body.supplier_id, companyId: auth.companyId, deletedAt: null },
-            });
-            if (!supplier) throw new DomainError('VALIDATION_FAILED', 'Supplier not found', {}, 404);
-
-            const branch = await tx.branch.findFirst({
-              where: { id: body.branch_id, companyId: auth.companyId },
-            });
-            if (!branch) throw new DomainError('VALIDATION_FAILED', 'Branch not found', {}, 404);
-
-            const warehouse = await tx.warehouse.findFirst({
-              where: { id: body.warehouse_id, companyId: auth.companyId, branchId: body.branch_id },
-            });
-            if (!warehouse) throw new DomainError('VALIDATION_FAILED', 'Warehouse not found or not in this branch', {}, 404);
-
-            // Generate reference number
-            const { documentNumber: referenceNo } = await nextDocumentNumber(tx, {
+            const purchase = await createPurchase(tx, {
               companyId: auth.companyId,
               branchId: body.branch_id,
-              documentType: 'PURCHASE',
-              fiscalYear: new Date(body.order_date).getFullYear(),
-              prefix: 'PO-',
-            });
-
-            // Compute totals
-            let subtotal = 0;
-            let discountTotal = 0;
-            let taxTotal = 0;
-            for (const item of body.items) {
-              const lineTotal = item.qty_ordered * item.unit_cost - item.discount_amount + item.tax_amount;
-              subtotal += item.qty_ordered * item.unit_cost;
-              discountTotal += item.discount_amount;
-              taxTotal += item.tax_amount;
-            }
-            const grandTotal = subtotal - discountTotal + taxTotal;
-            const baseGrandTotal = grandTotal * body.exchange_rate;
-
-            const purchase = await tx.purchase.create({
-              data: {
-                companyId: auth.companyId,
-                branchId: body.branch_id,
-                warehouseId: body.warehouse_id,
-                referenceNo,
-                supplierInvoiceNo: body.supplier_invoice_no ?? null,
-                supplierId: body.supplier_id,
-                orderStatus: 'ordered',
-                currencyCode: body.currency_code,
-                exchangeRate: body.exchange_rate,
-                orderDate: new Date(body.order_date),
-                expectedDate: body.expected_date ? new Date(body.expected_date) : null,
-                subtotal,
-                discountTotal,
-                taxTotal,
-                grandTotal,
-                baseGrandTotal,
-                notes: body.notes ?? null,
-                createdBy: auth.userId,
-              },
-            });
-
-            // Create items
-            const productIds = [...new Set(body.items.map(item => item.product_id))];
-            const products: Array<{ id: string; name: string; code: string }> = [];
-            for (let offset = 0; offset < productIds.length; offset += PRODUCT_VALIDATION_BATCH_SIZE) {
-              products.push(...await tx.product.findMany({
-                where: {
-                  companyId: auth.companyId,
-                  deletedAt: null,
-                  id: { in: productIds.slice(offset, offset + PRODUCT_VALIDATION_BATCH_SIZE) },
-                },
-                select: { id: true, name: true, code: true },
-              }));
-            }
-            const productById = new Map(products.map(product => [product.id, product]));
-            let lineNo = 1;
-            for (const item of body.items) {
-              const product = productById.get(item.product_id);
-              if (!product) throw new DomainError('VALIDATION_FAILED', `Product ${item.product_id} not found`, {}, 404);
-
-              const lineTotal = item.qty_ordered * item.unit_cost - item.discount_amount + item.tax_amount;
-              await tx.purchaseItem.create({
-                data: {
-                  companyId: auth.companyId,
-                  purchaseId: purchase.id,
-                  lineNo,
-                  productId: item.product_id,
-                  productNameSnapshot: product.name,
-                  productCodeSnapshot: product.code,
-                  qtyOrdered: item.qty_ordered,
-                  unitCost: item.unit_cost,
-                  discountAmount: item.discount_amount,
-                  taxAmount: item.tax_amount,
-                  lineTotal,
-                },
-              });
-              lineNo++;
-            }
-
-            await tx.auditLog.create({
-              data: {
-                companyId: auth.companyId,
-                userId: auth.userId,
-                correlationId,
-                action: 'purchase.create',
-                entityType: 'purchase',
-                entityId: purchase.id,
-                afterValue: JSON.stringify({ reference_no: referenceNo, supplier: supplier.name, item_count: body.items.length, grand_total: grandTotal }),
-              },
-            });
+              warehouseId: body.warehouse_id,
+              supplierId: body.supplier_id,
+              supplierInvoiceNo: body.supplier_invoice_no,
+              currencyCode: body.currency_code,
+              exchangeRate: body.exchange_rate,
+              orderDate: new Date(body.order_date),
+              expectedDate: body.expected_date ? new Date(body.expected_date) : undefined,
+              notes: body.notes,
+              createdBy: auth.userId,
+              orderStatus: 'ordered',
+              items: body.items.map(item => ({
+                productId: item.product_id, qtyOrdered: item.qty_ordered, unitCost: item.unit_cost,
+                discountAmount: item.discount_amount, taxAmount: item.tax_amount,
+              })),
+            }, correlationId);
 
             return {
               status: 201,
               body: {
                 id: purchase.id,
-                reference_no: referenceNo,
+                reference_no: purchase.referenceNo,
                 order_status: 'ordered',
-                grand_total: grandTotal.toString(),
-                base_grand_total: baseGrandTotal.toString(),
-                item_count: body.items.length,
+                grand_total: purchase.grandTotal.toString(),
+                base_grand_total: purchase.baseGrandTotal.toString(),
+                item_count: purchase.itemCount,
               },
               resourceType: 'purchase',
               resourceId: purchase.id,
