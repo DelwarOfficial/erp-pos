@@ -36,8 +36,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1795333751.092944,
-    "seen": 1795334005.8314948,
+    "mtime": 1795584150.8008857,
+    "seen": 1795584181.2417815,
     "ast_hash": "c7497a9c5b802865f4eac39627ecd91e",
     "semantic_hash": ""
   },
@@ -732,9 +732,9 @@
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/payments/page.tsx": {
-    "mtime": 1795507115.177864,
-    "seen": 1795507263.5679088,
-    "ast_hash": "386e688aa25c79978574172247d70f31",
+    "mtime": 1795533238.674544,
+    "seen": 1795584181.248099,
+    "ast_hash": "13e9f5eea823c13cea52538288af08ec",
     "semantic_hash": ""
   },
   "src/app/(erp)/dashboard/pos/page.tsx": {
@@ -966,9 +966,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/advances/route.ts": {
-    "mtime": 1791030165.8099174,
-    "seen": 1791098939.9055018,
-    "ast_hash": "4cc9fc82369f804f57141d2555716d8b",
+    "mtime": 1795533066.4073555,
+    "seen": 1795584181.2502983,
+    "ast_hash": "ba3f96461b06a1f26379d7fe776b47fe",
     "semantic_hash": ""
   },
   "src/app/api/v1/approvals/[id]/resolve/route.ts": {
@@ -1644,9 +1644,9 @@
     "semantic_hash": ""
   },
   "src/app/api/v1/payments/route.ts": {
-    "mtime": 1795509707.1985571,
-    "seen": 1795509832.3271425,
-    "ast_hash": "07c7c0269e0376bb729fa7c6acc01485",
+    "mtime": 1795533108.2876623,
+    "seen": 1795584181.2568188,
+    "ast_hash": "1b1a977378f093f4a73396ca5c2fcb17",
     "semantic_hash": ""
   },
   "src/app/api/v1/payroll-runs/route.ts": {
@@ -2562,15 +2562,15 @@
     "semantic_hash": ""
   },
   "src/domain/commands/m3/Payments.ts": {
-    "mtime": 1791030165.8431103,
-    "seen": 1791098939.9057488,
-    "ast_hash": "f7167e3b6999e22a3523d4c04c4ebb6e",
+    "mtime": 1795533376.5835407,
+    "seen": 1795584181.265237,
+    "ast_hash": "1ce17a841881f1a7e7a73724489c4cd7",
     "semantic_hash": ""
   },
   "src/domain/commands/m3/PostSale.ts": {
-    "mtime": 1795098433.0184383,
-    "seen": 1795100948.8689263,
-    "ast_hash": "9a6399fb34b5afb6dda909cef03f96cb",
+    "mtime": 1795533376.6215162,
+    "seen": 1795584181.265238,
+    "ast_hash": "5a0942821d4d052b119756779baf7c4e",
     "semantic_hash": ""
   },
   "src/domain/commands/m3/PostSaleReturn.ts": {
@@ -2730,9 +2730,9 @@
     "semantic_hash": ""
   },
   "src/domain/receivables/CollectCustomerPayment.ts": {
-    "mtime": 1795506951.286293,
-    "seen": 1795507263.586024,
-    "ast_hash": "4a016bac47e19761f01933f198282874",
+    "mtime": 1795533059.4182923,
+    "seen": 1795584181.2666326,
+    "ast_hash": "2421bf01dc9addcea0a8eeaaba1f50f7",
     "semantic_hash": ""
   },
   "src/domain/receivables/balances.ts": {
@@ -3138,9 +3138,9 @@
     "semantic_hash": ""
   },
   "src/lib/http/index.ts": {
-    "mtime": 1795449284.5131886,
-    "seen": 1795449922.2356682,
-    "ast_hash": "2679515a74c10328b7771a3f99b27d08",
+    "mtime": 1795584081.6159115,
+    "seen": 1795584181.2701104,
+    "ast_hash": "ace4293a77a748366a5d8b0d4d3a5378",
     "semantic_hash": ""
   },
   "src/lib/i18n/index.ts": {
@@ -3228,9 +3228,9 @@
     "semantic_hash": ""
   },
   "src/lib/permissions/routePolicy.json": {
-    "mtime": 1795508786.0897174,
-    "seen": 1795509188.611765,
-    "ast_hash": "0111637faf0f2fbb71293712e7c416d0",
+    "mtime": 1795533100.24843,
+    "seen": 1795584181.2708795,
+    "ast_hash": "d57726125ca79916198022209eb8238e",
     "semantic_hash": ""
   },
   "src/lib/queue/index.ts": {
@@ -4608,15 +4608,15 @@
     "semantic_hash": ""
   },
   "public/locales/bn-BD/ui.json": {
-    "mtime": 1795508843.870801,
-    "seen": 1795509188.522904,
-    "ast_hash": "209a3e7b99820b471c3438c498b4a23d",
+    "mtime": 1795533238.6327243,
+    "seen": 1795584181.2422807,
+    "ast_hash": "45d16716e41890b5f61b6ce595be0c76",
     "semantic_hash": ""
   },
   "public/locales/en-BD/ui.json": {
-    "mtime": 1795508843.8697999,
-    "seen": 1795509188.5230381,
-    "ast_hash": "20054db14114a61750064d1ded1d7ed4",
+    "mtime": 1795533238.6327243,
+    "seen": 1795584181.2423303,
+    "ast_hash": "e2cbc9a78a83ac6914ed3c27d5829f65",
     "semantic_hash": ""
   },
   "src/components/i18n/I18nProvider.tsx": {
@@ -5403,6 +5403,30 @@
     "mtime": 1795523971.5568027,
     "seen": 1795524122.7178302,
     "ast_hash": "67e13c2b4b4343fe836c32d5646b7e6d",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/payments/[id]/cheque/bounce/route.ts": {
+    "mtime": 1795533091.8212454,
+    "seen": 1795584181.2566166,
+    "ast_hash": "459fec2dac93be77b6eb9e7b4ef470e8",
+    "semantic_hash": ""
+  },
+  "src/app/api/v1/payments/[id]/cheque/clear/route.ts": {
+    "mtime": 1795533091.76115,
+    "seen": 1795584181.2566185,
+    "ast_hash": "b906b5088f6c00e22f1fa39d66809927",
+    "semantic_hash": ""
+  },
+  "tests/integration/chequeClearing.test.ts": {
+    "mtime": 1795533365.300009,
+    "seen": 1795584181.2739096,
+    "ast_hash": "8e1143209de87ccfabb5c452a14659eb",
+    "semantic_hash": ""
+  },
+  "tests/unit/clientIp.test.ts": {
+    "mtime": 1795584081.6159115,
+    "seen": 1795584181.2768805,
+    "ast_hash": "c26a244c7c23fefd097ed20b747065d2",
     "semantic_hash": ""
   }
 }
