@@ -10,13 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, AlertTriangle, Search } from 'lucide-react';
+import { Package, AlertTriangle, Search, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/StateList';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { useFormat } from '@/components/i18n/I18nProvider';
 import { apiFetch } from '@/lib/api/client';
+import { useDashboardSession } from '@/components/dashboard/session';
 
 interface StockItem {
   id: string;
@@ -35,6 +36,49 @@ interface StockItem {
 export default function InventoryPage() {
   const t = useTranslations('inventory');
   const f = useFormat();
+  const session = useDashboardSession();
+  // "Sell" opens POS, which needs sale.post and an open cashier shift.
+  const canSell = Boolean(session?.is_global || session?.permissions.includes('sale.post'));
+  const canReadShifts = Boolean(session?.is_global || session?.permissions.includes('shift.read'));
+  // null = unknown (not checked, or no shift.read): POS then says what is missing.
+  const [hasOpenShift, setHasOpenShift] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!canSell || !canReadShifts) return;
+    let active = true;
+    apiFetch('/api/v1/cashier-shifts?status=open')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (active && d) setHasOpenShift((d.items ?? []).length > 0); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [canSell, canReadShifts]);
+
+  function sellCell(s: StockItem) {
+    const reason = !canSell ? t('sell_no_permission')
+      : Number(s.qty_available) <= 0 ? t('sell_none')
+      : hasOpenShift === false ? t('sell_no_shift')
+      : null;
+    if (reason) {
+      return (
+        <div className="flex flex-col items-start gap-1">
+          <Button type="button" size="sm" variant="outline" disabled aria-describedby={`sell-why-${s.id}`} className="min-h-11">
+            <ShoppingCart aria-hidden="true" />{t('sell')}
+          </Button>
+          <span id={`sell-why-${s.id}`} className="max-w-[180px] text-xs text-muted-foreground text-pretty">{reason}</span>
+          {canSell && hasOpenShift === false && Number(s.qty_available) > 0 && (
+            <Link href="/dashboard/cashier" className="text-xs font-medium text-primary underline-offset-4 hover:underline">{t('sell_open_shift')}</Link>
+          )}
+        </div>
+      );
+    }
+    const href = `/dashboard/pos?add=${encodeURIComponent(s.product.id)}&warehouse=${encodeURIComponent(s.warehouse.id)}`;
+    return (
+      <Button asChild size="sm" className="min-h-11">
+        <Link href={href} aria-label={t('sell_named', { name: s.product.name, warehouse: s.warehouse.name })}>
+          <ShoppingCart aria-hidden="true" />{t('sell')}
+        </Link>
+      </Button>
+    );
+  }
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +192,7 @@ export default function InventoryPage() {
               {/* Every stock and cost column stays available on phones: the table
                   scrolls inside its own container rather than dropping columns. */}
               <div>
-                <Table className="min-w-[820px]">
+                <Table className="min-w-[940px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('col_product')}</TableHead>
@@ -159,6 +203,7 @@ export default function InventoryPage() {
                       <TableHead className="text-right">{t('col_cost')}</TableHead>
                       <TableHead className="text-right">{t('col_value')}</TableHead>
                       <TableHead>{t('col_status')}</TableHead>
+                      <TableHead>{t('col_actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -175,6 +220,7 @@ export default function InventoryPage() {
                         <TableCell className="text-right whitespace-nowrap">৳ {parseFloat(s.moving_average_cost).toFixed(6)}</TableCell>
                         <TableCell className="text-right whitespace-nowrap">{f.money(s.inventory_value)}</TableCell>
                         <TableCell>{status(s)}</TableCell>
+                        <TableCell>{sellCell(s)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

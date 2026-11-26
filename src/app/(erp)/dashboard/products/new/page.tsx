@@ -5,6 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { Plus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
 import { ErrorState, LoadingState } from '@/components/shared/StateList';
+import { useDashboardSession } from '@/components/dashboard/session';
+import { QuickCreateCatalogueItem, type CatalogueKind, type CreatedCatalogueItem } from '@/components/products/QuickCreateCatalogueItem';
 
 interface Category { id: string; name: string; code: string }
 interface Brand { id: string; name: string }
@@ -22,6 +26,11 @@ interface Unit { id: string; name: string; code: string; allow_fractional: boole
 
 export default function NewProductPage() {
   const router = useRouter();
+  const t = useTranslations('products');
+  const session = useDashboardSession();
+  // Same permission the server checks on POST /api/v1/categories and /brands.
+  const canManageCatalogue = Boolean(session?.is_global || session?.permissions.includes('category.manage'));
+  const [quickCreate, setQuickCreate] = useState<CatalogueKind | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -53,6 +62,18 @@ export default function NewProductPage() {
     } catch (error) {
       setOptionsError(error instanceof Error ? error.message : 'Product options could not be loaded.');
     } finally { setOptionsLoading(false); }
+  }
+
+  function handleQuickCreated(kind: CatalogueKind, item: CreatedCatalogueItem) {
+    if (kind === 'category') {
+      setCategories(prev => [...prev, { id: item.id, name: item.name, code: item.code ?? '' }]);
+      setForm(prev => ({ ...prev, category_id: item.id }));
+      toast.success(t('quick.saved_category', { name: item.name }));
+    } else {
+      setBrands(prev => [...prev, { id: item.id, name: item.name }]);
+      setForm(prev => ({ ...prev, brand_id: item.id }));
+      toast.success(t('quick.saved_brand', { name: item.name }));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -118,21 +139,31 @@ export default function NewProductPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="field-app-erp-dashboard-products-new-page-1">Category *</Label>
-                <Select value={form.category_id} onValueChange={v => setForm({ ...form, category_id: v })}>
+                <Select value={form.category_id} onValueChange={v => { if (v) setForm(prev => ({ ...prev, category_id: v })); }}>
                   <SelectTrigger id="field-app-erp-dashboard-products-new-page-1" className="min-h-[40px]"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {canManageCatalogue && (
+                  <Button type="button" variant="link" size="sm" className="h-auto min-h-11 px-0" onClick={() => setQuickCreate('category')}>
+                    <Plus aria-hidden="true" />{t('new_category')}
+                  </Button>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="field-app-erp-dashboard-products-new-page-2">Brand</Label>
-                <Select value={form.brand_id} onValueChange={v => setForm({ ...form, brand_id: v })}>
+                <Select value={form.brand_id} onValueChange={v => { if (v) setForm(prev => ({ ...prev, brand_id: v })); }}>
                   <SelectTrigger id="field-app-erp-dashboard-products-new-page-2" className="min-h-[40px]"><SelectValue placeholder="No brand" /></SelectTrigger>
                   <SelectContent>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {canManageCatalogue && (
+                  <Button type="button" variant="link" size="sm" className="h-auto min-h-11 px-0" onClick={() => setQuickCreate('brand')}>
+                    <Plus aria-hidden="true" />{t('new_brand')}
+                  </Button>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="field-app-erp-dashboard-products-new-page-3">Unit *</Label>
@@ -156,19 +187,21 @@ export default function NewProductPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="price">Default Price (BDT)</Label>
+                <Label htmlFor="price">{t('selling_price')}</Label>
                 <Input id="price" type="number" step="0.01" min="0" value={form.default_price}
                   onChange={e => setForm({ ...form, default_price: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cost">Reference Cost (BDT)</Label>
+                <Label htmlFor="cost">{t('purchase_price')}</Label>
                 <Input id="cost" type="number" step="0.000001" min="0" value={form.reference_cost}
                   onChange={e => setForm({ ...form, reference_cost: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="alert">Alert Quantity</Label>
+                <Label htmlFor="alert">{t('quantity')}</Label>
                 <Input id="alert" type="number" step="0.0001" min="0" value={form.alert_quantity}
-                  onChange={e => setForm({ ...form, alert_quantity: parseFloat(e.target.value) || 0 })} className="min-h-[40px]" />
+                  onChange={e => setForm({ ...form, alert_quantity: parseFloat(e.target.value) || 0 })} className="min-h-[40px]"
+                  aria-describedby="alert-help" />
+                <p id="alert-help" className="text-xs text-muted-foreground text-pretty">{t('quantity_help')}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="warranty">Warranty (months)</Label>
@@ -216,6 +249,13 @@ export default function NewProductPage() {
           </CardFooter>
         </form>
       </Card>
+
+      {/* Outside the product <form>: the dialog has a form of its own. */}
+      {quickCreate && (
+        <QuickCreateCatalogueItem kind={quickCreate} open
+          onOpenChange={open => { if (!open) setQuickCreate(null); }}
+          onCreated={item => handleQuickCreated(quickCreate, item)} />
+      )}
     </div>
   );
 }

@@ -218,6 +218,37 @@ export default function POSPage() {
     if (pay === 'later' || pay === 'part') setTiming(pay);
   }, []);
 
+  // "Sell" on the Stock page arrives as ?add=<productId>&warehouse=<warehouseId>.
+  // The product goes into the cart through addToCart, exactly as a search pick
+  // does; serial numbers are then asked for on the cart line as usual.
+  const fromStockRef = useRef(false);
+  useEffect(() => {
+    if (fromStockRef.current) return;
+    fromStockRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get('add');
+    const warehouse = params.get('warehouse');
+    if (!productId) return;
+    // Drop the parameters so a reload does not add the item a second time.
+    params.delete('add'); params.delete('warehouse');
+    const rest = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}`);
+    if (warehouse) setWarehouseId(warehouse);
+    apiFetch(`/api/v1/products/${encodeURIComponent(productId)}`)
+      .then(async r => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok || !d) throw new Error(t('from_stock_failed'));
+        return d as Product & { is_active: boolean };
+      })
+      .then(p => {
+        if (!p.is_active) { toast.error(t('from_stock_inactive', { name: p.name })); return; }
+        addToCart({ id: p.id, name: p.name, code: p.code, default_price: p.default_price, is_serialized: p.is_serialized, unit: p.unit });
+        toast.success(t('from_stock_added', { name: p.name }));
+      })
+      .catch(() => toast.error(t('from_stock_failed')));
+    // Runs once on arrival; addToCart only reads the cart, which is still empty.
+  }, []);
+
   // Fetch dropdown options on mount.
   useEffect(() => {
     let cancelled = false;

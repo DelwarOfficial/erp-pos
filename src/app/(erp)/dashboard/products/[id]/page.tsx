@@ -5,6 +5,7 @@
 
 import { useEffect, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,7 @@ interface Barcode {
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const t = useTranslations('products');
   const [product, setProduct] = useState<Product | null>(null);
   const [barcodes, setBarcodes] = useState<Barcode[]>([]);
   const [activating, setActivating] = useState(false);
@@ -180,9 +182,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             <Row label="Category" value={`${product.category?.name} (${product.category?.code})`} />
             <Row label="Brand" value={product.brand?.name ?? '—'} />
             <Row label="Unit" value={`${product.unit?.name} (${product.unit?.code})`} />
-            <Row label="Default Price" value={`৳ ${Number(product.default_price).toFixed(2)}`} />
-            <Row label="Reference Cost" value={`৳ ${Number(product.reference_cost).toFixed(6)}`} />
-            <Row label="Alert Qty" value={product.alert_quantity} />
+            <Row label={t('selling_price_short')} value={`৳ ${Number(product.default_price).toFixed(2)}`} />
+            <Row label={t('purchase_price_short')} value={`৳ ${Number(product.reference_cost).toFixed(6)}`} />
+            <Row label={t('quantity')} value={product.alert_quantity} />
             <Row label="Warranty" value={product.warranty_period_months ? `${product.warranty_period_months} months` : '—'} />
           </CardContent>
         </Card>

@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ interface ProductListItem {
 }
 
 export default function ProductsPage() {
+  const t = useTranslations('products');
   const [items, setItems] = useState<ProductListItem[]>([]);
   const [search, setSearch] = useState('');
   const [productType, setProductType] = useState<string>('all');
@@ -147,7 +149,7 @@ export default function ProductsPage() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span className="truncate max-w-[140px]">{p.category?.name}</span>
-                    <span className="font-mono whitespace-nowrap">৳ {Number(p.default_price).toFixed(2)}</span>
+                    <span className="font-mono whitespace-nowrap" title={t('selling_price_short')}><span className="sr-only">{t('selling_price_short')}: </span>৳ {Number(p.default_price).toFixed(2)}</span>
                     {p.is_active
                       ? <Badge>active</Badge>
                       : <Badge variant="outline">inactive</Badge>}
