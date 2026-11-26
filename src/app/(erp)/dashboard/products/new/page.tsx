@@ -53,14 +53,14 @@ export default function NewProductPage() {
       const responses = await Promise.all([
         apiFetch('/api/v1/categories'), apiFetch('/api/v1/brands'), apiFetch('/api/v1/units'),
       ]);
-      if (responses.some(response => !response.ok)) throw new Error('Product options could not be loaded. Check your access and try again.');
+      if (responses.some(response => !response.ok)) throw new Error(t('new.options_failed'));
       const [c, b, u] = await Promise.all(responses.map(response => response.json()));
-      if (![c, b, u].every(data => Array.isArray(data.items))) throw new Error('Product options could not be read. Try again.');
+      if (![c, b, u].every(data => Array.isArray(data.items))) throw new Error(t('new.options_failed'));
       setCategories(c.items ?? []);
       setBrands(b.items ?? []);
       setUnits(u.items ?? []);
     } catch (error) {
-      setOptionsError(error instanceof Error ? error.message : 'Product options could not be loaded.');
+      setOptionsError(error instanceof Error ? error.message : t('new.options_failed'));
     } finally { setOptionsLoading(false); }
   }
 
@@ -98,13 +98,13 @@ export default function NewProductPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Failed to create product');
+        toast.error(data?.error?.message ?? t('new.failed'));
         return;
       }
-      toast.success(`Product ${data.code} created (inactive)`);
+      toast.success(t('new.created', { code: data.code }));
       router.push(`/dashboard/products/${data.id}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Network error');
+      toast.error(e instanceof Error && !(e instanceof TypeError) ? e.message : t('new.network'));
     } finally {
       setLoading(false);
     }
@@ -113,34 +113,32 @@ export default function NewProductPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">New Product</h1>
-        <p className="text-muted-foreground">
-          Products are created inactive. After adding a unit option + barcode, click Activate to validate and enable.
-        </p>
+        <h1 className="text-2xl font-bold">{t('new.title')}</h1>
+        <p className="text-muted-foreground text-pretty">{t('new.subtitle')}</p>
       </div>
 
       <Card>
         <form onSubmit={handleSubmit}>
           <CardHeader>
-            <CardTitle>Product Details</CardTitle>
-            <CardDescription>All fields marked with * are required.</CardDescription>
+            <CardTitle>{t('new.card_title')}</CardTitle>
+            <CardDescription>{t('new.required_hint')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {optionsLoading && <LoadingState label="Loading product options…" />}
+            {optionsLoading && <LoadingState label={t('new.loading_options')} />}
             {optionsError && <ErrorState message={optionsError} onRetry={loadOptions} />}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">{t('field.name')} <span aria-hidden="true">*</span></Label>
                 <Input id="name" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="min-h-[40px]" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="code">Code *</Label>
+                <Label htmlFor="code">{t('field.code')} <span aria-hidden="true">*</span></Label>
                 <Input id="code" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="min-h-[40px]" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-products-new-page-1">Category *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-1">{t('field.category')} <span aria-hidden="true">*</span></Label>
                 <Select value={form.category_id} onValueChange={v => { if (v) setForm(prev => ({ ...prev, category_id: v })); }}>
-                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-1" className="min-h-[40px]"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-1" className="min-h-[40px]"><SelectValue placeholder={t('new.select_category')} /></SelectTrigger>
                   <SelectContent>
                     {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>)}
                   </SelectContent>
@@ -152,9 +150,9 @@ export default function NewProductPage() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-products-new-page-2">Brand</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-2">{t('field.brand')}</Label>
                 <Select value={form.brand_id} onValueChange={v => { if (v) setForm(prev => ({ ...prev, brand_id: v })); }}>
-                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-2" className="min-h-[40px]"><SelectValue placeholder="No brand" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-2" className="min-h-[40px]"><SelectValue placeholder={t('new.no_brand')} /></SelectTrigger>
                   <SelectContent>
                     {brands.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
@@ -166,23 +164,23 @@ export default function NewProductPage() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-products-new-page-3">Unit *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-3">{t('field.unit')} <span aria-hidden="true">*</span></Label>
                 <Select value={form.unit_id} onValueChange={v => setForm({ ...form, unit_id: v })}>
-                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-3" className="min-h-[40px]"><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectTrigger id="field-app-erp-dashboard-products-new-page-3" className="min-h-[40px]"><SelectValue placeholder={t('new.select_unit')} /></SelectTrigger>
                   <SelectContent>
-                    {units.map(u => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code}){u.allow_fractional ? ' — fractional' : ''}</SelectItem>)}
+                    {units.map(u => <SelectItem key={u.id} value={u.id}>{u.name} ({u.code}){u.allow_fractional ? ` — ${t('new.fractional')}` : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="field-app-erp-dashboard-products-new-page-4">Type *</Label>
+                <Label htmlFor="field-app-erp-dashboard-products-new-page-4">{t('field.type')} <span aria-hidden="true">*</span></Label>
                 <Select value={form.product_type} onValueChange={v => setForm({ ...form, product_type: v })}>
                   <SelectTrigger id="field-app-erp-dashboard-products-new-page-4" className="min-h-[40px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="combo">Combo</SelectItem>
-                    <SelectItem value="service">Service</SelectItem>
-                    <SelectItem value="digital">Digital</SelectItem>
+                    <SelectItem value="standard">{t('type.standard')}</SelectItem>
+                    <SelectItem value="combo">{t('type.combo')}</SelectItem>
+                    <SelectItem value="service">{t('type.service')}</SelectItem>
+                    <SelectItem value="digital">{t('type.digital')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -204,19 +202,19 @@ export default function NewProductPage() {
                 <p id="alert-help" className="text-xs text-muted-foreground text-pretty">{t('quantity_help')}</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="warranty">Warranty (months)</Label>
+                <Label htmlFor="warranty">{t('field.warranty_months')}</Label>
                 <Input id="warranty" type="number" min="0" max="600" value={form.warranty_period_months}
                   onChange={e => setForm({ ...form, warranty_period_months: parseInt(e.target.value) || 0 })} className="min-h-[40px]" />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="short">Short Description</Label>
+              <Label htmlFor="short">{t('field.short_description')}</Label>
               <Input id="short" maxLength={500} value={form.short_description}
                 onChange={e => setForm({ ...form, short_description: e.target.value })} className="min-h-[40px]" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="desc">Full Description</Label>
+              <Label htmlFor="desc">{t('field.description')}</Label>
               <Textarea id="desc" value={form.description}
                 onChange={e => setForm({ ...form, description: e.target.value })} />
             </div>
@@ -226,25 +224,25 @@ export default function NewProductPage() {
                 <Switch id="ser" checked={form.is_serialized}
                   onCheckedChange={v => setForm({ ...form, is_serialized: v })}
                   disabled={form.product_type === 'service' || form.product_type === 'digital'} />
-                <Label htmlFor="ser">Serialized (IMEI/tracked)</Label>
+                <Label htmlFor="ser">{t('field.serialized')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Switch id="bat" checked={form.track_batches}
                   onCheckedChange={v => setForm({ ...form, track_batches: v })}
                   disabled={form.product_type === 'service' || form.product_type === 'digital'} />
-                <Label htmlFor="bat">Track Batches</Label>
+                <Label htmlFor="bat">{t('field.batches')}</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Switch id="fea" checked={form.is_featured}
                   onCheckedChange={v => setForm({ ...form, is_featured: v })} />
-                <Label htmlFor="fea">Featured</Label>
+                <Label htmlFor="fea">{t('field.featured')}</Label>
               </div>
             </div>
           </CardContent>
           <CardFooter className="flex justify-between gap-2">
-            <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/products')} className="min-h-[44px]">Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/products')} className="min-h-[44px]">{t('new.cancel')}</Button>
             <Button type="submit" disabled={loading} className="min-h-[44px]">
-              {loading ? 'Creating...' : 'Create Product (inactive)'}
+              {loading ? t('new.submitting') : t('new.submit')}
             </Button>
           </CardFooter>
         </form>

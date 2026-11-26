@@ -472,6 +472,8 @@ export default function POSPage() {
     if (cart.length === 0) return t('err.cart_empty');
     if (!warehouseId || !branchId) return t('err.warehouse');
     if (!pricingReady) return t('err.pricing');
+    // A ৳0 sale cannot take a payment; say why instead of a generic tender error.
+    if (grandPaisa <= BigInt(0)) return t('err.zero_total');
     for (const item of cart) {
       if (item.qty <= 0 || (item.isSerialized && (item.serials.length !== item.qty || new Set(item.serials).size !== item.qty))) {
         return t('err.serials', { name: item.name, count: Math.max(item.qty, 1) });
@@ -1199,6 +1201,7 @@ export default function POSPage() {
                 {posting ? t('completing') : t('complete', { amount: f.money(grandTotal) })}
               </Button>
               {cart.length === 0 && <p className="text-center text-xs text-muted-foreground">{t('complete_hint')}</p>}
+              {cart.length > 0 && pricingReady && grandPaisa <= BigInt(0) && <p className="text-center text-xs text-destructive text-pretty" role="status">{t('err.zero_total')}</p>}
             </CardContent>
           </Card>
         </div>

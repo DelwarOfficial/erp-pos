@@ -104,6 +104,23 @@ describe('Sell from the Stock page', () => {
     expect(pos).toContain('window.history.replaceState');
   });
 
+  it('blocks inactive products on the Stock page, not only in POS', () => {
+    expect(read('src/app/api/v1/inventory/stocks/route.ts')).toContain('isSerialized: true, alertQuantity: true, isActive: true,');
+    expect(inventory).toContain("!s.product.isActive ? t('sell_inactive')");
+  });
+
+  it('explains a ৳0 total instead of a generic payment error', () => {
+    expect(pos).toContain("if (grandPaisa <= BigInt(0)) return t('err.zero_total');");
+    expect(en['pos.err.zero_total']).toMatch(/৳0/);
+    expect(bn['pos.err.zero_total']).toBeTruthy();
+  });
+
+  it('has no hard-coded English left on the product screens', () => {
+    for (const text of ['New Product', 'Create Product', 'Back to products', 'Add Barcode', 'Mark as primary', 'No products yet', 'Load more']) {
+      expect(newProduct + productDetail + read('src/app/(erp)/dashboard/products/page.tsx'), text).not.toContain(`>${text}`);
+    }
+  });
+
   it('has its copy in both catalogs', () => {
     for (const key of ['inventory.sell', 'inventory.sell_named', 'inventory.sell_none', 'inventory.sell_no_permission', 'inventory.sell_no_shift', 'inventory.sell_open_shift', 'pos.from_stock_added', 'pos.from_stock_inactive', 'pos.from_stock_failed']) {
       expect(en[key], key).toBeTruthy();

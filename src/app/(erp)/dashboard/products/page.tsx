@@ -54,12 +54,12 @@ export default function ProductsPage() {
       params.set('limit', '20');
       const res = await apiFetch(`/api/v1/products?${params}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.message ?? 'Failed to load');
+      if (!res.ok) throw new Error(data?.error?.message ?? t('list.load_failed'));
       setItems(prev => reset ? data.items : [...prev, ...data.items]);
       setCursor(data.next_cursor);
       setHasMore(data.has_more);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Network error';
+      const msg = e instanceof Error && !(e instanceof TypeError) ? e.message : t('list.load_failed');
       setError(msg);
       toast.error(msg);
     } finally {
@@ -79,36 +79,36 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Package className="h-6 w-6" /> Products
+            <Package className="h-6 w-6" aria-hidden="true" /> {t('list.title')}
           </h1>
-          <p className="text-muted-foreground">Manage your product catalogue.</p>
+          <p className="text-muted-foreground">{t('list.subtitle')}</p>
         </div>
-        <Button className="min-h-[44px]" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" /> New Product</Link></Button>
+        <Button className="min-h-[44px]" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" aria-hidden="true" /> {t('list.new')}</Link></Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>{t('list.filters')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Search by name or code…"
+              placeholder={t('list.search_placeholder')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-9"
-              aria-label="Search products"
+              aria-label={t('list.search_label')}
             />
           </div>
           <Select value={productType} onValueChange={setProductType}>
-            <SelectTrigger className="w-full sm:w-44" aria-label="Filter by product type"><SelectValue placeholder="Type" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44" aria-label={t('list.type_filter')}><SelectValue placeholder={t('field.type')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="standard">Standard</SelectItem>
-              <SelectItem value="combo">Combo</SelectItem>
-              <SelectItem value="service">Service</SelectItem>
-              <SelectItem value="digital">Digital</SelectItem>
+              <SelectItem value="all">{t('list.all_types')}</SelectItem>
+              <SelectItem value="standard">{t('type.standard')}</SelectItem>
+              <SelectItem value="combo">{t('type.combo')}</SelectItem>
+              <SelectItem value="service">{t('type.service')}</SelectItem>
+              <SelectItem value="digital">{t('type.digital')}</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -116,20 +116,20 @@ export default function ProductsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Products ({items.length})</CardTitle>
-          <CardDescription>Click a product to view details, add barcodes, or activate.</CardDescription>
+          <CardTitle>{t('list.count', { count: items.length })}</CardTitle>
+          <CardDescription>{t('list.help')}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <LoadingState label="Loading products…" />
+            <LoadingState label={t('list.loading')} />
           ) : error ? (
             <ErrorState message={error} onRetry={() => load(true)} />
           ) : items.length === 0 ? (
             <EmptyState
               icon={<Package className="h-8 w-8 text-muted-foreground/50" />}
-              message={<>No products yet. Click <strong>&ldquo;New Product&rdquo;</strong> to create one.</>}
+              message={t('list.empty')}
               action={
-                <Button size="sm" variant="outline" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" /> New Product</Link></Button>
+                <Button size="sm" variant="outline" asChild><Link href="/dashboard/products/new"><Plus className="h-4 w-4 mr-2" aria-hidden="true" /> {t('list.new')}</Link></Button>
               }
             />
           ) : (
@@ -143,23 +143,23 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="font-medium">{p.name}</div>
                     <Badge variant="outline" className="font-mono text-xs">{p.code}</Badge>
-                    <Badge variant="secondary" className="text-xs">{p.product_type}</Badge>
-                    {p.is_serialized && <Badge variant="outline" className="text-xs">serialized</Badge>}
-                    {p.is_featured && <Badge className="text-xs">featured</Badge>}
+                    <Badge variant="secondary" className="text-xs">{t.has(`type.${p.product_type}`) ? t(`type.${p.product_type}`) : p.product_type}</Badge>
+                    {p.is_serialized && <Badge variant="outline" className="text-xs">{t('badge.serialized')}</Badge>}
+                    {p.is_featured && <Badge className="text-xs">{t('badge.featured')}</Badge>}
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span className="truncate max-w-[140px]">{p.category?.name}</span>
                     <span className="font-mono whitespace-nowrap" title={t('selling_price_short')}><span className="sr-only">{t('selling_price_short')}: </span>৳ {Number(p.default_price).toFixed(2)}</span>
                     {p.is_active
-                      ? <Badge>active</Badge>
-                      : <Badge variant="outline">inactive</Badge>}
+                      ? <Badge>{t('badge.active')}</Badge>
+                      : <Badge variant="outline">{t('badge.inactive')}</Badge>}
                   </div>
                 </Link>
               ))}
               {hasMore && (
                 <Button variant="outline" className="w-full min-h-[44px]" onClick={() => load(false)} disabled={loadingMore}>
                   {loadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  Load more
+                  {t('list.load_more')}
                 </Button>
               )}
             </div>

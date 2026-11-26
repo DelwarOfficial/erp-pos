@@ -22,7 +22,7 @@ import { useDashboardSession } from '@/components/dashboard/session';
 interface StockItem {
   id: string;
   warehouse: { id: string; name: string; code: string };
-  product: { id: string; name: string; code: string; isSerialized: boolean; unit: { code: string; name: string } };
+  product: { id: string; name: string; code: string; isSerialized: boolean; isActive: boolean; unit: { code: string; name: string } };
   qty_on_hand: string;
   qty_reserved: string;
   qty_available: string;
@@ -54,6 +54,7 @@ export default function InventoryPage() {
 
   function sellCell(s: StockItem) {
     const reason = !canSell ? t('sell_no_permission')
+      : !s.product.isActive ? t('sell_inactive')
       : Number(s.qty_available) <= 0 ? t('sell_none')
       : hasOpenShift === false ? t('sell_no_shift')
       : null;
@@ -64,7 +65,10 @@ export default function InventoryPage() {
             <ShoppingCart aria-hidden="true" />{t('sell')}
           </Button>
           <span id={`sell-why-${s.id}`} className="max-w-[180px] text-xs text-muted-foreground text-pretty">{reason}</span>
-          {canSell && hasOpenShift === false && Number(s.qty_available) > 0 && (
+          {canSell && !s.product.isActive && (
+            <Link href={`/dashboard/products/${s.product.id}`} className="text-xs font-medium text-primary underline-offset-4 hover:underline">{t('sell_open_product')}</Link>
+          )}
+          {canSell && s.product.isActive && hasOpenShift === false && Number(s.qty_available) > 0 && (
             <Link href="/dashboard/cashier" className="text-xs font-medium text-primary underline-offset-4 hover:underline">{t('sell_open_shift')}</Link>
           )}
         </div>

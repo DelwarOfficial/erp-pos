@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         product: {
           select: {
             id: true, name: true, code: true,
-            isSerialized: true, alertQuantity: true,
+            isSerialized: true, alertQuantity: true, isActive: true,
             unit: { select: { code: true, name: true } },
           },
         },

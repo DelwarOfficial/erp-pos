@@ -66,7 +66,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     // Fetch product (we use the list endpoint with id filter — no detail endpoint yet)
     apiFetch(`/api/v1/products?limit=200`)
       .then(async response => {
-        if (!response.ok) throw new Error(response.status === 403 ? 'You do not have permission to view this product.' : 'Product details could not be loaded.');
+        if (!response.ok) throw new Error(t('detail.load_failed'));
         return response.json();
       })
       .then(d => {
@@ -74,18 +74,18 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         const p = d.items?.find((x: Product) => x.id === id);
         setProduct(p ?? null);
       })
-      .catch(() => { if (!cancelled) setLoadError('Product details are unavailable. Check your access or retry.'); })
+      .catch(() => { if (!cancelled) setLoadError(t('detail.load_failed')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     apiFetch(`/api/v1/products/${id}/barcodes`)
       .then(async response => {
-        if (!response.ok) throw new Error('Barcodes could not be loaded.');
+        if (!response.ok) throw new Error(t('detail.barcodes_failed'));
         return response.json();
       })
       .then(d => { if (!cancelled) setBarcodes(d.items ?? []); })
-      .catch(() => { if (!cancelled) setBarcodeError('Barcodes are unavailable. Check your access or retry.'); })
+      .catch(() => { if (!cancelled) setBarcodeError(t('detail.barcodes_failed')); })
       .finally(() => { if (!cancelled) setBarcodesLoading(false); });
     return () => { cancelled = true; };
-  }, [id, attempt]);
+  }, [id, attempt, t]);
 
   async function handleActivate() {
     setActivating(true);
@@ -98,16 +98,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Activation failed');
+        toast.error(data?.error?.message ?? t('detail.activate_failed'));
         if (data?.error?.details?.errors) {
           console.error('Validation errors:', data.error.details.errors);
         }
         return;
       }
-      toast.success('Product activated');
+      toast.success(t('detail.activated'));
       setProduct(p => p ? { ...p, is_active: true } : p);
     } catch {
-      toast.error('Activation could not be confirmed. Refresh the product before trying again.');
+      toast.error(t('detail.unconfirmed'));
     } finally {
       setActivating(false);
     }
@@ -130,28 +130,28 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.error?.message ?? 'Failed to add barcode');
+        toast.error(data?.error?.message ?? t('detail.barcode_failed'));
         return;
       }
       setBarcodes(prev => [...prev, data]);
       setNewBarcode({ code: '', symbology: 'CODE128', is_primary: false });
-      toast.success('Barcode added');
+      toast.success(t('detail.barcode_added'));
     } catch {
-      toast.error('Barcode creation could not be confirmed. Refresh the product before trying again.');
+      toast.error(t('detail.unconfirmed'));
     } finally {
       setAddingBarcode(false);
     }
   }
 
-  if (loading) return <LoadingState label="Loading product…" />;
+  if (loading) return <LoadingState label={t('detail.loading')} />;
   if (loadError) return <ErrorState message={loadError} onRetry={() => setAttempt(value => value + 1)} />;
-  if (!product) return <EmptyState message="This product was not found in the available product list."
-    action={<Button variant="outline" onClick={() => router.push('/dashboard/products')}>Back to products</Button>} />;
+  if (!product) return <EmptyState message={t('detail.not_found')}
+    action={<Button variant="outline" onClick={() => router.push('/dashboard/products')}>{t('back')}</Button>} />;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/products')}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to products
+        <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> {t('back')}
       </Button>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -159,44 +159,44 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           <h1 className="text-2xl font-bold">{product.name}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <Badge variant="outline" className="font-mono">{product.code}</Badge>
-            <Badge variant="secondary">{product.product_type}</Badge>
-            {product.is_serialized && <Badge variant="outline">serialized</Badge>}
-            {product.is_featured && <Badge>featured</Badge>}
+            <Badge variant="secondary">{t.has(`type.${product.product_type}`) ? t(`type.${product.product_type}`) : product.product_type}</Badge>
+            {product.is_serialized && <Badge variant="outline">{t('badge.serialized')}</Badge>}
+            {product.is_featured && <Badge>{t('badge.featured')}</Badge>}
             {product.is_active
-              ? <Badge><CheckCircle2 className="h-3 w-3 mr-1" />active</Badge>
-              : <Badge variant="outline">inactive</Badge>}
+              ? <Badge><CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" />{t('badge.active')}</Badge>
+              : <Badge variant="outline">{t('badge.inactive')}</Badge>}
           </div>
         </div>
         {!product.is_active && (
           <Button onClick={handleActivate} disabled={activating}>
             {activating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Activate
+            {t('detail.activate')}
           </Button>
         )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t('detail.details')}</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <Row label="Category" value={`${product.category?.name} (${product.category?.code})`} />
-            <Row label="Brand" value={product.brand?.name ?? '—'} />
-            <Row label="Unit" value={`${product.unit?.name} (${product.unit?.code})`} />
+            <Row label={t('field.category')} value={`${product.category?.name} (${product.category?.code})`} />
+            <Row label={t('field.brand')} value={product.brand?.name ?? '—'} />
+            <Row label={t('field.unit')} value={`${product.unit?.name} (${product.unit?.code})`} />
             <Row label={t('selling_price_short')} value={`৳ ${Number(product.default_price).toFixed(2)}`} />
             <Row label={t('purchase_price_short')} value={`৳ ${Number(product.reference_cost).toFixed(6)}`} />
             <Row label={t('quantity')} value={product.alert_quantity} />
-            <Row label="Warranty" value={product.warranty_period_months ? `${product.warranty_period_months} months` : '—'} />
+            <Row label={t('field.warranty')} value={product.warranty_period_months ? t('warranty_months', { count: product.warranty_period_months }) : '—'} />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Barcodes</CardTitle>
-            <CardDescription>One barcode can be primary. QR codes are server-generated signed payloads.</CardDescription>
+            <CardTitle className="text-base">{t('detail.barcodes')}</CardTitle>
+            <CardDescription>{t('detail.barcodes_help')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {barcodesLoading ? <LoadingState label="Loading barcodes…" /> : barcodeError ? <ErrorState message={barcodeError} onRetry={() => setAttempt(value => value + 1)} /> : barcodes.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No barcodes yet.</div>
+            {barcodesLoading ? <LoadingState label={t('detail.barcodes_loading')} /> : barcodeError ? <ErrorState message={barcodeError} onRetry={() => setAttempt(value => value + 1)} /> : barcodes.length === 0 ? (
+              <div className="text-sm text-muted-foreground">{t('detail.no_barcodes')}</div>
             ) : (
               <div className="space-y-1">
                 {barcodes.map(b => (
@@ -205,7 +205,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                       <Badge variant="outline" className="text-xs">{b.symbology}</Badge>
                       <code className="text-xs break-all">{b.code.slice(0, 60)}{b.code.length > 60 ? '...' : ''}</code>
                     </div>
-                    {b.is_primary && <Badge>primary</Badge>}
+                    {b.is_primary && <Badge>{t('detail.primary')}</Badge>}
                   </div>
                 ))}
               </div>
@@ -214,20 +214,20 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             <form onSubmit={handleAddBarcode} className="space-y-2 pt-2 border-t">
               <div className="grid grid-cols-2 gap-2">
                 <Select value={newBarcode.symbology} onValueChange={v => setNewBarcode({ ...newBarcode, symbology: v })}>
-                  <SelectTrigger aria-label="Barcode format"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t('detail.barcode_format')}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="CODE128">CODE128</SelectItem>
                     <SelectItem value="CODE39">CODE39</SelectItem>
                     <SelectItem value="EAN13">EAN13</SelectItem>
                     <SelectItem value="EAN8">EAN8</SelectItem>
                     <SelectItem value="UPCA">UPC-A</SelectItem>
-                    <SelectItem value="QR"><QrCode className="h-3 w-3 inline mr-1" />QR (signed)</SelectItem>
+                    <SelectItem value="QR"><QrCode className="h-3 w-3 inline mr-1" aria-hidden="true" />{t('detail.qr_signed')}</SelectItem>
                   </SelectContent>
                 </Select>
                 {newBarcode.symbology !== 'QR' && (
                   <Input
-                    aria-label="Barcode value"
-                    placeholder="Barcode value"
+                    aria-label={t('detail.barcode_value')}
+                    placeholder={t('detail.barcode_value')}
                     value={newBarcode.code}
                     onChange={e => setNewBarcode({ ...newBarcode, code: e.target.value })}
                     required
@@ -241,11 +241,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                   checked={newBarcode.is_primary}
                   onChange={e => setNewBarcode({ ...newBarcode, is_primary: e.target.checked })}
                 />
-                <Label htmlFor="primary" className="text-sm">Mark as primary</Label>
+                <Label htmlFor="primary" className="text-sm">{t('detail.mark_primary')}</Label>
               </div>
               <Button type="submit" size="sm" disabled={addingBarcode}>
                 {addingBarcode ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Add Barcode
+                {t('detail.add_barcode')}
               </Button>
             </form>
           </CardContent>
