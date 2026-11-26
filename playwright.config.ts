@@ -57,7 +57,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun run dev',
+    command: 'npx next dev -p 3000',
     port: 3000,
     timeout: 30_000,
     reuseExistingServer: true,

@@ -1,6 +1,25 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "erp-pos-dev", "runtimeExecutable": "npx", "runtimeArgs": ["next", "dev", "-p", "3000"], "port": 3000 }
+    {
+      "name": "erp-pos-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "next",
+        "dev",
+        "-p",
+        "3000"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "erp-pos-e2e",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set DATABASE_URL=mysql://root@127.0.0.1:43318/readiness_20260912_disposable&& npx next dev -p 3002"
+      ],
+      "port": 3002
+    }
   ]
 }
