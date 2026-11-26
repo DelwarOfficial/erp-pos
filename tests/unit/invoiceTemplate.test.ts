@@ -1,5 +1,6 @@
 // A4 invoice template: totals, balance due, and the warranty section.
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { renderInvoiceHtml, type InvoiceTemplateData } from '../../src/lib/pdf';
 
@@ -43,6 +44,12 @@ describe('A4 invoice', () => {
     expect(html).toContain('26 Nov 2027'); // the serial's own end date
     expect(html).toContain('26 May 2027'); // sale date + 6 months for the fan
     expect(html).not.toMatch(/HDMI cable<\/td>/); // no warranty, no warranty row
+  });
+
+  it('counts only posted payments as paid', () => {
+    // A bounced cheque or reversed payment must not shrink the balance due.
+    const route = readFileSync('src/app/print/invoice/[id]/route.ts', 'utf8');
+    expect(route).toContain("payments: { where: { payment: { paymentStatus: 'posted' } }, select: { allocatedAmount: true } }");
   });
 
   it('leaves the warranty section out when nothing has one', () => {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { runInTenantContext } from '@/lib/db/transaction';
 import { authenticateRequest, requirePermission } from '@/lib/auth/middleware';
@@ -25,7 +26,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           orderBy: { lineNo: 'asc' },
         },
         biller: { select: { name: true } },
-        payments: { select: { allocatedAmount: true } },
+        // Only money that actually landed: a pending, failed or reversed
+        // payment (e.g. a bounced cheque) is not "paid". Same rule as
+        // ServiceWorkflow's paid check.
+        payments: { where: { payment: { paymentStatus: 'posted' } }, select: { allocatedAmount: true } },
         branch: { select: { name: true, address: true, phone: true } },
         company: { select: { displayName: true, legalName: true, bin: true, tin: true } },
         customer: { select: { name: true, phone: true, address: true, taxIdentifier: true } },
@@ -83,7 +87,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     sdTotal,
     discountTotal: parseFloat(String(sale.discountTotal)),
     grandTotal: parseFloat(String(sale.grandTotal)),
-    amountPaid: sale.payments.reduce((sum, a) => sum + parseFloat(String(a.allocatedAmount)), 0),
+    // Summed as decimals, then converted once, so paisa do not drift.
+    amountPaid: sale.payments.reduce((sum, a) => sum.plus(a.allocatedAmount), new Prisma.Decimal(0)).toNumber(),
     notes: sale.saleNote ?? undefined,
   };
 
