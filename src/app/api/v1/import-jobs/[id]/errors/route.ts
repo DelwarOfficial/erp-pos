@@ -68,7 +68,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="import-errors-${job.fileName}.csv"`,
+      // The uploaded name already ends in .csv; drop it so the download is not
+      // "x.csv.csv", and keep only characters that are safe inside the quotes.
+      'Content-Disposition': `attachment; filename="import-errors-${job.fileName.replace(/\.csv$/i, '').replace(/[^\w.-]+/g, '_')}.csv"`,
     },
   });
 }

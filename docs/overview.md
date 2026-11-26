@@ -76,7 +76,7 @@ investigating a specific transaction.
 Prerequisites: Node.js compatible with the lockfiles (installed Next.js requires >=20.9.0), Bun for seed/worker scripts, a dedicated development MariaDB 11.8 database, and Redis. Configure storage/providers for the features being exercised.
 
 ```sh
-bun install --frozen-lockfile
+npm ci
 ```
 
 Copy `.env.example` to an ignored `.env`. Review its values: templates and legacy staging helpers are not a ready-to-run MariaDB environment. Configure `DATABASE_URL`, `JWT_SECRET`, `APP_ENCRYPTION_KEY` and `REDIS_URL` for your local services. Use separate generated secrets and a `mysql://` database URL. See [.env.production.example](../.env.production.example) for deployment configuration variables.
@@ -84,19 +84,19 @@ Copy `.env.example` to an ignored `.env`. Review its values: templates and legac
 With the dedicated development target configured:
 
 ```sh
-bunx --no-install prisma validate --schema=prisma/mariadb/schema.prisma
-bunx --no-install prisma generate --schema=prisma/mariadb/schema.prisma
-bunx --no-install prisma migrate deploy --schema=prisma/mariadb/schema.prisma
-bunx --no-install prisma migrate status --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma validate --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma generate --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma migrate deploy --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma migrate status --schema=prisma/mariadb/schema.prisma
 ```
 
-For initial local setup, set `PLATFORM_ADMIN_PASSWORD` before running `bun run seed`. The seed provisions the platform company, roles, permissions and administrator, not complete business fixtures. Do not rely on a shared default password or replace password hashes directly.
+For initial local setup, set `PLATFORM_ADMIN_PASSWORD` before running `npm run seed`. The seed provisions the platform company, roles, permissions and administrator, not complete business fixtures. Do not rely on a shared default password or replace password hashes directly.
 
 Start web and worker processes in separate terminals:
 
 ```sh
-bunx --no-install next dev -p 3000
-bun run worker
+npx --no-install next dev -p 3000
+npm run worker
 ```
 
 Open `http://localhost:3000/login`. On Windows PowerShell, `npx.cmd --no-install next dev -p 3000` is an alternative web command; `.cmd` avoids PowerShell execution-policy issues with npm wrappers.
@@ -112,8 +112,8 @@ Open `http://localhost:3000/login`. On Windows PowerShell, `npx.cmd --no-install
 Package build/start commands use POSIX shell syntax and Bun:
 
 ```sh
-bun run build
-bun run start
+npm run build
+npm run start
 ```
 
 `build` compiles Next.js, removes public source maps and copies static/public assets into standalone output. The current command also references `scripts/build/standalone-instrumentation.mjs`, which is absent from this checkout; the packaged build cannot complete until that dependency is restored or the build command is corrected. Workers run separately. Follow the [production migration runbook](runbooks/production-migration.md) for release migration and target verification.
@@ -131,8 +131,8 @@ This Windows sequence does not package standalone assets or migrate/seed a datab
 ## Verification
 
 ```sh
-bun run lint
-bunx --no-install tsc --noEmit
+npm run lint
+npx --no-install tsc --noEmit
 ```
 
 Vitest refuses arbitrary database targets. The checked-in runner supplies a sanitized environment and uses only local MariaDB at `127.0.0.1:43318`, database `readiness_20260912_disposable`:
@@ -142,7 +142,7 @@ node scripts/verify-access-tests.mjs
 node scripts/verify-access-tests.mjs tests/integration/generalLedgerCoverage.test.ts
 ```
 
-Provision and migrate that disposable database first using the explicit MariaDB schema. Tests can write synthetic records; immutable records may remain after teardown. A bare `bun run test` without approved database configuration is intentionally refused. Run timing-sensitive scale tests without concurrent builds and record load conditions.
+Provision and migrate that disposable database first using the explicit MariaDB schema. Tests can write synthetic records; immutable records may remain after teardown. A bare `npm run test` without approved database configuration is intentionally refused. Run timing-sensitive scale tests without concurrent builds and record load conditions.
 
 | Browser configuration | Purpose |
 | --- | --- |
@@ -152,10 +152,10 @@ Provision and migrate that disposable database first using the explicit MariaDB 
 | `playwright.module-smoke.config.ts` | Module smoke coverage |
 | `playwright.config.ts` | General E2E; inspect setup and environment requirements before running |
 
-Install Chromium with `bunx --no-install playwright install chromium`. Set `E2E_BASE_URL` to an isolated running app, then run presentation checks:
+Install Chromium with `npx --no-install playwright install chromium`. Set `E2E_BASE_URL` to an isolated running app, then run presentation checks:
 
 ```sh
-bunx --no-install playwright test --config=playwright.presentation.config.ts
+npx --no-install playwright test --config=playwright.presentation.config.ts
 ```
 
 That configuration does not start a server. It mocks browser API traffic and cannot prove real transaction behavior. Production CSP can prevent webpack development bundles from hydrating; prefer a production build for representative runtime checks instead of relaxing production headers.

@@ -19,9 +19,9 @@ Use a database whose decoded name contains `dryrun`, such as `rangpurt_erp_dryru
 ```bash
 export DATABASE_URL="$MARIADB_DRYRUN_URL"
 export SHADOW_DATABASE_URL="$MARIADB_DRYRUN_SHADOW_URL"
-bunx prisma@6.11.1 migrate deploy --schema=prisma/mariadb/schema.prisma
-bunx prisma@6.11.1 migrate deploy --schema=prisma/mariadb/schema.prisma
-bunx prisma@6.11.1 migrate status --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma migrate deploy --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma migrate deploy --schema=prisma/mariadb/schema.prisma
+npx --no-install prisma migrate status --schema=prisma/mariadb/schema.prisma
 ```
 
 Second deploy must report no pending migrations. Capture durations and process audits before/after each command.
@@ -76,8 +76,8 @@ Run tenant-isolation unit tests and ERP cross-tenant API tests. Both read and mu
 ```bash
 MARIADB_DRYRUN_URL="$MARIADB_DRYRUN_URL" bun run scripts/mariadb/concurrency.ts
 MARIADB_DRYRUN_URL="$MARIADB_DRYRUN_URL" bun run scripts/mariadb/explain.ts
-bun run test:e2e
-bun run build
+npm run test:e2e
+npm run build
 ```
 
 Concurrency requires 100 completed, 100 unique, zero duplicates, contiguous values. EXPLAIN requires zero material full scans. Run complete ERP E2E against dry-run MariaDB, not production.

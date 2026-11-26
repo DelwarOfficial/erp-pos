@@ -101,6 +101,8 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     ".kilo/**",
     "next-env.d.ts",
     "graphify-out/**",
+    // Local, gitignored checkout of the graphify tool (its own test fixtures).
+    "graphify/**",
     "tests/load/**",
     "public/sw.js",
     "public/**/*.js",

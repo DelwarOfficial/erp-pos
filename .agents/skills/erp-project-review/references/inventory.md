@@ -405,7 +405,6 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - src/lib/sms/mimsms.ts
 - src/lib/storage/index.ts
 - src/lib/tax/statutoryDocuments.ts
-- src/lib/telemetry/index.ts
 - src/lib/telemetry/resource.ts
 - src/lib/utils.ts
 - src/reports/index.ts
@@ -560,7 +559,6 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - docker/Dockerfile.web
 - docker/Dockerfile.worker
 - docker/init-roles.sql
-- scripts/add-permissions.ts
 - scripts/audit-production-db.mjs
 - scripts/backup/download-from-s3.ts
 - scripts/backup/first-restore-test.sh
@@ -573,14 +571,12 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - scripts/benchmarks/index-plans.mjs
 - scripts/build-mariadb-schema.mjs
 - scripts/cloudlinux-process-audit.sh
-- scripts/codemods/atomic-idempotency.mjs
 - scripts/cpanel-deploy.sh
 - scripts/cpanel-verify.sh
 - scripts/cron-evaluate-risk-alerts.sh
 - scripts/dr-exercise.sh
 - scripts/e2e-smoke.ts
 - scripts/e2e-staging-suite.ts
-- scripts/gen_migrations.py
 - scripts/generate-mariadb-tenant-fks.mjs
 - scripts/generate-mariadb-triggers.mjs
 - scripts/mariadb/concurrency.ts
@@ -594,7 +590,6 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - scripts/run-e2e-individual.sh
 - scripts/run-full-e2e.sh
 - scripts/run-postgres-migrations.ts
-- scripts/screenshot-risk-tuning.ts
 - scripts/security/rls-penetration-test.sh
 - scripts/seed.ts
 - scripts/seed-coa.ts
@@ -602,16 +597,13 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - scripts/seed-risk-demo-data.ts
 - scripts/seed-staging.sql
 - scripts/smoke-test-providers.ts
-- scripts/ssh-test.mjs
 - scripts/switch-to-postgres.ts
-- scripts/update-readme.py
 - scripts/validate-migrations-dry-run.ts
 - scripts/validate-postgres-migrations.sh
 - scripts/verify-access-migrations.mjs
 - scripts/verify-access-tests.mjs
 - scripts/verify-ui-health.mjs
 - scripts/verify-ui-workflows.mjs
-- scripts/write_migrations.py
 
 ## MariaDB migrations (15)
 
