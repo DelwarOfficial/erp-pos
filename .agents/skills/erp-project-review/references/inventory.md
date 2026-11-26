@@ -289,7 +289,6 @@ Snapshot: 2026-11-16, revision 05cbc96. File presence does not establish accepta
 - src/domain/commands/m5/PostCourierCodSettlement.ts
 - src/domain/commands/m5/Service.ts
 - src/domain/commands/m5/ServiceWorkflow.ts
-- src/domain/commands/m6/CompleteServiceRequest.ts
 - src/domain/commands/m6/ConvertLead.ts
 - src/domain/commands/m6/Loyalty.ts
 - src/domain/commands/m6/PayPayrollRun.ts
